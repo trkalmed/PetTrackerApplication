@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One pill shape for every chip, tag and bar segment. Colour it at the
+     point of use with android:backgroundTint so there is a single shape file. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="999dp" />
+</shape>

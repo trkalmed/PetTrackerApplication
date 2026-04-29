@@ -1,0 +1,261 @@
+package com.example.pettrackerapplication;
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.Bundle;
+import android.util.Log;
+import android.util.Size;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ExperimentalGetImage;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.common.util.concurrent.ListenableFuture;
+
+import org.tensorflow.lite.task.vision.detector.Detection;
+
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class LiveObjectDetectionActivity extends AppCompatActivity {
+
+    private static final String TAG = "LiveObjectDetection";
+    private static final int    CAMERA_PERMISSION_REQUEST = 100;
+
+    private GraphicOverlay graphicOverlay;
+    private PreviewView    previewView;
+    private ImageView      piStreamView;
+    private TextView       tvStreamStatus;
+
+    private CocoObjectDetector cocoDetector;
+    private volatile boolean detectionBusy = false;
+
+    private ExecutorService cameraExecutor;
+    private String  streamUrl;
+    private volatile boolean piStreamRunning = false;
+    private Thread  piStreamThread;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_live_object_detection);
+        MaterialToolbar toolbar = findViewById(R.id.trackingToolbar);
+        toolbar.setNavigationOnClickListener(
+                v -> getOnBackPressedDispatcher().onBackPressed());
+        graphicOverlay = findViewById(R.id.GraphicOverlay);
+        previewView    = findViewById(R.id.previewView);
+        piStreamView   = findViewById(R.id.piStreamView);
+        tvStreamStatus = findViewById(R.id.tvStreamStatus);
+
+        try {
+            cocoDetector = new CocoObjectDetector(this);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to load COCO model", e);
+            Toast.makeText(this,
+                    "Failed to load detection model. Check assets/coco_ssd_mobilenet_v1.tflite",
+                    Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+
+        streamUrl = getIntent().getStringExtra("stream_url");
+        if (streamUrl != null && !streamUrl.isEmpty()) {
+
+            startPiStream();
+        } else {
+
+            cameraExecutor = Executors.newSingleThreadExecutor();
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED) {
+                startCamera();
+            } else {
+                ActivityCompat.requestPermissions(
+                        this,
+                        new String[]{Manifest.permission.CAMERA},
+                        CAMERA_PERMISSION_REQUEST);
+            }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        piStreamRunning = false;
+        if (piStreamThread != null) {
+            piStreamThread.interrupt();
+        }
+
+        if (cameraExecutor != null) {
+            cameraExecutor.shutdownNow();
+        }
+
+        if (cocoDetector != null) cocoDetector.close();
+    }
+
+
+    private void startPiStream() {
+        previewView.setVisibility(View.GONE);
+        piStreamView.setVisibility(View.VISIBLE);
+        tvStreamStatus.setVisibility(View.VISIBLE);
+        tvStreamStatus.setText("Connecting to Pi camera…");
+        piStreamRunning = true;
+
+        piStreamThread = new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(streamUrl);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(5_000);
+                connection.setReadTimeout(10_000);
+                connection.connect();
+                runOnUiThread(() -> tvStreamStatus.setText("● Pi camera — live"));
+                MjpegInputStream mjpeg =
+                        new MjpegInputStream(connection.getInputStream());
+                while (piStreamRunning && !Thread.currentThread().isInterrupted()) {
+                    byte[] jpegBytes = mjpeg.readJpegFrame();
+                    if (jpegBytes == null) break;
+                    Bitmap frame = BitmapFactory.decodeByteArray(
+                            jpegBytes, 0, jpegBytes.length);
+                    if (frame == null) continue;
+                    runOnUiThread(() -> piStreamView.setImageBitmap(frame));
+                    analyzeFrameBitmap(frame);
+                }
+                runOnUiThread(() -> tvStreamStatus.setText("Stream ended"));
+
+            } catch (IOException e) {
+                Log.e(TAG, "Pi stream error: " + e.getMessage(), e);
+                runOnUiThread(() -> {
+                    tvStreamStatus.setText("⚠ Connection failed");
+                    Toast.makeText(
+                            LiveObjectDetectionActivity.this,
+                            "Could not reach Pi camera.\nCheck the IP address and port in Pet settings.",
+                            Toast.LENGTH_LONG
+                    ).show();
+                });
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+        piStreamThread.setDaemon(true);
+        piStreamThread.start();
+    }
+
+    /**
+     * Runs the COCO TFLite detector on a single frame from the Pi stream.
+     * Called from the background piStreamThread -- detect() is a blocking
+     * CPU call, and graphicOverlay.setResults() is safe to call from any
+     * thread (it uses postInvalidate() internally).
+     */
+    private void analyzeFrameBitmap(Bitmap bitmap) {
+        if (detectionBusy) return;
+        detectionBusy = true;
+        try {
+            List<Detection> detections = cocoDetector.detect(bitmap);
+            graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+        } catch (Exception e) {
+            Log.e(TAG, "Detection failed", e);
+        } finally {
+            detectionBusy = false;
+        }
+    }
+
+    @OptIn(markerClass = ExperimentalGetImage.class)
+    private void startCamera() {
+        ListenableFuture<ProcessCameraProvider> future =
+                ProcessCameraProvider.getInstance(this);
+
+        future.addListener(() -> {
+            try {
+                ProcessCameraProvider cameraProvider = future.get();
+
+                Preview preview = new Preview.Builder().build();
+                preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(new Size(1280, 720))
+                        .setBackpressureStrategy(
+                                ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build();
+                imageAnalysis.setAnalyzer(cameraExecutor, this::analyzeFrame);
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle(
+                        this,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        imageAnalysis);
+
+            } catch (ExecutionException | InterruptedException e) {
+                Log.e(TAG, "Camera start failed: " + e.getMessage(), e);
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        "Failed to start camera: " + e.getMessage(),
+                        Toast.LENGTH_LONG
+                ).show());
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
+
+    /**
+     * NOTE: imageProxy.toBitmap() requires androidx.camera:camera-core 1.3.0+.
+     * If your project is on an older CameraX version, this call won't exist --
+     * bump the camera-core/camera-camera2/camera-lifecycle/camera-view
+     * dependencies to 1.3.0 or newer in build.gradle.
+     */
+    @OptIn(markerClass = ExperimentalGetImage.class)
+    private void analyzeFrame(ImageProxy imageProxy) {
+        try {
+            Bitmap bitmap = imageProxy.toBitmap();
+            if (bitmap != null && !detectionBusy) {
+                detectionBusy = true;
+                List<Detection> detections = cocoDetector.detect(bitmap);
+                graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+                detectionBusy = false;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Detection failed", e);
+            detectionBusy = false;
+        } finally {
+            imageProxy.close();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == CAMERA_PERMISSION_REQUEST) {
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCamera();
+            } else {
+                Toast.makeText(this,
+                        "Camera permission required", Toast.LENGTH_LONG).show();
+                finish();
+            }
+        }
+    }
+}

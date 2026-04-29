@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1020846629260",
+    "project_id": "pettrackerapplicatio-65e32a98",
+    "storage_bucket": "pettrackerapplicatio-65e32a98.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1020846629260:android:7ab0bed17fe6019e00f6a9",
+        "android_client_info": {
+          "package_name": "com.example.pettrackerapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAID9JqKu_iyfD94t9EnnsGDYCR2ccVuMk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -69,7 +69,7 @@
                                 android:id="@+id/imgPetAvatar"
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:contentDescription="Pet photo"
+                                android:contentDescription="@string/pet_photo"
                                 android:padding="13dp"
                                 android:scaleType="centerCrop"
                                 android:src="@drawable/ic_pets_24"
@@ -115,7 +115,7 @@
                         <ImageView
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:contentDescription="Account"
+                            android:contentDescription="@string/account"
                             android:padding="11dp"
                             app:srcCompat="@drawable/ic_account_circle_24"
                             app:tint="@color/text_primary" />
@@ -150,7 +150,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="9dp"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="Camera offline"
+                        tools:text="Camera offline"
                         android:textColor="@color/text_primary"
                         android:textSize="13sp" />
 
@@ -160,14 +160,14 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
                         android:layout_weight="1"
-                        android:text="No GPS fix yet"
+                        tools:text="No GPS fix yet"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
 
                     <ImageView
                         android:layout_width="18dp"
                         android:layout_height="18dp"
-                        android:contentDescription="Open device settings"
+                        android:contentDescription="@string/open_device_settings"
                         app:srcCompat="@drawable/ic_chevron_right_24"
                         app:tint="@color/primary_dark" />
                 </LinearLayout>
@@ -195,7 +195,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:letterSpacing="0.1"
-                            android:text="FOOD TODAY"
+                            android:text="@string/food_today"
                             android:textColor="@color/primary_dark"
                             android:textSize="11sp" />
 
@@ -230,7 +230,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:fontFamily="@font/poppins_semibold"
-                                    android:text="0 g"
+                                    tools:text="0 g"
                                     android:textColor="@color/text_primary"
                                     android:textSize="36sp" />
 
@@ -238,7 +238,7 @@
                                     android:id="@+id/tvGramsTarget"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="of 300 g"
+                                    tools:text="of 300 g"
                                     android:textColor="@color/text_secondary"
                                     android:textSize="13sp" />
                             </LinearLayout>
@@ -260,7 +260,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="14dp"
                             android:gravity="center"
-                            android:text="No feeder paired yet. Add one in Settings to see grams here."
+                            android:text="@string/no_feeder_paired_yet_add_one"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp"
                             android:visibility="gone" />
@@ -301,7 +301,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginStart="8dp"
                                 android:fontFamily="@font/poppins_semibold"
-                                android:text="Where they were"
+                                android:text="@string/where_they_were"
                                 android:textColor="@color/text_primary"
                                 android:textSize="18sp" />
                         </LinearLayout>
@@ -327,7 +327,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="12dp"
-                            android:text="No motion sensors reporting. Pair them in Settings."
+                            android:text="@string/no_motion_sensors_reporting_pair_them"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp"
                             android:visibility="gone" />
@@ -373,7 +373,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginStart="6dp"
-                                    android:text="Right now"
+                                    android:text="@string/right_now"
                                     android:textColor="@color/text_secondary"
                                     android:textSize="12sp" />
                             </LinearLayout>
@@ -384,7 +384,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="6dp"
                                 android:fontFamily="@font/poppins_semibold"
-                                android:text="Unknown"
+                                tools:text="Unknown"
                                 android:textColor="@color/text_primary"
                                 android:textSize="19sp" />
 
@@ -392,7 +392,7 @@
                                 android:id="@+id/tvCurrentRoomSince"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="waiting for a sensor"
+                                tools:text="waiting for a sensor"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
                         </LinearLayout>
@@ -430,7 +430,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginStart="6dp"
-                                    android:text="Detections"
+                                    android:text="@string/detections"
                                     android:textColor="@color/text_secondary"
                                     android:textSize="12sp" />
                             </LinearLayout>
@@ -441,7 +441,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="6dp"
                                 android:fontFamily="@font/poppins_semibold"
-                                android:text="0 today"
+                                tools:text="0 today"
                                 android:textColor="@color/text_primary"
                                 android:textSize="19sp" />
 
@@ -449,7 +449,7 @@
                                 android:id="@+id/tvDetectionLast"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="camera not connected"
+                                tools:text="camera not connected"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
                         </LinearLayout>
@@ -479,7 +479,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="18dp"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="No pets yet"
+                        android:text="@string/no_pets_yet"
                         android:textColor="@color/text_primary"
                         android:textSize="22sp" />
 
@@ -488,7 +488,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:gravity="center"
-                        android:text="Add your first pet to start tracking."
+                        android:text="@string/add_your_first_pet_to_start"
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp" />
                 </LinearLayout>
@@ -520,7 +520,7 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="18dp"
         android:layout_marginBottom="94dp"
-        android:contentDescription="Add a pet"
+        android:contentDescription="@string/add_a_pet"
         app:backgroundTint="@color/primary"
         app:srcCompat="@drawable/ic_add_24"
         app:tint="@color/on_primary" />

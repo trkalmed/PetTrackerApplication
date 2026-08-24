@@ -6,8 +6,8 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- No storage permissions: photos come from the system photo picker, which
+         runs out of process and grants access to just the one image chosen. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -23,11 +23,13 @@
         android:theme="@style/Theme.PetTrackerApplication"
         tools:targetApi="31">
 
-        <!-- Combine ALL ML Kit dependencies into one single meta-data tag -->
+        <!-- Only the model the app actually uses: subject segmentation, for the
+             pet-photo cutout in AddPetActivity. Declaring extras here makes Play
+             Services download models that are never loaded. No tools:replace —
+             nothing else declares this, and claiming otherwise warns on every build. -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"
-            android:value="object_detection_custom,subject_segment,face,model3"
-            tools:replace="android:value" />
+            android:value="subject_segment" />
 
         <activity android:name=".LoginActivity"
             android:exported="true">

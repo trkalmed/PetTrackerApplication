@@ -87,7 +87,7 @@ public class LoginActivity extends AppCompatActivity {
                     setLoadingState(false);
 
                     if (task.isSuccessful()) {
-                        Toast.makeText(this, "Login successful", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, getString(R.string.login_successful), Toast.LENGTH_SHORT).show();
                         goToMainMenu();
                         finish();
                     } else {
@@ -95,7 +95,7 @@ public class LoginActivity extends AppCompatActivity {
                                 ? task.getException().getMessage()
                                 : "Unknown error";
 
-                        Toast.makeText(this, "Login failed: " + message, Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, getString(R.string.login_failed) + message, Toast.LENGTH_LONG).show();
                     }
                 });
     }
@@ -108,7 +108,7 @@ public class LoginActivity extends AppCompatActivity {
     private void setLoadingState(boolean isLoading) {
         btnLogin.setEnabled(!isLoading);
         btnGoToRegister.setEnabled(!isLoading);
-        btnLogin.setText(isLoading ? "Signing in..." : "Login");
+        btnLogin.setText(isLoading ? R.string.signing_in : R.string.login);
     }
 
     private void goToMainMenu() {

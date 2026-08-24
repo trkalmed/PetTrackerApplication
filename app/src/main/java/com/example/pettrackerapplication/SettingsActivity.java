@@ -118,21 +118,21 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Raspberry Pi IP address")
-                .setMessage("Enter your Pi's local IP address on the same network.")
+                .setTitle(R.string.pi_ip_dialog_title)
+                .setMessage(R.string.pi_ip_dialog_message_settings)
                 .setView(input)
-                .setPositiveButton("Save", (dialog, which) -> {
+                .setPositiveButton(R.string.action_save, (dialog, which) -> {
                     String ip = input.getText().toString().trim();
                     if (!ip.isEmpty()) {
                         PiConnectionManager.saveIp(this, ip);
                         updatePiConnectionSummary();
                     }
                 })
-                .setNeutralButton("Clear", (dialog, which) -> {
+                .setNeutralButton(R.string.action_clear, (dialog, which) -> {
                     PiConnectionManager.clearIp(this);
                     updatePiConnectionSummary();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -147,7 +147,7 @@ public class SettingsActivity extends AppCompatActivity {
             startActivity(Intent.createChooser(intent, "Contact Support"));
         } catch (android.content.ActivityNotFoundException e) {
             Toast.makeText(this,
-                    "No email app found. Please email support@pettracker.app directly.",
+                    getString(R.string.no_email_app_found_please_email),
                     Toast.LENGTH_LONG).show();
         }
     }

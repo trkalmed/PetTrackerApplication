@@ -1,13 +1,9 @@
 package com.example.pettrackerapplication;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -19,9 +15,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.PickVisualMediaRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 
 import com.bumptech.glide.Glide;
 import com.google.android.material.button.MaterialButton;
@@ -39,6 +35,7 @@ import android.app.DatePickerDialog;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Calendar;
 import java.util.Locale;
 
@@ -54,8 +51,7 @@ public class AddPetActivity extends AppCompatActivity {
     private Uri    selectedImageUri = null;
     private Bitmap segmentedBitmap  = null;
     private SubjectSegmenter subjectSegmenter;
-    private ActivityResultLauncher<Intent>  pickImageLauncher;
-    private ActivityResultLauncher<String>  permissionLauncher;
+    private ActivityResultLauncher<PickVisualMediaRequest> pickImageLauncher;
 
     /** -1 = adding a new pet; anything else = editing that pet. */
     private long editingPetId = -1L;
@@ -85,29 +81,17 @@ public class AddPetActivity extends AppCompatActivity {
                         .enableForegroundBitmap()
                         .build());
 
+        // The photo picker needs no storage permission at all: the system picker
+        // runs out of process and hands back one URI the user chose. This is why
+        // READ_MEDIA_IMAGES and READ_EXTERNAL_STORAGE are gone from the manifest.
         pickImageLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        Uri uri = result.getData().getData();
-                        if (uri != null) {
-                            selectedImageUri = uri;
-                            segmentedBitmap  = null;
-                            imgPreview.setImageURI(uri);
-                            runSubjectSegmentation(uri);
-                        }
-                    }
-                });
-
-        permissionLauncher = registerForActivityResult(
-                new ActivityResultContracts.RequestPermission(),
-                isGranted -> {
-                    if (isGranted) {
-                        openImagePicker();
-                    } else {
-                        Toast.makeText(this,
-                                "Permission denied. Cannot pick photo.",
-                                Toast.LENGTH_SHORT).show();
+                new ActivityResultContracts.PickVisualMedia(),
+                uri -> {
+                    if (uri != null) {
+                        selectedImageUri = uri;
+                        segmentedBitmap  = null;
+                        Glide.with(this).load(uri).centerCrop().into(imgPreview);
+                        runSubjectSegmentation(uri);
                     }
                 });
 
@@ -130,7 +114,11 @@ public class AddPetActivity extends AppCompatActivity {
         etBirthdate.setFocusable(false);
         etBirthdate.setKeyListener(null);
         etBirthdate.setOnClickListener(v -> showDatePicker());
-        cardPhoto.setOnClickListener(v -> checkPhotoPermissionAndPick());
+        cardPhoto.setOnClickListener(v -> pickImageLauncher.launch(
+                new PickVisualMediaRequest.Builder()
+                        // ImageOnly is a Kotlin object, hence INSTANCE from Java.
+                        .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE)
+                        .build()));
         btnSavePet.setOnClickListener(v -> savePet());
 
         editingPetId = getIntent().getLongExtra("pet_id", -1L);
@@ -144,7 +132,7 @@ public class AddPetActivity extends AppCompatActivity {
     private void loadPetForEditing(long petId) {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) {
-            Toast.makeText(this, "You must be logged in to edit a pet",
+            Toast.makeText(this, getString(R.string.you_must_be_logged_in_to),
                     Toast.LENGTH_SHORT).show();
             finish();
             return;
@@ -160,7 +148,7 @@ public class AddPetActivity extends AppCompatActivity {
                 if (isFinishing() || isDestroyed()) return;
                 btnSavePet.setEnabled(true);
                 if (pet == null) {
-                    Toast.makeText(this, "Pet not found", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, getString(R.string.pet_not_found), Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
                     editingPet = pet;
@@ -171,9 +159,10 @@ public class AddPetActivity extends AppCompatActivity {
     }
 
     private void fillFormFrom(Pet pet) {
-        ((TextView) findViewById(R.id.tvAddPetTitle)).setText("Edit " + pet.getName());
+        ((TextView) findViewById(R.id.tvAddPetTitle))
+                .setText(getString(R.string.edit_pet_title, pet.getName()));
         ((TextView) findViewById(R.id.tvAddPetSubtitle))
-                .setText("Update the details or photo, then save.");
+                .setText(R.string.update_the_details_or_photo_then);
         btnSavePet.setText(R.string.save_changes);
 
         etName.setText(pet.getName());
@@ -204,24 +193,6 @@ public class AddPetActivity extends AppCompatActivity {
         }, year, month, day).show();
     }
 
-    private void checkPhotoPermissionAndPick() {
-        String permission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                ? Manifest.permission.READ_MEDIA_IMAGES
-                : Manifest.permission.READ_EXTERNAL_STORAGE;
-        if (ContextCompat.checkSelfPermission(this, permission)
-                == PackageManager.PERMISSION_GRANTED) {
-            openImagePicker();
-        } else {
-            permissionLauncher.launch(permission);
-        }
-    }
-
-    private void openImagePicker() {
-        Intent intent = new Intent(
-                Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        intent.setType("image/*");
-        pickImageLauncher.launch(intent);
-    }
 
     private void runSubjectSegmentation(Uri imageUri) {
         setSegmentationLoadingState(true);
@@ -234,13 +205,13 @@ public class AddPetActivity extends AppCompatActivity {
                         Log.e(TAG, "Segmentation failed", e);
                         setSegmentationLoadingState(false);
                         Toast.makeText(this,
-                                "Could not remove background. Original photo will be saved.",
+                                getString(R.string.could_not_remove_background_original_photo),
                                 Toast.LENGTH_SHORT).show();
                     });
         } catch (IOException e) {
             Log.e(TAG, "Could not load image for segmentation", e);
             setSegmentationLoadingState(false);
-            Toast.makeText(this, "Could not load image", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.could_not_load_image), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -253,7 +224,7 @@ public class AddPetActivity extends AppCompatActivity {
             imgPreview.setImageBitmap(foreground);
         } else {
             Toast.makeText(this,
-                    "No subject found — original photo will be saved.",
+                    getString(R.string.no_subject_found_original_photo_will),
                     Toast.LENGTH_SHORT).show();
         }
     }
@@ -284,6 +255,36 @@ public class AddPetActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Copies a picked image into app storage and returns the local URI.
+     *
+     * The picker grants read access to its URI only for this task's lifetime, so
+     * persisting that URI in the database gives a photo that silently stops
+     * loading later. Segmented photos were already written to disk; this does the
+     * same for the original when segmentation finds no subject or fails.
+     */
+    private Uri copyPickedImageToFile(Uri source) {
+        try {
+            File dir = new File(getFilesDir(), "pet_photos");
+            if (!dir.exists()) dir.mkdirs();
+            File file = new File(dir, "pet_" + System.currentTimeMillis() + ".jpg");
+
+            try (InputStream in = getContentResolver().openInputStream(source);
+                 FileOutputStream out = new FileOutputStream(file)) {
+                if (in == null) return null;
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                }
+            }
+            return Uri.fromFile(file);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to copy picked image", e);
+            return null;
+        }
+    }
+
     private void savePet() {
         String name      = etName.getText()      != null ? etName.getText().toString().trim()      : "";
         String species   = autoSpecies.getText() != null ? autoSpecies.getText().toString().trim() : "";
@@ -296,7 +297,7 @@ public class AddPetActivity extends AppCompatActivity {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) {
             Toast.makeText(this,
-                    "You must be logged in to save a pet", Toast.LENGTH_SHORT).show();
+                    getString(R.string.you_must_be_logged_in_to_2), Toast.LENGTH_SHORT).show();
             return;
         }
         String ownerId = user.getUid();
@@ -324,7 +325,7 @@ public class AddPetActivity extends AppCompatActivity {
         final Uri     fallbackUri   = selectedImageUri;
 
         btnSavePet.setEnabled(false);
-        btnSavePet.setText("Saving…");
+        btnSavePet.setText(R.string.saving);
 
         final boolean editing     = editingPetId != -1L && editingPet != null;
         final Pet     existingPet = editingPet;
@@ -337,7 +338,8 @@ public class AddPetActivity extends AppCompatActivity {
                         ? segUri.toString()
                         : (fallbackUri != null ? fallbackUri.toString() : null);
             } else if (fallbackUri != null) {
-                photoUriString = fallbackUri.toString();
+                Uri localUri = copyPickedImageToFile(fallbackUri);
+                photoUriString = localUri != null ? localUri.toString() : null;
             } else if (editing) {
                 photoUriString = existingPet.getPhotoUri();   // keep the saved photo
             }

@@ -11,6 +11,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.firebase.auth.FirebaseAuth;
@@ -85,9 +86,10 @@ public class FeedingActivity extends AppCompatActivity {
         if (s.gramsEaten == null) {
             emptyFeeder.setVisibility(View.VISIBLE);
             mealList.setVisibility(View.GONE);
-            tvTodayGrams.setText("No data");
-            tvTodayMealCount.setText("feeder not reporting");
-            tagTodayState.setText("waiting");
+            tvTodayGrams.setText(R.string.no_data);
+            tvTodayMealCount.setText(R.string.feeder_not_reporting);
+            tagTodayState.setText(R.string.waiting);
+            tvFeedingSubtitle.setText(R.string.no_feeder_paired);
             barToday.setProgress(0);
             return;
         }
@@ -98,10 +100,12 @@ public class FeedingActivity extends AppCompatActivity {
         int pct = s.gramsTarget == 0 ? 0
                 : Math.min(100, Math.round(s.gramsEaten * 100f / s.gramsTarget));
         barToday.setProgress(pct);
-        tvTodayGrams.setText(s.gramsEaten + " g of " + s.gramsTarget + " g");
-        tvTodayMealCount.setText(s.meals.size() == 1 ? "1 meal" : s.meals.size() + " meals");
-        tagTodayState.setText(pct >= 100 ? "target met" : "on track");
-        tvFeedingSubtitle.setText("Grams measured by the feeder");
+        tvTodayGrams.setText(getString(R.string.grams_of_target,
+                s.gramsEaten, s.gramsTarget));
+        tvTodayMealCount.setText(getResources().getQuantityString(
+                R.plurals.meal_count, s.meals.size(), s.meals.size()));
+        tagTodayState.setText(pct >= 100 ? R.string.target_met : R.string.on_track);
+        tvFeedingSubtitle.setText(R.string.grams_measured_by_the_feeder);
 
         for (int i = 0; i < s.meals.size(); i++) {
             mealList.addView(buildMealRow(s.meals.get(i), i > 0));
@@ -123,10 +127,10 @@ public class FeedingActivity extends AppCompatActivity {
         row.addView(time);
 
         TextView grams = new TextView(this);
-        grams.setText(meal.grams + " g");
+        grams.setText(getString(R.string.grams_value, meal.grams));
         grams.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         grams.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-        grams.setTypeface(getResources().getFont(R.font.poppins_semibold));
+        grams.setTypeface(ResourcesCompat.getFont(this, R.font.poppins_semibold));
         grams.setLayoutParams(new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         row.addView(grams);

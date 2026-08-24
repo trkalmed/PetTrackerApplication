@@ -13,6 +13,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
 
 import com.bumptech.glide.Glide;
 
@@ -175,8 +176,14 @@ public class MainMenuActivity extends AppCompatActivity {
         emptyStateView.setVisibility(View.VISIBLE);
         cardFood.setVisibility(View.GONE);
         cardRooms.setVisibility(View.GONE);
-        tvPetName.setText("No pets yet");
-        tvPetSubtitle.setText("Tap + to add one");
+        tvPetName.setText(R.string.no_pets_yet);
+        tvPetSubtitle.setText(R.string.tap_to_add_one);
+
+        // The device-status row and the glance cards are outside the hidden
+        // cards, so they still need filling. Rendering empty stats keeps them on
+        // the same code path as everywhere else — otherwise they sit blank,
+        // which is what happened once their layout defaults moved to tools:text.
+        render(new DashboardStats());
     }
 
     private void showPet(Pet pet) {
@@ -187,7 +194,8 @@ public class MainMenuActivity extends AppCompatActivity {
 
         tvPetName.setText(pet.getName());
         String species = pet.getSpecies();
-        tvPetSubtitle.setText(species == null || species.isEmpty() ? "Pet profile" : species);
+        tvPetSubtitle.setText(species == null || species.isEmpty()
+                ? getString(R.string.pet_profile) : species);
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
@@ -219,7 +227,8 @@ public class MainMenuActivity extends AppCompatActivity {
     }
 
     private void renderDeviceStatus(DashboardStats s) {
-        tvCameraStatus.setText(s.cameraOnline ? "Camera live" : "Camera offline");
+        tvCameraStatus.setText(s.cameraOnline
+                ? R.string.camera_live : R.string.camera_offline_status);
         setDotColor(dotDeviceStatus, s.cameraOnline
                 ? R.color.accent_2 : R.color.text_disabled);
         tvGpsStatus.setText(s.lastGpsFixAgo == null
@@ -231,8 +240,8 @@ public class MainMenuActivity extends AppCompatActivity {
 
         if (s.gramsEaten == null) {
             foodProgress.setProgress(0, false);
-            tvGramsEaten.setText("—");
-            tvGramsTarget.setText("no feeder");
+            tvGramsEaten.setText(R.string.em_dash);
+            tvGramsTarget.setText(R.string.no_feeder);
             tvFoodEmpty.setVisibility(View.VISIBLE);
             return;
         }
@@ -241,8 +250,8 @@ public class MainMenuActivity extends AppCompatActivity {
         int pct = s.gramsTarget == 0 ? 0
                 : Math.min(100, Math.round(s.gramsEaten * 100f / s.gramsTarget));
         foodProgress.setProgress(pct, true);
-        tvGramsEaten.setText(s.gramsEaten + " g");
-        tvGramsTarget.setText("of " + s.gramsTarget + " g");
+        tvGramsEaten.setText(getString(R.string.grams_value, s.gramsEaten));
+        tvGramsTarget.setText(getString(R.string.of_grams_target, s.gramsTarget));
 
         for (DashboardStats.Meal m : s.meals) {
             mealsContainer.addView(buildPill(
@@ -283,14 +292,15 @@ public class MainMenuActivity extends AppCompatActivity {
 
     private void renderGlanceCards(DashboardStats s) {
         if (s.currentRoom == null) {
-            tvCurrentRoom.setText("Unknown");
-            tvCurrentRoomSince.setText("waiting for a sensor");
+            tvCurrentRoom.setText(R.string.unknown);
+            tvCurrentRoomSince.setText(R.string.waiting_for_a_sensor);
         } else {
             tvCurrentRoom.setText(s.currentRoom);
-            tvCurrentRoomSince.setText("since " + s.currentRoomSince);
+            tvCurrentRoomSince.setText(getString(R.string.room_since, s.currentRoomSince));
         }
 
-        tvDetectionCount.setText(s.detectionsToday + " today");
+        tvDetectionCount.setText(getString(
+                R.string.detections_today_count, s.detectionsToday));
         tvDetectionLast.setText(s.lastDetectionTime == null
                 ? (s.cameraOnline ? "none yet today" : "camera not connected")
                 : "last " + s.lastDetectionTime);
@@ -326,7 +336,7 @@ public class MainMenuActivity extends AppCompatActivity {
         value.setText(formatMinutes(stay.minutes));
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         value.setTextColor(ContextCompat.getColor(this, R.color.text_primary));
-        value.setTypeface(getResources().getFont(R.font.poppins_semibold));
+        value.setTypeface(ResourcesCompat.getFont(this, R.font.poppins_semibold));
         row.addView(value);
 
         return row;

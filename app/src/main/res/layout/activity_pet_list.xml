@@ -29,7 +29,7 @@
         <ImageView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:contentDescription="Back"
+            android:contentDescription="@string/back"
             android:padding="11dp"
             app:srcCompat="@drawable/ic_arrow_back_24"
             app:tint="@color/text_primary" />
@@ -41,7 +41,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
         android:fontFamily="@font/poppins_semibold"
-        android:text="My pets"
+        android:text="@string/my_pets"
         android:textColor="@color/text_primary"
         android:textSize="28sp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -53,7 +53,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Tap a pet to show it on the dashboard."
+        android:text="@string/tap_a_pet_to_show_it"
         android:textColor="@color/text_secondary"
         android:textSize="14sp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -98,7 +98,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:fontFamily="@font/poppins_semibold"
-            android:text="No pets yet"
+            android:text="@string/no_pets_yet"
             android:textColor="@color/text_primary"
             android:textSize="18sp" />
 
@@ -106,7 +106,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Add one to start tracking."
+            android:text="@string/add_one_to_start_tracking"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
     </LinearLayout>
@@ -115,7 +115,7 @@
         android:id="@+id/fabAddPetFromList"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:contentDescription="Add pet"
+        android:contentDescription="@string/add_pet"
         app:backgroundTint="@color/primary"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

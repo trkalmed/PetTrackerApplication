@@ -116,10 +116,12 @@ public class PetsAdapter extends RecyclerView.Adapter<PetsAdapter.PetViewHolder>
             tvName.setText(pet.getName());
 
             String species = pet.getSpecies();
-            tvSpecies.setText(species == null || species.isEmpty() ? "Pet profile" : species);
+            tvSpecies.setText(species == null || species.isEmpty()
+                    ? itemView.getContext().getString(R.string.pet_profile) : species);
 
             String lastSeen = pet.getLastSeen();
-            tvLastSeen.setText(lastSeen == null || lastSeen.isEmpty() ? "Last seen: —" : lastSeen);
+            tvLastSeen.setText(lastSeen == null || lastSeen.isEmpty()
+                    ? itemView.getContext().getString(R.string.last_seen_unknown) : lastSeen);
 
             tagActive.setVisibility(isActive ? View.VISIBLE : View.GONE);
 

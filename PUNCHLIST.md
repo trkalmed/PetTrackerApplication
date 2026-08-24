@@ -1,8 +1,8 @@
 # Pet Tracker — Punch List
 
-State: P0, P1 (#4–#9) and P2 (#12–#19) fixed on 2026-08-24. Branch `master`.
-Open: #10 (real data), #11 (cloud sync, deferred), #20 (not fixable as written), and P3.
-See "Verification status" near the end for what was driven on a device versus only compiled.
+State: P0, P1 (#4-#9), P2 (#12-#19) and P3 (#21-#25, #27-#32) fixed on 2026-08-24.
+Open: #10 (real data), #11 (cloud sync, deferred), #20 (not fixable as written),
+#26 applicationId. See "Verification status" for what was driven on a device.
 
 ---
 
@@ -207,105 +207,127 @@ to HTTPS with a self-signed cert plus a `<trust-anchors>` entry, or accept it �
 else in the app (Firebase, ML Kit) is HTTPS regardless.
 
 ---
+## P3 — ✅ #21–#25, #27–#32 FIXED (2026-08-24) · #26 partly, applicationId left alone
 
-## P3 — Build hygiene, size, polish
+**Debug APK for the emulator went from 60 MB to 22 MB; the release APK, now shrunk, is
+35 MB for all four ABIs against 131 MB unminified.**
 
-### 21. Unused dependencies (verified by import grep — none are referenced)
-- `com.google.mlkit:object-detection` — detection is TFLite/COCO, not ML Kit
-- `com.google.mlkit:image-labeling`
-- `com.google.mlkit:face-detection`
-- `androidx.media3:media3-exoplayer` + `media3-ui`
-- `androidx.preference` (see #17)
-- `recyclerview` + `glide` — only used by dead `PetsAdapter` (#16)
+### 21. ✅ Unused dependencies removed
+Dropped `com.google.mlkit:object-detection`, `image-labeling`, `face-detection`,
+`androidx.media3:media3-exoplayer` and `media3-ui` — no imports anywhere. Object detection
+is TFLite's job here, not ML Kit's; only subject segmentation is actually used.
 
-The manifest's ML Kit meta-data also over-declares:
-`object_detection_custom,subject_segment,face,model3` — only `subject_segment` is used
-(`AddPetActivity`). Trimming these forces smaller model downloads at install.
+`androidx.cardview` was **kept**: contrary to this list's original claim, `pet_menu.xml`
+uses `androidx.cardview.widget.CardView` directly. `recyclerview` and `glide` were also
+kept — no longer dead, they back the pet list added in P2.
 
-### 22. Unused 4.5 MB asset
-`assets/mobile_object_localizer.tflite` is never referenced — only
-`coco_ssd_mobilenet_v1.tflite` is loaded (`CocoObjectDetector.java:16`). Deleting it halves
-the assets payload.
+The manifest's ML Kit meta-data over-declared
+`object_detection_custom,subject_segment,face,model3`; now just `subject_segment`, so Play
+Services stops downloading models the app never loads.
 
-### 23. CameraX version skew
-`camera-view` is pinned to **1.2.3** while `camera-core`, `camera-camera2` and
-`camera-lifecycle` are on **1.4.0**. Align them all on 1.4.0.
+### 22. ✅ Unused 4.5 MB asset deleted
+`assets/mobile_object_localizer.tflite` was referenced by nothing — only
+`coco_ssd_mobilenet_v1.tflite` is loaded.
 
-### 24. The version catalog is unused and contradicts `build.gradle.kts`
-`gradle/libs.versions.toml` declares `material`, `activity`, `constraintlayout`,
-`object-detection` (17.0.2), `litert-support-api`, `ext-junit` (1.3.0), `espresso-core` (3.7.0)
-— and `app/build.gradle.kts` hardcodes *different* versions for the same libraries
-(e.g. ML Kit object-detection 17.0.1, espresso 3.5.1, ext-junit 1.1.5). Only
-`libs.plugins.android.application` is actually used. Either move everything into the catalog
-or strip it down to the plugin.
+### 23. ✅ CameraX version skew fixed
+`camera-view` was pinned to 1.2.3 against 1.4.0 siblings. All four now on 1.4.0.
 
-### 25. Kotlin plugin applied with zero Kotlin source
-`build.gradle.kts:4` — `kotlin("android") version "2.0.21" apply false`. Pure Java project.
-Remove it.
+### 24. ✅ Version catalog no longer contradicts the build
+`libs.versions.toml` declared a parallel, unresolved set of versions disagreeing with
+`app/build.gradle.kts` (ML Kit 17.0.2 vs 17.0.1, espresso 3.7.0 vs 3.5.1, ...). Trimmed to
+the one thing it actually provides: the AGP plugin alias.
 
-### 26. Not release-ready
-- `applicationId = "com.example.pettrackerapplication"` — placeholder namespace
-- `versionCode 1 / versionName "1.0"` — never bumped
-- `isMinifyEnabled = false` and `proguard-rules.pro` untouched → no shrinking, no
-  obfuscation, full ML Kit + TFLite symbols in the APK
-- `app/google-services.json` is committed to git. Not a hard secret (it's client config), but
-  it does pin `project_id: pettrackerapplicatio-65e32a98` publicly. Decide deliberately.
+### 25. ✅ Kotlin plugin removed
+`kotlin("android") version "2.0.21" apply false` in a pure-Java project.
 
-### 27. Every user-facing string is hardcoded in layouts and Java
-`strings.xml` has ~25 entries, but the layouts hardcode nearly all their copy and
-`MainMenuActivity` / `FeedingActivity` / `Petmenu` build display strings inline
-("Camera offline", "no feeder", "since ", " g"). The manifest sets `supportsRtl="true"` and
-the Settings screen offers a **Language** row — neither can work. Also blocks plurals
-(`FeedingActivity.java:88` does `"1 meal"` / `"n meals"` by hand).
+### 26. Partly fixed — **`applicationId` deliberately left alone**
+- ✅ **Shrinking enabled.** `isMinifyEnabled` and `isShrinkResources` are on, with keep
+  rules in `proguard-rules.pro` for everything that resolves reflectively or via JNI:
+  TFLite task-vision, ML Kit, Room's generated DAO and the `Pet` entity, Glide, Firebase,
+  and `GraphicOverlay` (inflated by class name from XML). Line numbers are kept so release
+  crash reports stay readable.
+- ❌ **`applicationId` is still `com.example.pettrackerapplication`** — changing it is
+  **your call, not a mechanical fix**. `app/google-services.json` pins
+  `package_name: com.example.pettrackerapplication`; renaming the app without registering
+  the new package in the Firebase console breaks sign-in at runtime. Do both together.
+- `versionCode 1 / versionName "1.0"` left as-is — correct for something unreleased.
+- `google-services.json` stays committed. It is client config rather than a secret, but it
+  does publish the project id; a deliberate decision either way.
 
-### 28. Leftover placeholder copy visible at runtime
-- `activity_live_object_detection.xml:113` — camera name hardcoded to `"Kitchen"`,
-  never set from code, shown over every stream
-- `activity_main_menu.xml:78`, `pet_menu.xml:75`, `item_pet.xml:50` — `"Marvel"` as the pet
-  name; only the first two get overwritten, and `item_pet` is dead anyway
-- `activity_main_menu.xml:363` — `"Right now"`
+**The release build has only been verified at build time.** R8 succeeded and the mapping
+file confirms `ObjectDetector`, `SubjectSegmentation`, `GraphicOverlay`, `Pet` and
+`RoomDatabase` all survived — but the release APK is unsigned, so it could not be installed
+and smoke-tested. Do that before shipping: a wrong keep rule fails at runtime, not build time.
 
-Design-time text belongs in `tools:text`, not `android:text`, so it can never leak.
+### 27. ✅ Every user-facing string extracted
+Was ~150 hardcoded strings across layouts and Java against a 23-entry `strings.xml`; the
+Settings screen offered a Language row that could never work. Now **157 string resources
+and one plurals set**, with **zero hardcoded user-facing text left in any layout**.
 
-### 29. Deprecated APIs
-- `AddPetActivity.java:156` — `Intent.ACTION_PICK`. Migrating to
-  `ActivityResultContracts.PickVisualMedia` lets you **drop `READ_MEDIA_IMAGES` and
-  `READ_EXTERNAL_STORAGE` from the manifest entirely** and removes the whole
-  `permissionLauncher` path.
-- `LiveObjectDetectionActivity.java:197` — `setTargetResolution()` → `ResolutionSelector`
-- `LiveObjectDetectionActivity.java:246` — `onRequestPermissionsResult()` →
-  `registerForActivityResult`, as `AddPetActivity` already does
-- `getResources().getFont()` (`MainMenuActivity:283`, `FeedingActivity:114`) →
-  `ResourcesCompat.getFont()`
+Distinctions the extraction was careful about:
+- Text a screen sets at runtime became `tools:text`, not a `@string` — design-time only, so
+  a placeholder can never leak into the running app.
+- Interpolated strings became **format strings** (`Now tracking %1$s`, `%1$d g of %2$d g`,
+  `since %1$s`) rather than concatenation, so word order stays translatable.
+- Meal counts use a **plurals** resource instead of the hand-rolled `"1 meal" : n + " meals"`.
+- `Log.*` was left alone throughout — developer-facing, must not be translated.
 
-### 30. Manifest warning, live in the build output
-```
-AndroidManifest.xml:27 Warning: meta-data#com.google.mlkit.vision.DEPENDENCIES@android:value
-was tagged at AndroidManifest.xml:27 to replace other declarations but no other declaration present
-```
-`tools:replace="android:value"` is no longer needed — nothing conflicts. Drop it.
+**This introduced a regression, caught by re-running the app and now fixed.** Moving
+runtime-set fields to `tools:text` removed the layout defaults that were the *only* thing
+filling the dashboard's device-status row and glance cards in the no-pets state — they
+rendered blank. `showNoPets()` now calls `render(new DashboardStats())` so those fields go
+through the same code path as everywhere else, and `FeedingActivity` sets its subtitle on
+the empty branch too. Both re-verified on the emulator.
 
-### 31. Unused drawables
+### 28. ✅ Placeholder copy no longer reachable at runtime
+`"Kitchen"` was hardcoded over every stream; the live screen now says which feed it is
+("Pi camera" / "Phone camera") and keeps `Kitchen` as `tools:text` only. The `"Marvel"`
+placeholders in `pet_menu.xml`, `activity_main_menu.xml` and `item_pet.xml` are all
+design-time now.
+
+### 29. ✅ Deprecated APIs replaced
+- `Intent.ACTION_PICK` → `ActivityResultContracts.PickVisualMedia`. This **removed
+  `READ_MEDIA_IMAGES` and `READ_EXTERNAL_STORAGE` from the manifest entirely**, along with
+  the whole runtime-permission path — the system picker runs out of process and grants
+  access to just the chosen image.
+- `setTargetResolution()` → `ResolutionSelector` with an explicit fallback rule.
+- `onRequestPermissionsResult()` → `registerForActivityResult`.
+- `getResources().getFont()` → `ResourcesCompat.getFont()`.
+
+**Latent bug fixed alongside:** a photo that failed segmentation had its *picker* URI stored
+in the database. That grant is scoped to the task, so those photos would silently stop
+loading later. Picked images are now copied into app storage, as segmented ones already were.
+
+### 30. ✅ Manifest warning gone
+`tools:replace="android:value"` claimed a conflict that did not exist and warned on every
+build. Removed; builds are now warning-free.
+
+### 31. ✅ Unused drawables deleted
 `bg_pill_outline`, `circle_background`, `ic_bell_24`, `ic_language_24`, `ic_menu_24`,
-`ic_star_24`, `ic_storage_24`, `photo_placeholder_bg` — referenced from nothing.
-(`ic_bell_24` hints at a notifications feature that was never built.)
+`ic_star_24`, `ic_storage_24`, `photo_placeholder_bg`. A re-scan reports zero unused
+drawables.
 
-### 32. No tests
-`ExampleUnitTest` and `ExampleInstrumentedTest` are the untouched Android Studio templates.
-Nothing covers the DAO, `DashboardStats`, `MjpegInputStream` frame parsing, or the auth flow.
-`MjpegInputStream.readJpegFrame()` in particular is fiddly byte-marker logic that is trivial
-to unit-test and easy to get subtly wrong.
+### 32. ✅ Tests added — 13, all passing
+Replacing the two untouched Android Studio templates:
+- **`MjpegInputStreamTest`** (7) — the byte-marker logic behind the Pi stream, where an
+  off-by-one yields corrupt frames rather than an exception. Covers marker retention,
+  multipart preamble skipping, consecutive frames, end-of-stream, a connection cut
+  mid-frame, no frame at all, and the 64 KB buffer-growth path.
+- **`DashboardStatsTest`** (6) — pins the "not reporting" vs "reported zero" distinction the
+  whole empty-state design rests on, including a guard that `forPetToday` has not quietly
+  started inventing numbers. When #10 lands, that test should be *replaced*, not deleted.
 
----## Verification status
+---
+## Verification status
 
-**Driven on the emulator (API 35), signed in, no crashes in the buffer at any point:**
+**Driven on the emulator (API 35), signed in, crash buffer empty at every point:**
 
 | Flow | Result |
 |---|---|
 | Add pet → dashboard | saves, dashboard shows the new pet |
 | Dashboard header → pet list (#6, #14) | opens `PetListActivity`, row + species chip + "Tracking" marker render |
 | Row overflow → Details / Edit / Delete (#13) | all three present and working |
-| Edit → save (#13) | title reads "Edit <name>", form prefills, button reads "Save changes", **updates in place — one row, not a duplicate** |
+| Edit → save (#13) | title reads "Edit &lt;name&gt;", form prefills, button reads "Save changes", **updates in place — one row, not a duplicate** |
 | Tap a different pet (#14) | returns to dashboard, which now shows that pet; selection persists |
 | Delete with confirm (#13) | confirmation dialog, row disappears |
 | Delete the **active** pet (#14) | list and dashboard both fall back to the empty state, no ghost, no crash |
@@ -313,39 +335,46 @@ to unit-test and easy to get subtly wrong.
 | Pet detail rows (#8) | "Food today: no feeder paired" / "Rooms visited today: no sensors reporting" |
 | Account back button (#9) | returns to the dashboard |
 | Settings back button (#9) | present and working |
+| Dashboard / Food / Settings copy after the string extraction (#27) | every label renders, apostrophes escape correctly ("TODAY'S MEALS"), no blank fields |
 
-**Static checks, re-run after every layout change:**
+**Automated:**
+- 13 unit tests, all passing (`MjpegInputStreamTest`, `DashboardStatsTest`).
 - Every `findViewById` id resolves against the layout its activity inflates — 10 activities.
 - Every `ConstraintLayout` constraint target resolves within its own layout.
+- Zero unused drawables; zero hardcoded user-facing strings in layouts.
+- Builds are warning-free.
 
 **Still not verified:**
-- **#7, the Pi stream.** Needs an actual Raspberry Pi serving MJPEG on the LAN. The
-  intent-building path is shared and exercised, but nothing has connected to a real stream.
-- **#15**, that Glide actually removed the main-thread stall — correct by construction, but no
-  frame profiling was done.
+- **#7, the Pi stream.** Needs a real Raspberry Pi serving MJPEG on the LAN. The
+  intent-building path is shared and exercised, but nothing has connected to a live stream.
+- **The release build.** R8 succeeds and the mapping file shows the reflective classes were
+  kept, but the release APK is unsigned so it could not be installed. A wrong keep rule
+  fails at runtime, not build time — smoke-test a signed release before shipping.
+- **#15**, that Glide actually removed the main-thread stall — correct by construction, but
+  no frame profiling was done.
 
-**Build note for the emulator:** the full debug APK is ~131 MB (97 MB of it native libs for
-four ABIs) and will not install — `INSTALL_FAILED_INSUFFICIENT_STORAGE`. Build emulator-only
-and it drops to 60 MB:
+**Emulator build note:** a full debug APK carries native libs for four ABIs. Build
+emulator-only to cut it to 22 MB:
 
 ```bash
 ./gradlew :app:assembleDebug -Pandroid.injected.build.abi=x86_64
 ```
 
 Output lands in `app/build/intermediates/apk/debug/` and is marked test-only, so install it
-with `adb install -r -t`. This is what #22 and #26 are really about.
+with `adb install -r -t`.
 
 ---
 
-## Suggested order for the next session
+## What is left
 
-P0, P1 (#4–#9) and P2 (#12–#19) are done. What is left:
-
-1. **#10 — real data.** The single thing between this and a working app. Every screen is
-   reachable and every empty state is honest; they are just empty. Feeder, motion sensors,
-   detection persistence and GPS all need a backend that does not exist yet.
+1. **#10 — real data.** The one thing between this and a working app. Every screen is
+   reachable, every empty state is honest — they are simply empty. The feeder endpoint,
+   motion-sensor storage, detection persistence and GPS all need a backend that does not
+   exist yet.
 2. **#11 — cloud sync.** Deferred to be designed together with #10, since the hardware data
    needs somewhere to live too.
-3. **P3 cleanup (#21–#26).** Roughly an hour, cuts ~5 MB and a dozen unused dependencies, and
-   would make the APK installable without the ABI workaround above.
-4. **#20** is not fixable as written — see the note in the P2 section.
+3. **#26 — `applicationId`**, to be renamed together with registering the new package in
+   the Firebase console.
+4. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note for the
+   real options.
+5. Smoke-test a signed release build, given shrinking is now on.

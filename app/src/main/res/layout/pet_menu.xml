@@ -50,7 +50,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@color/surface"
-                    android:contentDescription="Pet image"
+                    android:contentDescription="@string/pet_image"
                     android:scaleType="centerCrop"
                     android:src="@drawable/ic_pets_24"
                     app:tint="@color/accent_2" />
@@ -72,7 +72,7 @@
                     android:shadowDx="0"
                     android:shadowDy="2"
                     android:shadowRadius="6"
-                    android:text="Marvel"
+                    tools:text="Marvel"
                     android:textColor="@color/on_primary"
                     android:textSize="26sp" />
             </FrameLayout>
@@ -104,7 +104,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/poppins_semibold"
-                    android:text="Food today: 0 g"
+                    tools:text="Food today: 0 g"
                     android:textColor="@color/text_primary"
                     android:textSize="18sp" />
 
@@ -113,7 +113,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Rooms visited today: —"
+                    tools:text="Rooms visited today: —"
                     android:textColor="@color/text_primary"
                     android:textSize="16sp" />
 
@@ -122,7 +122,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Last GPS update: —"
+                    tools:text="Last GPS update: —"
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
             </LinearLayout>
@@ -157,7 +157,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Species"
+                        android:text="@string/species"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
@@ -166,7 +166,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="—"
+                        tools:text="—"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp" />
                 </LinearLayout>
@@ -181,7 +181,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Breed"
+                        android:text="@string/breed"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
@@ -190,7 +190,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="—"
+                        tools:text="—"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp" />
                 </LinearLayout>
@@ -205,7 +205,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Weight"
+                        android:text="@string/weight"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
@@ -214,7 +214,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="—"
+                        tools:text="—"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp" />
                 </LinearLayout>
@@ -229,7 +229,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Sex"
+                        android:text="@string/sex"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
@@ -238,7 +238,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="—"
+                        tools:text="—"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp" />
                 </LinearLayout>
@@ -253,7 +253,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Birthdate"
+                        android:text="@string/birthdate"
                         android:textColor="@color/text_secondary"
                         android:textSize="16sp" />
 
@@ -262,7 +262,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/poppins_semibold"
-                        android:text="—"
+                        tools:text="—"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp" />
                 </LinearLayout>
@@ -271,7 +271,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="18dp"
-                    android:text="Notes"
+                    android:text="@string/notes"
                     android:textColor="@color/text_secondary"
                     android:textSize="16sp" />
 
@@ -280,7 +280,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="No notes"
+                    tools:text="No notes"
                     android:textColor="@color/text_primary"
                     android:textSize="15sp" />
             </LinearLayout>
@@ -304,7 +304,7 @@
                 android:layout_height="56dp"
                 android:layout_marginBottom="10dp"
                 android:backgroundTint="@color/primary"
-                android:text="Watch live"
+                android:text="@string/watch_live"
                 android:textAllCaps="false"
                 android:textColor="@color/on_primary"
                 android:textSize="16sp"
@@ -319,7 +319,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginBottom="10dp"
-                android:text="Feeding"
+                android:text="@string/feeding"
                 android:textAllCaps="false"
                 android:textColor="@color/accent_2_dark"
                 android:textSize="16sp"
@@ -334,7 +334,7 @@
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:text="History"
+                android:text="@string/history"
                 android:textAllCaps="false"
                 android:textColor="@color/text_primary"
                 android:textSize="16sp"

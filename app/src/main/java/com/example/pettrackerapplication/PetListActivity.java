@@ -110,16 +110,17 @@ public class PetListActivity extends AppCompatActivity implements PetsAdapter.On
     @Override
     public void onPetClick(Pet pet) {
         Prefs.setActivePetId(this, pet.getId());
-        Toast.makeText(this, "Now tracking " + pet.getName(), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, getString(R.string.now_tracking_pet, pet.getName()),
+                Toast.LENGTH_SHORT).show();
         finish();   // straight back to the dashboard, which reloads in onResume
     }
 
     @Override
     public void onPetMenuClick(Pet pet, View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(0, 1, 0, "Details");
-        menu.getMenu().add(0, 2, 1, "Edit");
-        menu.getMenu().add(0, 3, 2, "Delete");
+        menu.getMenu().add(0, 1, 0, R.string.action_details);
+        menu.getMenu().add(0, 2, 1, R.string.action_edit);
+        menu.getMenu().add(0, 3, 2, R.string.action_delete);
 
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
@@ -143,11 +144,10 @@ public class PetListActivity extends AppCompatActivity implements PetsAdapter.On
 
     private void confirmDelete(Pet pet) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete " + pet.getName() + "?")
-                .setMessage("This removes the pet and its details from this device. "
-                        + "It cannot be undone.")
-                .setPositiveButton("Delete", (d, w) -> delete(pet))
-                .setNegativeButton("Cancel", null)
+                .setTitle(getString(R.string.delete_pet_title, pet.getName()))
+                .setMessage(R.string.delete_pet_message)
+                .setPositiveButton(R.string.action_delete, (d, w) -> delete(pet))
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -173,7 +173,8 @@ public class PetListActivity extends AppCompatActivity implements PetsAdapter.On
                     Prefs.clearActivePetId(this);   // render() picks a new one
                 }
                 Toast.makeText(this,
-                        removed > 0 ? pet.getName() + " deleted" : "Could not delete pet",
+                        removed > 0 ? getString(R.string.pet_deleted, pet.getName())
+                                    : getString(R.string.could_not_delete_pet),
                         Toast.LENGTH_SHORT).show();
                 load();
             });

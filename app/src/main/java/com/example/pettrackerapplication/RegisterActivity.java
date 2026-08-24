@@ -81,7 +81,7 @@ public class RegisterActivity extends AppCompatActivity {
 
                     if (task.isSuccessful()) {
                         Toast.makeText(this,
-                                "Account created. You can log in now.",
+                                getString(R.string.account_created_you_can_log_in),
                                 Toast.LENGTH_SHORT).show();
                         finish();
                     } else {
@@ -89,7 +89,7 @@ public class RegisterActivity extends AppCompatActivity {
                                 ? task.getException().getMessage()
                                 : "Unknown error";
                         Toast.makeText(this,
-                                "Registration failed: " + message,
+                                getString(R.string.registration_failed) + message,
                                 Toast.LENGTH_LONG).show();
                     }
                 });
@@ -102,6 +102,6 @@ public class RegisterActivity extends AppCompatActivity {
 
     private void setLoadingState(boolean loading) {
         btnRegister.setEnabled(!loading);
-        btnRegister.setText(loading ? "Creating account…" : "Sign up");
+        btnRegister.setText(loading ? R.string.creating_account : R.string.sign_up);
     }
 }

@@ -26,7 +26,7 @@
         <ImageView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:contentDescription="Back"
+            android:contentDescription="@string/back"
             android:padding="11dp"
             app:srcCompat="@drawable/ic_arrow_back_24"
             app:tint="@color/text_primary" />
@@ -133,7 +133,7 @@
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_account_field"
                 android:padding="14dp"
-                android:text="example@email.com"
+                tools:text="example@email.com"
                 android:textColor="@color/text_primary"
                 android:textSize="15sp" />
 
@@ -142,7 +142,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="Member since"
+                android:text="@string/member_since"
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp"
                 android:textStyle="bold" />
@@ -154,7 +154,7 @@
                 android:layout_marginTop="4dp"
                 android:background="@drawable/bg_account_field"
                 android:padding="14dp"
-                android:text="—"
+                tools:text="—"
                 android:textColor="@color/text_primary"
                 android:textSize="15sp" />
         </LinearLayout>

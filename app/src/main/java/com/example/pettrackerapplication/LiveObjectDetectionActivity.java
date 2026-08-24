@@ -12,7 +12,8 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
@@ -20,9 +21,10 @@ import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
@@ -40,17 +42,27 @@ import java.util.concurrent.Executors;
 public class LiveObjectDetectionActivity extends AppCompatActivity {
 
     private static final String TAG = "LiveObjectDetection";
-    private static final int    CAMERA_PERMISSION_REQUEST = 100;
 
     private GraphicOverlay graphicOverlay;
     private PreviewView    previewView;
     private ImageView      piStreamView;
     private TextView       tvStreamStatus;
+    private TextView       tvCameraName;
 
     private CocoObjectDetector cocoDetector;
     private volatile boolean detectionBusy = false;
 
     private ExecutorService cameraExecutor;
+
+    private final ActivityResultLauncher<String> cameraPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (granted) {
+                    startCamera();
+                } else {
+                    Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show();
+                    finish();
+                }
+            });
     private String  streamUrl;
     private volatile boolean piStreamRunning = false;
     private Thread  piStreamThread;
@@ -65,13 +77,14 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
         previewView    = findViewById(R.id.previewView);
         piStreamView   = findViewById(R.id.piStreamView);
         tvStreamStatus = findViewById(R.id.tvStreamStatus);
+        tvCameraName   = findViewById(R.id.tvCameraName);
 
         try {
             cocoDetector = new CocoObjectDetector(this);
         } catch (IOException e) {
             Log.e(TAG, "Failed to load COCO model", e);
             Toast.makeText(this,
-                    "Failed to load detection model. Check assets/coco_ssd_mobilenet_v1.tflite",
+                    getString(R.string.failed_to_load_detection_model_check),
                     Toast.LENGTH_LONG).show();
             finish();
             return;
@@ -79,19 +92,19 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
 
         streamUrl = getIntent().getStringExtra("stream_url");
         if (streamUrl != null && !streamUrl.isEmpty()) {
-
+            // The layout shipped with a hardcoded "Kitchen"; say which feed this
+            // actually is, since the two look nothing alike in practice.
+            tvCameraName.setText(R.string.pi_camera);
             startPiStream();
         } else {
+            tvCameraName.setText(R.string.phone_camera);
 
             cameraExecutor = Executors.newSingleThreadExecutor();
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                     == PackageManager.PERMISSION_GRANTED) {
                 startCamera();
             } else {
-                ActivityCompat.requestPermissions(
-                        this,
-                        new String[]{Manifest.permission.CAMERA},
-                        CAMERA_PERMISSION_REQUEST);
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA);
             }
         }
     }
@@ -117,7 +130,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
         previewView.setVisibility(View.GONE);
         piStreamView.setVisibility(View.VISIBLE);
         tvStreamStatus.setVisibility(View.VISIBLE);
-        tvStreamStatus.setText("Connecting to Pi camera…");
+        tvStreamStatus.setText(R.string.connecting_to_pi_camera);
         piStreamRunning = true;
 
         piStreamThread = new Thread(() -> {
@@ -128,7 +141,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
                 connection.setConnectTimeout(5_000);
                 connection.setReadTimeout(10_000);
                 connection.connect();
-                runOnUiThread(() -> tvStreamStatus.setText("● Pi camera — live"));
+                runOnUiThread(() -> tvStreamStatus.setText(R.string.pi_camera_live));
                 MjpegInputStream mjpeg =
                         new MjpegInputStream(connection.getInputStream());
                 while (piStreamRunning && !Thread.currentThread().isInterrupted()) {
@@ -140,15 +153,15 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
                     runOnUiThread(() -> piStreamView.setImageBitmap(frame));
                     analyzeFrameBitmap(frame);
                 }
-                runOnUiThread(() -> tvStreamStatus.setText("Stream ended"));
+                runOnUiThread(() -> tvStreamStatus.setText(R.string.stream_ended));
 
             } catch (IOException e) {
                 Log.e(TAG, "Pi stream error: " + e.getMessage(), e);
                 runOnUiThread(() -> {
-                    tvStreamStatus.setText("⚠ Connection failed");
+                    tvStreamStatus.setText(R.string.connection_failed);
                     Toast.makeText(
                             LiveObjectDetectionActivity.this,
-                            "Could not reach Pi camera.\nCheck the IP address and port in Pet settings.",
+                            getString(R.string.could_not_reach_pi_camera_ncheck),
                             Toast.LENGTH_LONG
                     ).show();
                 });
@@ -192,7 +205,11 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
                 preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
                 ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                        .setTargetResolution(new Size(1280, 720))
+                        .setResolutionSelector(new ResolutionSelector.Builder()
+                                .setResolutionStrategy(new ResolutionStrategy(
+                                        new Size(1280, 720),
+                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                                .build())
                         .setBackpressureStrategy(
                                 ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
@@ -209,7 +226,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
                 Log.e(TAG, "Camera start failed: " + e.getMessage(), e);
                 runOnUiThread(() -> Toast.makeText(
                         this,
-                        "Failed to start camera: " + e.getMessage(),
+                        getString(R.string.failed_to_start_camera) + e.getMessage(),
                         Toast.LENGTH_LONG
                 ).show());
             }
@@ -240,20 +257,4 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == CAMERA_PERMISSION_REQUEST) {
-            if (grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startCamera();
-            } else {
-                Toast.makeText(this,
-                        "Camera permission required", Toast.LENGTH_LONG).show();
-                finish();
-            }
-        }
-    }
 }

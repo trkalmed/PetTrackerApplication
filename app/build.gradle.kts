@@ -29,7 +29,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Shrinking cuts the unminified ML Kit + TFLite symbols out of the APK.
+            // See proguard-rules.pro for the keeps the reflective libraries need.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -48,21 +51,22 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
 
     annotationProcessor("androidx.room:room-compiler:2.6.1")
+    // TFLite — the COCO detector behind the live view
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
-    // ML Kit
-    implementation("com.google.mlkit:object-detection:17.0.1")
-    implementation("com.google.mlkit:image-labeling:17.0.9")
-    implementation("com.google.mlkit:face-detection:16.1.5")
+
+    // ML Kit — subject segmentation only, for cutting the background out of pet
+    // photos in AddPetActivity. Object detection is TFLite's job, not ML Kit's.
     implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
     implementation("com.google.firebase:firebase-auth")
 
-    // Camera
+    // Camera — keep all four on the same version; camera-view was pinned to
+    // 1.2.3 against 1.4.0 siblings, which is asking for a runtime mismatch.
     implementation("androidx.camera:camera-core:1.4.0")
     implementation("androidx.camera:camera-camera2:1.4.0")
-    implementation("androidx.camera:camera-view:1.2.3")
+    implementation("androidx.camera:camera-view:1.4.0")
     implementation("androidx.camera:camera-lifecycle:1.4.0")
 
     // UI
@@ -76,10 +80,6 @@ dependencies {
     // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
-
-    // Media
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

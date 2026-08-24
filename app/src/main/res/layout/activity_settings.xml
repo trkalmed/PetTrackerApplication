@@ -30,7 +30,7 @@
             <ImageView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="11dp"
                 app:srcCompat="@drawable/ic_arrow_back_24"
                 app:tint="@color/text_primary" />
@@ -66,7 +66,7 @@
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:contentDescription="Settings icon"
+                        android:contentDescription="@string/settings_icon"
                         android:padding="18dp"
                         app:srcCompat="@drawable/ic_settings_24"
                         app:tint="@color/primary" />
@@ -76,7 +76,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:text="Settings"
+                    android:text="@string/settings"
                     android:textColor="@color/text_primary"
                     android:textSize="28sp"
                     android:textStyle="bold" />
@@ -86,7 +86,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
                     android:gravity="center"
-                    android:text="Manage your account and app preferences."
+                    android:text="@string/manage_your_account_and_app_preferences"
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
             </LinearLayout>
@@ -125,7 +125,7 @@
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:contentDescription="Account icon"
+                        android:contentDescription="@string/account_icon"
                         android:padding="10dp"
                         app:srcCompat="@drawable/ic_account_circle_24"
                         app:tint="@color/primary" />
@@ -141,7 +141,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Account management"
+                        android:text="@string/account_management"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -150,7 +150,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Profile, password, sign out"
+                        android:text="@string/profile_password_sign_out"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -158,7 +158,7 @@
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"
-                    android:contentDescription="Open account"
+                    android:contentDescription="@string/open_account"
                     app:srcCompat="@drawable/ic_chevron_right_24"
                     app:tint="@color/text_secondary" />
             </LinearLayout>
@@ -197,7 +197,7 @@
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:contentDescription="Pi connection icon"
+                        android:contentDescription="@string/pi_connection_icon"
                         android:padding="10dp"
                         app:srcCompat="@drawable/ic_wifi_24"
                         app:tint="@color/primary" />
@@ -213,7 +213,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Pi Connection"
+                        android:text="@string/pi_connection"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -223,7 +223,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Not connected"
+                        tools:text="Not connected"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -231,7 +231,7 @@
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"
-                    android:contentDescription="Edit Pi connection"
+                    android:contentDescription="@string/edit_pi_connection"
                     app:srcCompat="@drawable/ic_chevron_right_24"
                     app:tint="@color/text_secondary" />
             </LinearLayout>
@@ -259,7 +259,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="General"
+                    android:text="@string/general"
                     android:textColor="@color/text_primary"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -275,7 +275,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Sound icon"
+                        android:contentDescription="@string/sound_icon"
                         app:srcCompat="@drawable/ic_sound_24"
                         app:tint="@color/primary" />
 
@@ -289,7 +289,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Sound"
+                            android:text="@string/sound"
                             android:textColor="@color/text_primary"
                             android:textSize="15sp"
                             android:textStyle="bold" />
@@ -298,7 +298,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Enable app sounds"
+                            android:text="@string/enable_app_sounds"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp" />
                     </LinearLayout>
@@ -328,7 +328,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Volume icon"
+                        android:contentDescription="@string/volume_icon"
                         app:srcCompat="@drawable/ic_volume_24"
                         app:tint="@color/primary" />
 
@@ -342,7 +342,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Sound volume"
+                            android:text="@string/sound_volume"
                             android:textColor="@color/text_primary"
                             android:textSize="15sp"
                             android:textStyle="bold" />
@@ -351,7 +351,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Adjust notification volume"
+                            android:text="@string/adjust_notification_volume"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp" />
                     </LinearLayout>
@@ -403,7 +403,7 @@
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:contentDescription="Contact support icon"
+                        android:contentDescription="@string/contact_support_icon"
                         android:padding="10dp"
                         app:srcCompat="@drawable/ic_help_24"
                         app:tint="@color/primary" />
@@ -419,7 +419,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Contact Support"
+                        android:text="@string/contact_support"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -428,7 +428,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Get help or send feedback"
+                        android:text="@string/get_help_or_send_feedback"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -436,7 +436,7 @@
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"
-                    android:contentDescription="Open contact support"
+                    android:contentDescription="@string/open_contact_support"
                     app:srcCompat="@drawable/ic_chevron_right_24"
                     app:tint="@color/text_secondary" />
             </LinearLayout>

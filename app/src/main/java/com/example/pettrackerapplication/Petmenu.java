@@ -10,6 +10,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.StringRes;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
@@ -103,12 +104,12 @@ public class Petmenu extends AppCompatActivity {
 
         MaterialButton btnHistory = findViewById(R.id.btnHistory);
         btnHistory.setOnClickListener(v ->
-                Toast.makeText(this, "Activity history — coming soon", Toast.LENGTH_SHORT).show());
+                Toast.makeText(this, getString(R.string.activity_history_coming_soon), Toast.LENGTH_SHORT).show());
 
         // ── Load pet from database ──────────────────────────────────────────
         petId = getIntent().getLongExtra("pet_id", -1);
         if (petId == -1) {
-            Toast.makeText(this, "No pet selected", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.no_pet_selected), Toast.LENGTH_SHORT).show();
             finish();
         }
         // The load happens in onResume so returning from an edit shows the new values.
@@ -123,7 +124,7 @@ public class Petmenu extends AppCompatActivity {
     private void loadPetFromDb(long petId) {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) {
-            Toast.makeText(this, "Please log in again", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.please_log_in_again), Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -137,7 +138,7 @@ public class Petmenu extends AppCompatActivity {
                 if (isFinishing() || isDestroyed()) return;
 
                 if (pet == null) {
-                    Toast.makeText(this, "Pet not found", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, getString(R.string.pet_not_found), Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
                     bindPetToViews(pet);
@@ -152,11 +153,10 @@ public class Petmenu extends AppCompatActivity {
 
     private void confirmDelete(Pet pet) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete " + pet.getName() + "?")
-                .setMessage("This removes the pet and its details from this device. "
-                        + "It cannot be undone.")
-                .setPositiveButton("Delete", (d, w) -> deletePet(pet))
-                .setNegativeButton("Cancel", null)
+                .setTitle(getString(R.string.delete_pet_title, pet.getName()))
+                .setMessage(R.string.delete_pet_message)
+                .setPositiveButton(R.string.action_delete, (d, w) -> deletePet(pet))
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -179,11 +179,11 @@ public class Petmenu extends AppCompatActivity {
                         // The dashboard re-picks on its next load.
                         Prefs.clearActivePetId(this);
                     }
-                    Toast.makeText(this, pet.getName() + " deleted",
+                    Toast.makeText(this, getString(R.string.pet_deleted, pet.getName()),
                             Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
-                    Toast.makeText(this, "Could not delete pet",
+                    Toast.makeText(this, getString(R.string.could_not_delete_pet),
                             Toast.LENGTH_SHORT).show();
                 }
             });
@@ -196,13 +196,13 @@ public class Petmenu extends AppCompatActivity {
         toolbar.setTitle(pet.getName());
         tvPetNameDetail.setText(pet.getName());
 
-        tvSpeciesDetail.setText(emptyOrValue(pet.getSpecies(), "Unknown"));
-        tvBreedDetail.setText(emptyOrValue(pet.getBreed(), "—"));
+        tvSpeciesDetail.setText(emptyOrValue(pet.getSpecies(), R.string.unknown));
+        tvBreedDetail.setText(emptyOrValue(pet.getBreed(), R.string.em_dash));
         tvWeightDetail.setText(
                 pet.getWeightKg() != null ? pet.getWeightKg() + " kg" : "—");
-        tvSexDetail.setText(emptyOrValue(pet.getSex(), "—"));
-        tvBirthdateDetail.setText(emptyOrValue(pet.getBirthdate(), "—"));
-        tvNotesDetail.setText(emptyOrValue(pet.getNotes(), "No notes"));
+        tvSexDetail.setText(emptyOrValue(pet.getSex(), R.string.em_dash));
+        tvBirthdateDetail.setText(emptyOrValue(pet.getBirthdate(), R.string.em_dash));
+        tvNotesDetail.setText(emptyOrValue(pet.getNotes(), R.string.no_notes_value));
 
         // These two rows were repurposed by the dashboard redesign: steps and distance
         // are gone (no hardware produces them), replaced by grams from the feeder and
@@ -262,21 +262,21 @@ public class Petmenu extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Raspberry Pi IP address")
+                .setTitle(R.string.pi_ip_dialog_title)
                 .setMessage(
                         "Enter your Pi's local IP address to connect to the live camera stream.")
                 .setView(input)
-                .setPositiveButton("Connect", (dialog, which) -> {
+                .setPositiveButton(R.string.action_connect, (dialog, which) -> {
                     String ip = input.getText().toString().trim();
                     if (ip.isEmpty()) {
                         Toast.makeText(this,
-                                "IP address cannot be empty", Toast.LENGTH_SHORT).show();
+                                getString(R.string.ip_address_cannot_be_empty), Toast.LENGTH_SHORT).show();
                         return;
                     }
                     PiConnectionManager.saveIp(this, ip);
                     launchTracking();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -284,8 +284,9 @@ public class Petmenu extends AppCompatActivity {
         startActivity(PiConnectionManager.streamIntent(this));
     }
 
-    private String emptyOrValue(String value, String fallback) {
-        if (value == null || value.trim().isEmpty()) return fallback;
+    /** The value, or the given fallback resource when it is blank. */
+    private String emptyOrValue(String value, @StringRes int fallbackRes) {
+        if (value == null || value.trim().isEmpty()) return getString(fallbackRes);
         return value;
     }
 }

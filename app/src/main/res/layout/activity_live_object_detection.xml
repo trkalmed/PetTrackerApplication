@@ -2,6 +2,7 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#2E2B25">
@@ -21,7 +22,7 @@
         android:id="@+id/piStreamView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:contentDescription="Raspberry Pi camera stream"
+        android:contentDescription="@string/raspberry_pi_camera_stream"
         android:scaleType="fitCenter"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -61,7 +62,7 @@
         <ImageView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:contentDescription="Back"
+            android:contentDescription="@string/back"
             android:padding="11dp"
             app:srcCompat="@drawable/ic_arrow_back_24"
             app:tint="@color/text_primary" />
@@ -95,7 +96,7 @@
             android:layout_marginStart="7dp"
             android:fontFamily="@font/poppins_semibold"
             android:letterSpacing="0.08"
-            android:text="LIVE"
+            android:text="@string/live"
             android:textColor="@color/on_primary"
             android:textSize="11sp" />
     </LinearLayout>
@@ -110,7 +111,7 @@
         android:backgroundTint="#73201E1D"
         android:paddingHorizontal="14dp"
         android:paddingVertical="8dp"
-        android:text="Kitchen"
+        tools:text="Kitchen"
         android:textColor="@color/on_primary"
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="@id/btnBack"
@@ -127,7 +128,7 @@
         android:backgroundTint="#D9F9F4ED"
         android:paddingHorizontal="16dp"
         android:paddingVertical="9dp"
-        android:text="Connecting…"
+        tools:text="Connecting…"
         android:textColor="@color/text_primary"
         android:textSize="13sp"
         android:visibility="gone"

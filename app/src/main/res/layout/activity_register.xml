@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
@@ -39,7 +40,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Join Pet Tracker"
+            android:text="@string/join_pet_tracker"
             android:textColor="@color/primary_dark"
             android:textSize="14sp"
             android:textStyle="bold"
@@ -54,7 +55,7 @@
             android:layout_marginTop="8dp"
             android:fontFamily="@font/poppins_semibold"
             android:gravity="center"
-            android:text="Create account"
+            android:text="@string/create_account"
             android:textColor="@color/text_primary"
             android:textSize="30sp"
             app:layout_constraintTop_toBottomOf="@id/tvRegisterSubtitleTop"
@@ -68,7 +69,7 @@
             android:layout_marginTop="10dp"
             android:gravity="center"
             android:lineSpacingExtra="2dp"
-            android:text="Create your account to manage your pets and keep everything organized in one place."
+            android:text="@string/create_your_account_to_manage_your"
             android:textColor="@color/text_secondary"
             android:textSize="15sp"
             app:layout_constraintTop_toBottomOf="@id/tvRegisterTitle"
@@ -97,7 +98,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/poppins_semibold"
-                    android:text="Account details"
+                    android:text="@string/account_details"
                     android:textColor="@color/text_primary"
                     android:textSize="18sp" />
 
@@ -105,7 +106,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Use your email and a secure password."
+                    android:text="@string/use_your_email_and_a_secure"
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
 
@@ -115,7 +116,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="20dp"
-                    android:hint="Email address"
+                    android:hint="@string/email_address"
                     app:boxBackgroundColor="@color/surface_raised"
                     app:boxCornerRadiusBottomEnd="999dp"
                     app:boxCornerRadiusBottomStart="999dp"
@@ -144,7 +145,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:hint="Password"
+                    android:hint="@string/password"
                     app:boxBackgroundColor="@color/surface_raised"
                     app:boxCornerRadiusBottomEnd="999dp"
                     app:boxCornerRadiusBottomStart="999dp"
@@ -173,7 +174,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="Minimum 6 characters"
+                    android:text="@string/minimum_6_characters"
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
 
@@ -183,7 +184,7 @@
                     android:layout_height="56dp"
                     android:layout_marginTop="24dp"
                     android:backgroundTint="@color/primary"
-                    android:text="Sign up"
+                    tools:text="Sign up"
                     android:textAllCaps="false"
                     android:textColor="@color/on_primary"
                     android:textSize="16sp"

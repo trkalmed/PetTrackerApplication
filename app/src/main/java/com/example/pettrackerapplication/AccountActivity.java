@@ -56,7 +56,8 @@ public class AccountActivity extends AppCompatActivity {
     }
 
     private void populateUserInfo(FirebaseUser user) {
-        tvUserEmail.setText(user.getEmail() != null ? user.getEmail() : "No email");
+        tvUserEmail.setText(user.getEmail() != null
+                ? user.getEmail() : getString(R.string.no_email));
 
         if (user.getMetadata() != null) {
             long   creationMs = user.getMetadata().getCreationTimestamp();
@@ -64,7 +65,7 @@ public class AccountActivity extends AppCompatActivity {
                     .format(new Date(creationMs));
             tvMemberSince.setText(date);
         } else {
-            tvMemberSince.setText("—");
+            tvMemberSince.setText(R.string.em_dash);
         }
     }
 
@@ -72,7 +73,7 @@ public class AccountActivity extends AppCompatActivity {
         FirebaseUser user = auth.getCurrentUser();
         if (user == null || user.getEmail() == null) {
             Toast.makeText(this,
-                    "No email associated with this account",
+                    getString(R.string.no_email_associated_with_this_account),
                     Toast.LENGTH_SHORT).show();
             return;
         }
@@ -88,11 +89,11 @@ public class AccountActivity extends AppCompatActivity {
 
                     if (task.isSuccessful()) {
                         Toast.makeText(this,
-                                "Reset email sent to " + email,
+                                getString(R.string.reset_email_sent_to_fmt, email),
                                 Toast.LENGTH_LONG).show();
                     } else {
                         Toast.makeText(this,
-                                "Failed to send reset email",
+                                getString(R.string.failed_to_send_reset_email),
                                 Toast.LENGTH_SHORT).show();
                     }
                 });

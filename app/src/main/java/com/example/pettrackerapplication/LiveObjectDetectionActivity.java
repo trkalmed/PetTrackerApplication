@@ -25,7 +25,6 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.google.android.material.appbar.MaterialToolbar;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import org.tensorflow.lite.task.vision.detector.Detection;
@@ -60,8 +59,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_live_object_detection);
-        MaterialToolbar toolbar = findViewById(R.id.trackingToolbar);
-        toolbar.setNavigationOnClickListener(
+        findViewById(R.id.btnBack).setOnClickListener(
                 v -> getOnBackPressedDispatcher().onBackPressed());
         graphicOverlay = findViewById(R.id.GraphicOverlay);
         previewView    = findViewById(R.id.previewView);

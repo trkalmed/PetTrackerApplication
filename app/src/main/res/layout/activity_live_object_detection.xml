@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#2E2B25">
 
     <!-- ── Local camera preview (CameraX mode) ── -->
     <androidx.camera.view.PreviewView
@@ -21,9 +21,9 @@
         android:id="@+id/piStreamView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:contentDescription="Raspberry Pi camera stream"
         android:scaleType="fitCenter"
         android:visibility="gone"
-        android:contentDescription="Raspberry Pi camera stream"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -40,31 +40,95 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ── Semi-transparent toolbar overlaid at top (back navigation) ── -->
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/trackingToolbar"
-        android:layout_width="0dp"
-        android:layout_height="?attr/actionBarSize"
-        android:background="#99000000"
-        app:navigationIcon="@drawable/ic_arrow_back_24"
-        app:navigationIconTint="@android:color/white"
-        app:title="Live Tracking"
-        app:titleTextColor="@android:color/white"
-        app:layout_constraintEnd_toEndOf="parent"
+    <!-- ── Top controls: a floating back pill and a LIVE badge, no solid bar.
+             The old opaque toolbar cut 56dp off a feed that is the whole point
+             of the screen. ── -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/btnBack"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        app:cardBackgroundColor="#D9F9F4ED"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="0dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
 
-    <!-- ── Stream status chip (Pi mode only, shown at bottom centre) ── -->
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Back"
+            android:padding="11dp"
+            app:srcCompat="@drawable/ic_arrow_back_24"
+            app:tint="@color/text_primary" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <LinearLayout
+        android:id="@+id/chipLive"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/bg_pill"
+        android:backgroundTint="@color/primary"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        app:layout_constraintBottom_toBottomOf="@id/btnBack"
+        app:layout_constraintStart_toEndOf="@id/btnBack"
+        app:layout_constraintTop_toTopOf="@id/btnBack">
+
+        <View
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:background="@drawable/bg_pill"
+            android:backgroundTint="@color/on_primary" />
+
+        <TextView
+            android:id="@+id/tvLiveLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:fontFamily="@font/poppins_semibold"
+            android:letterSpacing="0.08"
+            android:text="LIVE"
+            android:textColor="@color/on_primary"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Which camera you are looking at — the old screen never said. -->
+    <TextView
+        android:id="@+id/tvCameraName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_pill"
+        android:backgroundTint="#73201E1D"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:text="Kitchen"
+        android:textColor="@color/on_primary"
+        android:textSize="12sp"
+        app:layout_constraintBottom_toBottomOf="@id/btnBack"
+        app:layout_constraintStart_toEndOf="@id/chipLive"
+        app:layout_constraintTop_toTopOf="@id/btnBack" />
+
+    <!-- ── Status pill (Pi mode), bottom centre ── -->
     <TextView
         android:id="@+id/tvStreamStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="28dp"
-        android:background="#99000000"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="6dp"
+        android:background="@drawable/bg_pill"
+        android:backgroundTint="#D9F9F4ED"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="9dp"
         android:text="Connecting…"
-        android:textColor="@android:color/white"
+        android:textColor="@color/text_primary"
         android:textSize="13sp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"

@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- RECONSTRUCTED. Both arrays are read by AddPetActivity and add_pet_menu.xml. -->
 <resources>
     <string-array name="species_options">
         <item>Dog</item>
         <item>Cat</item>
+        <item>Rabbit</item>
         <item>Bird</item>
+        <item>Hamster</item>
+        <item>Guinea pig</item>
+        <item>Reptile</item>
+        <item>Fish</item>
         <item>Other</item>
     </string-array>
 
@@ -12,18 +18,4 @@
         <item>Female</item>
         <item>Unknown</item>
     </string-array>
-
-        <string-array name="language_entries">
-            <item>English</item>
-            <item>العربية</item>
-            <item>Français</item>
-            <item>Español</item>
-        </string-array>
-        <string-array name="language_values">
-            <item>en</item>
-            <item>ar</item>
-            <item>fr</item>
-            <item>es</item>
-        </string-array>
-
 </resources>

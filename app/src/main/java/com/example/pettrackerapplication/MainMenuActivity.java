@@ -51,6 +51,10 @@ public class MainMenuActivity extends AppCompatActivity {
 
     private MaterialCardView cardFood, cardRooms;
     private View emptyStateView, scrollContent;
+    private BottomNavigationView bottomNav;
+
+    /** The pet currently on screen. Null until one loads, or when the owner has none. */
+    private Pet currentPet;
 
     /** Room bar colours: accent, accent-400, sage, sage-300. Cycles if there are more rooms. */
     private static final int[] ROOM_COLORS = {
@@ -81,11 +85,17 @@ public class MainMenuActivity extends AppCompatActivity {
                 startActivity(new Intent(this, SettingsActivity.class)));
         ((FloatingActionButton) findViewById(R.id.fabAddPet)).setOnClickListener(v ->
                 startActivity(new Intent(this, AddPetActivity.class)));
+
+        // The header is the only way into the pet detail screen.
+        findViewById(R.id.rowPetHeader).setOnClickListener(v -> openPetDetail());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        // Coming back from another tab leaves that tab highlighted, so re-assert
+        // Home. Safe to fire the listener: its nav_home branch is a no-op.
+        bottomNav.setSelectedItemId(R.id.nav_home);
         loadActivePet();
     }
 
@@ -139,6 +149,7 @@ public class MainMenuActivity extends AppCompatActivity {
     }
 
     private void showNoPets() {
+        currentPet = null;
         emptyStateView.setVisibility(View.VISIBLE);
         cardFood.setVisibility(View.GONE);
         cardRooms.setVisibility(View.GONE);
@@ -147,6 +158,7 @@ public class MainMenuActivity extends AppCompatActivity {
     }
 
     private void showPet(Pet pet) {
+        currentPet = pet;
         emptyStateView.setVisibility(View.GONE);
         cardFood.setVisibility(View.VISIBLE);
         cardRooms.setVisibility(View.VISIBLE);
@@ -321,7 +333,7 @@ public class MainMenuActivity extends AppCompatActivity {
     // ── Navigation ──────────────────────────────────────────────────────────
 
     private void setupBottomNavigation() {
-        BottomNavigationView bottomNav = findViewById(R.id.bottomNav);
+        bottomNav = findViewById(R.id.bottomNav);
         bottomNav.setSelectedItemId(R.id.nav_home);
 
         bottomNav.setOnItemSelectedListener(item -> {
@@ -330,12 +342,10 @@ public class MainMenuActivity extends AppCompatActivity {
             if (id == R.id.nav_home) {
                 return true;                                  // already here
             } else if (id == R.id.nav_live) {
-                startActivity(new Intent(this, LiveObjectDetectionActivity.class));
+                startActivity(PiConnectionManager.streamIntent(this));
                 return true;
             } else if (id == R.id.nav_food) {
-                // TODO Build a dedicated FeedingActivity (grams log + schedule).
-                // Until then this opens the pet detail screen, where feeding lives.
-                startActivity(new Intent(this, Petmenu.class));
+                startActivity(new Intent(this, FeedingActivity.class));
                 return true;
             } else if (id == R.id.nav_settings) {
                 startActivity(new Intent(this, SettingsActivity.class));
@@ -343,6 +353,20 @@ public class MainMenuActivity extends AppCompatActivity {
             }
             return false;
         });
+    }
+
+    /**
+     * Opens the detail screen for the pet on show. Petmenu finishes itself without a
+     * "pet_id", so the guard matters: with no pets loaded there is nothing to open.
+     */
+    private void openPetDetail() {
+        if (currentPet == null) {
+            startActivity(new Intent(this, AddPetActivity.class));
+            return;
+        }
+        Intent intent = new Intent(this, Petmenu.class);
+        intent.putExtra("pet_id", currentPet.getId());
+        startActivity(intent);
     }
 
     private int dp(int value) {

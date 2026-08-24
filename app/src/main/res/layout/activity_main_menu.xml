@@ -43,49 +43,62 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <com.google.android.material.card.MaterialCardView
-                        android:layout_width="52dp"
-                        android:layout_height="52dp"
-                        app:cardBackgroundColor="@color/accent_2_light"
-                        app:cardCornerRadius="26dp"
-                        app:cardElevation="0dp"
-                        app:strokeColor="@color/accent_2"
-                        app:strokeWidth="2dp">
-
-                        <ImageView
-                            android:id="@+id/imgPetAvatar"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:contentDescription="Pet photo"
-                            android:padding="13dp"
-                            android:scaleType="centerCrop"
-                            android:src="@drawable/ic_pets_24"
-                            app:tint="@color/accent_2_dark" />
-                    </com.google.android.material.card.MaterialCardView>
-
+                    <!-- Avatar + name are one tap target: the only route into the
+                         pet detail screen. Account stays a separate target. -->
                     <LinearLayout
+                        android:id="@+id/rowPetHeader"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="12dp"
                         android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                        <TextView
-                            android:id="@+id/tvPetName"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/poppins_semibold"
-                            android:text="Marvel"
-                            android:textColor="@color/text_primary"
-                            android:textSize="24sp" />
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            app:cardBackgroundColor="@color/accent_2_light"
+                            app:cardCornerRadius="26dp"
+                            app:cardElevation="0dp"
+                            app:strokeColor="@color/accent_2"
+                            app:strokeWidth="2dp">
 
-                        <TextView
-                            android:id="@+id/tvPetSubtitle"
-                            android:layout_width="wrap_content"
+                            <ImageView
+                                android:id="@+id/imgPetAvatar"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:contentDescription="Pet photo"
+                                android:padding="13dp"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/ic_pets_24"
+                                app:tint="@color/accent_2_dark" />
+                        </com.google.android.material.card.MaterialCardView>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="Golden retriever"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
+                            android:layout_marginStart="12dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvPetName"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/poppins_semibold"
+                                android:textColor="@color/text_primary"
+                                android:textSize="24sp"
+                                tools:text="Marvel" />
+
+                            <TextView
+                                android:id="@+id/tvPetSubtitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp" />
+                        </LinearLayout>
                     </LinearLayout>
 
                     <com.google.android.material.card.MaterialCardView

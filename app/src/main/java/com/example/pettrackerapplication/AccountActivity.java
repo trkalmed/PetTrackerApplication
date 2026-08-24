@@ -33,10 +33,8 @@ public class AccountActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_account);
 
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("Account");
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        findViewById(R.id.btnBack).setOnClickListener(
+                v -> getOnBackPressedDispatcher().onBackPressed());
 
         auth = FirebaseAuth.getInstance();
 
@@ -116,10 +114,5 @@ public class AccountActivity extends AppCompatActivity {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
-    }
-    @Override
-    public boolean onSupportNavigateUp() {
-        getOnBackPressedDispatcher().onBackPressed();
-        return true;
     }
 }

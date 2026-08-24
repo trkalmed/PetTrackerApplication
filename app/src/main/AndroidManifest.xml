@@ -43,6 +43,7 @@
         <activity android:name=".Petmenu" />
         <activity android:name=".AddPetActivity" />
         <activity android:name=".SettingsActivity" />
+        <activity android:name=".FeedingActivity" />
 
     </application>
 

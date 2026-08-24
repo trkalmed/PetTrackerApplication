@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paw in cream on the terracotta ground, inside the 72dp adaptive safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="2.6"
+        android:scaleY="2.6"
+        android:translateX="22.8"
+        android:translateY="22.8">
+        <path
+            android:pathData="M11,4 m -2,0 a 2,2 0 1,0 4,0 a 2,2 0 1,0 -4,0"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5EAD8"
+            android:strokeWidth="2.75"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M18,8 m -2,0 a 2,2 0 1,0 4,0 a 2,2 0 1,0 -4,0"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5EAD8"
+            android:strokeWidth="2.75"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M20,16 m -2,0 a 2,2 0 1,0 4,0 a 2,2 0 1,0 -4,0"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5EAD8"
+            android:strokeWidth="2.75"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M9,10a5,5 0 0 1 5,5v3.5a3.5,3.5 0 0 1 -6.84,1.045Q6.52,17.48 4.46,16.84A3.5,3.5 0 0 1 5.5,10z"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5EAD8"
+            android:strokeWidth="2.75"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

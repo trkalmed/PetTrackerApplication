@@ -1,6 +1,7 @@
 package com.example.pettrackerapplication;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 
 /**
@@ -39,6 +40,21 @@ public class PiConnectionManager {
         String ip = getSavedIp(context);
         if (ip.isEmpty()) return null;
         return "http://" + ip + ":" + STREAM_PORT + "/stream";
+    }
+
+    /**
+     * Intent for the live view, with the Pi stream attached when one is paired.
+     * LiveObjectDetectionActivity picks its mode from the presence of "stream_url":
+     * with it, the Pi feed; without it, the phone's own camera. Every entry point
+     * should build the intent here so that choice is made the same way everywhere.
+     */
+    public static Intent streamIntent(Context context) {
+        Intent intent = new Intent(context, LiveObjectDetectionActivity.class);
+        String streamUrl = getStreamUrl(context);
+        if (streamUrl != null) {
+            intent.putExtra("stream_url", streamUrl);
+        }
+        return intent;
     }
 
     private static SharedPreferences prefs(Context context) {

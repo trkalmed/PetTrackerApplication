@@ -42,10 +42,8 @@ public class SettingsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("Settings");
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        findViewById(R.id.btnBack).setOnClickListener(
+                v -> getOnBackPressedDispatcher().onBackPressed());
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
@@ -159,11 +157,5 @@ public class SettingsActivity extends AppCompatActivity {
                     "No email app found. Please email support@pettracker.app directly.",
                     Toast.LENGTH_LONG).show();
         }
-    }
-
-    @Override
-    public boolean onSupportNavigateUp() {
-        getOnBackPressedDispatcher().onBackPressed();
-        return true;
     }
 }

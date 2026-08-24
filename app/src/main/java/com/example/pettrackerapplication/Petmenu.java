@@ -34,6 +34,8 @@ public class Petmenu extends AppCompatActivity {
     private TextView         tvBirthdateDetail;
     private TextView         tvNotesDetail;
     private TextView         tvLocationText;
+    private TextView         tvFoodToday;
+    private TextView         tvRoomsToday;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +64,8 @@ public class Petmenu extends AppCompatActivity {
         tvBirthdateDetail = findViewById(R.id.tvBirthdateDetail);
         tvNotesDetail     = findViewById(R.id.tvNotesDetail);
         tvLocationText    = findViewById(R.id.locationText);
+        tvFoodToday       = findViewById(R.id.tvFoodToday);
+        tvRoomsToday      = findViewById(R.id.tvRoomsToday);
 
         imgPetPhoto.setImageResource(R.drawable.ic_pets_24);
 
@@ -71,7 +75,7 @@ public class Petmenu extends AppCompatActivity {
 
         MaterialButton btnFeeding = findViewById(R.id.btnFeeding);
         btnFeeding.setOnClickListener(v ->
-                Toast.makeText(this, "Feeding log — coming soon", Toast.LENGTH_SHORT).show());
+                startActivity(new Intent(this, FeedingActivity.class)));
 
         MaterialButton btnHistory = findViewById(R.id.btnHistory);
         btnHistory.setOnClickListener(v ->
@@ -124,10 +128,19 @@ public class Petmenu extends AppCompatActivity {
         tvBirthdateDetail.setText(emptyOrValue(pet.getBirthdate(), "—"));
         tvNotesDetail.setText(emptyOrValue(pet.getNotes(), "No notes"));
 
-        TextView tvSteps    = findViewById(R.id.stepsText);
-        TextView tvDistance = findViewById(R.id.distanceText);
-        tvSteps.setText("Steps today: —");
-        tvDistance.setText("Distance today: —");
+        // These two rows were repurposed by the dashboard redesign: steps and distance
+        // are gone (no hardware produces them), replaced by grams from the feeder and
+        // minutes from the room sensors. Both read from DashboardStats, so both stay
+        // empty until that reports real values — see DashboardStats.forPetToday.
+        DashboardStats stats = DashboardStats.forPetToday(pet);
+
+        tvFoodToday.setText(stats.gramsEaten == null
+                ? "Food today: no feeder paired"
+                : "Food today: " + stats.gramsEaten + " g");
+
+        tvRoomsToday.setText(stats.rooms.isEmpty()
+                ? "Rooms visited today: no sensors reporting"
+                : "Rooms visited today: " + stats.rooms.size());
 
         String lastSeen = pet.getLastSeen();
         tvLocationText.setText(
@@ -144,8 +157,10 @@ public class Petmenu extends AppCompatActivity {
     // ── Pi connection / tracking ────────────────────────────────────────────
 
     private void handleTrackingClick() {
+        // Unlike the bottom-nav Live tab, this button is explicitly about the Pi,
+        // so ask for the IP rather than silently falling back to the phone camera.
         if (PiConnectionManager.hasSavedIp(this)) {
-            launchTracking(PiConnectionManager.getStreamUrl(this));
+            launchTracking();
         } else {
             showIpDialog();
         }
@@ -178,16 +193,14 @@ public class Petmenu extends AppCompatActivity {
                         return;
                     }
                     PiConnectionManager.saveIp(this, ip);
-                    launchTracking(PiConnectionManager.getStreamUrl(this));
+                    launchTracking();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
     }
 
-    private void launchTracking(String streamUrl) {
-        Intent intent = new Intent(this, LiveObjectDetectionActivity.class);
-        intent.putExtra("stream_url", streamUrl);
-        startActivity(intent);
+    private void launchTracking() {
+        startActivity(PiConnectionManager.streamIntent(this));
     }
 
     private String emptyOrValue(String value, String fallback) {

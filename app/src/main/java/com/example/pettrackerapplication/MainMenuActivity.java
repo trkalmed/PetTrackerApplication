@@ -14,6 +14,8 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
+import com.bumptech.glide.Glide;
+
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -127,25 +129,45 @@ public class MainMenuActivity extends AppCompatActivity {
     // ── Data ────────────────────────────────────────────────────────────────
 
     private void loadActivePet() {
-        new Thread(() -> {
-            FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-            if (user == null) return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;              // onStart owns the redirect
+        String ownerId = user.getUid();
 
+        new Thread(() -> {
             List<Pet> pets = AppDatabase
                     .getInstance(getApplicationContext())
                     .petDao()
-                    .getPetsForOwner(user.getUid());
+                    .getPetsForOwner(ownerId);
 
             runOnUiThread(() -> {
+                // The query outlives a rotation or a back press; touching views
+                // after that throws. Nothing to update once we are going away.
+                if (isFinishing() || isDestroyed()) return;
+
                 if (pets == null || pets.isEmpty()) {
                     showNoPets();
                 } else {
-                    Pet pet = pets.get(0);
+                    Pet pet = pickActive(pets);
                     showPet(pet);
                     render(DashboardStats.forPetToday(pet));
                 }
             });
         }).start();
+    }
+
+    /**
+     * The pet chosen in the list, or the first one. The stored id goes stale
+     * when that pet is deleted or the account changes, so fall back rather than
+     * showing an empty dashboard next to a non-empty pet list.
+     */
+    private Pet pickActive(List<Pet> pets) {
+        long activeId = Prefs.getActivePetId(this);
+        for (Pet pet : pets) {
+            if (pet.getId() == activeId) return pet;
+        }
+        Pet first = pets.get(0);
+        Prefs.setActivePetId(this, first.getId());
+        return first;
     }
 
     private void showNoPets() {
@@ -169,9 +191,21 @@ public class MainMenuActivity extends AppCompatActivity {
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
-            imgPetAvatar.setImageURI(Uri.parse(photoUri));
+            // Glide, not setImageURI — the latter decodes the full bitmap on the
+            // main thread and drops frames on a phone-camera photo.
             imgPetAvatar.setColorFilter(null);
             imgPetAvatar.setPadding(0, 0, 0, 0);
+            Glide.with(this)
+                    .load(Uri.parse(photoUri))
+                    .centerCrop()
+                    .placeholder(R.drawable.ic_pets_24)
+                    .into(imgPetAvatar);
+        } else {
+            // Reset, or a previous pet's photo lingers after the photo is cleared.
+            Glide.with(this).clear(imgPetAvatar);
+            imgPetAvatar.setImageResource(R.drawable.ic_pets_24);
+            imgPetAvatar.setColorFilter(ContextCompat.getColor(this, R.color.accent_2_dark));
+            imgPetAvatar.setPadding(dp(13), dp(13), dp(13), dp(13));
         }
     }
 
@@ -356,17 +390,15 @@ public class MainMenuActivity extends AppCompatActivity {
     }
 
     /**
-     * Opens the detail screen for the pet on show. Petmenu finishes itself without a
-     * "pet_id", so the guard matters: with no pets loaded there is nothing to open.
+     * The header opens the pet list, where you pick which pet the dashboard
+     * tracks. With no pets there is nothing to pick, so go straight to Add.
      */
     private void openPetDetail() {
         if (currentPet == null) {
             startActivity(new Intent(this, AddPetActivity.class));
             return;
         }
-        Intent intent = new Intent(this, Petmenu.class);
-        intent.putExtra("pet_id", currentPet.getId());
-        startActivity(intent);
+        startActivity(new Intent(this, PetListActivity.class));
     }
 
     private int dp(int value) {

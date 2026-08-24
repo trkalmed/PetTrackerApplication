@@ -18,13 +18,6 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    // SharedPreferences file + keys for the General section
-    // NOTE: keys match pref_general.xml ("sound_enabled" / "sound_volume")
-    // in case anything else in the app reads these same keys.
-    private static final String PREFS_NAME        = "app_settings";
-    private static final String KEY_SOUND_ENABLED = "sound_enabled";
-    private static final String KEY_SOUND_VOLUME  = "sound_volume";
-
     private static final boolean DEFAULT_SOUND_ENABLED = true;
     private static final int     DEFAULT_SOUND_VOLUME  = 70;
 
@@ -45,7 +38,7 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.btnBack).setOnClickListener(
                 v -> getOnBackPressedDispatcher().onBackPressed());
 
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        prefs = Prefs.get(this);
 
         cardAccountManagement = findViewById(R.id.cardAccountManagement);
         cardPiConnection      = findViewById(R.id.cardPiConnection);
@@ -65,15 +58,15 @@ public class SettingsActivity extends AppCompatActivity {
         cardContactSupport.setOnClickListener(v -> openContactSupport());
 
         // ── Sound toggle + volume — restore saved state ─────────────────────
-        boolean soundEnabled = prefs.getBoolean(KEY_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
-        int     soundVolume  = prefs.getInt(KEY_SOUND_VOLUME, DEFAULT_SOUND_VOLUME);
+        boolean soundEnabled = prefs.getBoolean(Prefs.KEY_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
+        int     soundVolume  = prefs.getInt(Prefs.KEY_SOUND_VOLUME, DEFAULT_SOUND_VOLUME);
 
         swSound.setChecked(soundEnabled);
         sbSoundVolume.setProgress(soundVolume);
         sbSoundVolume.setEnabled(soundEnabled); // volume is meaningless while sound is off
 
         swSound.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            prefs.edit().putBoolean(KEY_SOUND_ENABLED, isChecked).apply();
+            prefs.edit().putBoolean(Prefs.KEY_SOUND_ENABLED, isChecked).apply();
             sbSoundVolume.setEnabled(isChecked);
         });
 
@@ -88,7 +81,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                prefs.edit().putInt(KEY_SOUND_VOLUME, seekBar.getProgress()).apply();
+                prefs.edit().putInt(Prefs.KEY_SOUND_VOLUME, seekBar.getProgress()).apply();
             }
         });
     }

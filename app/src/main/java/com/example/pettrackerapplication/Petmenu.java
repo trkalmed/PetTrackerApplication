@@ -16,6 +16,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.bumptech.glide.Glide;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.auth.FirebaseAuth;
@@ -37,6 +38,10 @@ public class Petmenu extends AppCompatActivity {
     private TextView         tvFoodToday;
     private TextView         tvRoomsToday;
 
+    /** The loaded pet, so Edit and Delete know what they are acting on. */
+    private Pet currentPet;
+    private long petId = -1L;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -53,6 +58,25 @@ public class Petmenu extends AppCompatActivity {
         toolbar = findViewById(R.id.topAppBar);
         toolbar.setNavigationOnClickListener(
                 v -> getOnBackPressedDispatcher().onBackPressed());
+
+        // Edit and Delete stay hidden until a pet has actually loaded — acting on
+        // a pet that is not there yet is the sort of thing that deletes the wrong row.
+        toolbar.inflateMenu(R.menu.menu_pet_detail);
+        setDetailMenuVisible(false);
+        toolbar.setOnMenuItemClickListener(item -> {
+            if (currentPet == null) return false;
+            int id = item.getItemId();
+            if (id == R.id.action_edit_pet) {
+                startActivity(new Intent(this, AddPetActivity.class)
+                        .putExtra("pet_id", currentPet.getId()));
+                return true;
+            }
+            if (id == R.id.action_delete_pet) {
+                confirmDelete(currentPet);
+                return true;
+            }
+            return false;
+        });
 
         // ── Bind views ───────────────────────────────────────────────────────
         imgPetPhoto       = findViewById(R.id.petImage);
@@ -82,30 +106,36 @@ public class Petmenu extends AppCompatActivity {
                 Toast.makeText(this, "Activity history — coming soon", Toast.LENGTH_SHORT).show());
 
         // ── Load pet from database ──────────────────────────────────────────
-        long petId = getIntent().getLongExtra("pet_id", -1);
+        petId = getIntent().getLongExtra("pet_id", -1);
         if (petId == -1) {
             Toast.makeText(this, "No pet selected", Toast.LENGTH_SHORT).show();
             finish();
-            return;
         }
-        loadPetFromDb(petId);
+        // The load happens in onResume so returning from an edit shows the new values.
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (petId != -1L) loadPetFromDb(petId);
     }
 
     private void loadPetFromDb(long petId) {
-        new Thread(() -> {
-            FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-            if (user == null) {
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Please log in again", Toast.LENGTH_SHORT).show();
-                    finish();
-                });
-                return;
-            }
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            Toast.makeText(this, "Please log in again", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+        String ownerId = user.getUid();
 
+        new Thread(() -> {
             AppDatabase db  = AppDatabase.getInstance(getApplicationContext());
-            Pet         pet = db.petDao().getPetById(petId, user.getUid());
+            Pet         pet = db.petDao().getPetById(petId, ownerId);
 
             runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+
                 if (pet == null) {
                     Toast.makeText(this, "Pet not found", Toast.LENGTH_SHORT).show();
                     finish();
@@ -116,7 +146,53 @@ public class Petmenu extends AppCompatActivity {
         }).start();
     }
 
+    private void setDetailMenuVisible(boolean visible) {
+        toolbar.getMenu().setGroupVisible(0, visible);
+    }
+
+    private void confirmDelete(Pet pet) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete " + pet.getName() + "?")
+                .setMessage("This removes the pet and its details from this device. "
+                        + "It cannot be undone.")
+                .setPositiveButton("Delete", (d, w) -> deletePet(pet))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deletePet(Pet pet) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            finish();
+            return;
+        }
+        String ownerId = user.getUid();
+
+        new Thread(() -> {
+            int removed = AppDatabase.getInstance(getApplicationContext())
+                    .petDao().deleteById(pet.getId(), ownerId);
+
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (removed > 0) {
+                    if (Prefs.getActivePetId(this) == pet.getId()) {
+                        // The dashboard re-picks on its next load.
+                        Prefs.clearActivePetId(this);
+                    }
+                    Toast.makeText(this, pet.getName() + " deleted",
+                            Toast.LENGTH_SHORT).show();
+                    finish();
+                } else {
+                    Toast.makeText(this, "Could not delete pet",
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }).start();
+    }
+
     private void bindPetToViews(Pet pet) {
+        currentPet = pet;
+        setDetailMenuVisible(true);
         toolbar.setTitle(pet.getName());
         tvPetNameDetail.setText(pet.getName());
 
@@ -148,8 +224,13 @@ public class Petmenu extends AppCompatActivity {
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
-            imgPetPhoto.setImageURI(Uri.parse(photoUri));
+            Glide.with(this)
+                    .load(Uri.parse(photoUri))
+                    .centerCrop()
+                    .placeholder(R.drawable.ic_pets_24)
+                    .into(imgPetPhoto);
         } else {
+            Glide.with(this).clear(imgPetPhoto);
             imgPetPhoto.setImageResource(R.drawable.ic_pets_24);
         }
     }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lucide "ellipsis-vertical" (lucide.dev). Dots are filled rather than stroked,
+     matching how the design system draws solid marks at this size. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,4.25m-1.6,0a1.6,1.6 0,1 1,3.2 0a1.6,1.6 0,1 1,-3.2 0"
+        android:fillColor="#201E1D" />
+    <path
+        android:pathData="M12,12m-1.6,0a1.6,1.6 0,1 1,3.2 0a1.6,1.6 0,1 1,-3.2 0"
+        android:fillColor="#201E1D" />
+    <path
+        android:pathData="M12,19.75m-1.6,0a1.6,1.6 0,1 1,3.2 0a1.6,1.6 0,1 1,-3.2 0"
+        android:fillColor="#201E1D" />
+</vector>

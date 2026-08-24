@@ -18,6 +18,13 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Room writes the schema JSON here; commit it so migrations have a baseline.
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments["room.schemaLocation"] = "$projectDir/schemas"
+            }
+        }
     }
 
     buildTypes {
@@ -65,7 +72,6 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("androidx.activity:activity:1.9.2")
-    implementation("androidx.preference:preference:1.2.1")
 
     // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")

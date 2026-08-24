@@ -2,7 +2,6 @@ package com.example.pettrackerapplication;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 
 /**
  * Single source of truth for the Raspberry Pi's saved IP address.
@@ -11,16 +10,14 @@ import android.content.SharedPreferences;
  */
 public class PiConnectionManager {
 
-    private static final String PREFS_NAME  = "pet_tracker_prefs";
-    private static final String KEY_PI_IP   = "pi_ip_address";
-    private static final int    STREAM_PORT = 8080;
+    private static final int STREAM_PORT = 8080;
 
     private PiConnectionManager() {
         // static helper, no instances
     }
 
     public static String getSavedIp(Context context) {
-        return prefs(context).getString(KEY_PI_IP, "");
+        return Prefs.get(context).getString(Prefs.KEY_PI_IP, "");
     }
 
     public static boolean hasSavedIp(Context context) {
@@ -28,11 +25,11 @@ public class PiConnectionManager {
     }
 
     public static void saveIp(Context context, String ip) {
-        prefs(context).edit().putString(KEY_PI_IP, ip.trim()).apply();
+        Prefs.get(context).edit().putString(Prefs.KEY_PI_IP, ip.trim()).apply();
     }
 
     public static void clearIp(Context context) {
-        prefs(context).edit().remove(KEY_PI_IP).apply();
+        Prefs.get(context).edit().remove(Prefs.KEY_PI_IP).apply();
     }
 
     /** Returns the full stream URL, or null if no IP has been saved yet. */
@@ -57,7 +54,4 @@ public class PiConnectionManager {
         return intent;
     }
 
-    private static SharedPreferences prefs(Context context) {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-    }
 }

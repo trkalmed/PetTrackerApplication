@@ -6,7 +6,12 @@ import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
-@Database(entities = {Pet.class}, version = 2, exportSchema = false)
+/**
+ * Schema export is on, so version 2 is recorded in app/schemas as the baseline
+ * every future migration is written against. Bump the version and Room will
+ * refuse to build until a Migration exists — which is the point.
+ */
+@Database(entities = {Pet.class}, version = 2, exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase INSTANCE;
     public abstract PetDao petDao();
@@ -18,7 +23,12 @@ public abstract class AppDatabase extends RoomDatabase {
                                     context.getApplicationContext(),
                                     AppDatabase.class,
                                     "pets_db")
-                            .fallbackToDestructiveMigration()
+                            // Version 1 predates schema export, so there is no
+                            // baseline to migrate it from — wiping is the only
+                            // option there. Every later version must ship a real
+                            // Migration; a blanket fallback would silently destroy
+                            // a user's pets on the next schema change.
+                            .fallbackToDestructiveMigrationFrom(1)
                             .build();
                 }
             }

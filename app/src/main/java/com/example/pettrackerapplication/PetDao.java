@@ -4,6 +4,7 @@ import androidx.room.Dao;
 import androidx.room.Delete;
 import androidx.room.Insert;
 import androidx.room.Query;
+import androidx.room.Update;
 
 import java.util.List;
 
@@ -12,6 +13,13 @@ public interface PetDao {
 
     @Insert
     long insert(Pet pet);
+
+    @Update
+    void update(Pet pet);
+
+    /** Ownership is checked by the caller; kept for the delete-by-id path. */
+    @Query("DELETE FROM pets WHERE id = :id AND ownerId = :ownerId")
+    int deleteById(long id, String ownerId);
 
 
     @Query("SELECT * FROM pets WHERE ownerId = :ownerId ORDER BY name")

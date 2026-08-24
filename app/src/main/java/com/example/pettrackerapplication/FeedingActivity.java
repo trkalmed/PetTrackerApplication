@@ -72,7 +72,10 @@ public class FeedingActivity extends AppCompatActivity {
                     ? new DashboardStats()
                     : DashboardStats.forPetToday(pets.get(0));
 
-            runOnUiThread(() -> render(stats));
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                render(stats);
+            });
         }).start();
     }
 

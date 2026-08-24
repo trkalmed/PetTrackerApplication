@@ -15,6 +15,7 @@ import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -22,6 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 
+import com.bumptech.glide.Glide;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.textfield.TextInputEditText;
@@ -54,6 +56,11 @@ public class AddPetActivity extends AppCompatActivity {
     private SubjectSegmenter subjectSegmenter;
     private ActivityResultLauncher<Intent>  pickImageLauncher;
     private ActivityResultLauncher<String>  permissionLauncher;
+
+    /** -1 = adding a new pet; anything else = editing that pet. */
+    private long editingPetId = -1L;
+    /** The row being edited, loaded before the form is filled in. */
+    private Pet  editingPet;
 
 
     @Override
@@ -125,6 +132,64 @@ public class AddPetActivity extends AppCompatActivity {
         etBirthdate.setOnClickListener(v -> showDatePicker());
         cardPhoto.setOnClickListener(v -> checkPhotoPermissionAndPick());
         btnSavePet.setOnClickListener(v -> savePet());
+
+        editingPetId = getIntent().getLongExtra("pet_id", -1L);
+        if (editingPetId != -1L) {
+            loadPetForEditing(editingPetId);
+        }
+    }
+
+    // ── Edit mode ───────────────────────────────────────────────────────────
+
+    private void loadPetForEditing(long petId) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            Toast.makeText(this, "You must be logged in to edit a pet",
+                    Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+        String ownerId = user.getUid();
+
+        btnSavePet.setEnabled(false);
+        new Thread(() -> {
+            Pet pet = AppDatabase.getInstance(getApplicationContext())
+                    .petDao().getPetById(petId, ownerId);
+
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                btnSavePet.setEnabled(true);
+                if (pet == null) {
+                    Toast.makeText(this, "Pet not found", Toast.LENGTH_SHORT).show();
+                    finish();
+                } else {
+                    editingPet = pet;
+                    fillFormFrom(pet);
+                }
+            });
+        }).start();
+    }
+
+    private void fillFormFrom(Pet pet) {
+        ((TextView) findViewById(R.id.tvAddPetTitle)).setText("Edit " + pet.getName());
+        ((TextView) findViewById(R.id.tvAddPetSubtitle))
+                .setText("Update the details or photo, then save.");
+        btnSavePet.setText(R.string.save_changes);
+
+        etName.setText(pet.getName());
+        autoSpecies.setText(pet.getSpecies(), false);
+        etBreed.setText(pet.getBreed());
+        etWeight.setText(pet.getWeightKg() != null ? String.valueOf(pet.getWeightKg()) : "");
+        autoSex.setText(pet.getSex(), false);
+        etBirthdate.setText(pet.getBirthdate());
+        etNotes.setText(pet.getNotes());
+
+        String photoUri = pet.getPhotoUri();
+        if (photoUri != null && !photoUri.isEmpty()) {
+            // Keep the saved photo unless the user picks a new one. Not assigned
+            // to selectedImageUri: that field means "a new pick to process".
+            Glide.with(this).load(Uri.parse(photoUri)).centerCrop().into(imgPreview);
+        }
     }
 
     private void showDatePicker() {
@@ -199,7 +264,9 @@ public class AddPetActivity extends AppCompatActivity {
         btnSavePet.setEnabled(!loading);
         btnSavePet.setText(loading
                 ? "Processing photo…"
-                : getString(R.string.save_pet));
+                : getString(editingPetId != -1L
+                        ? R.string.save_changes
+                        : R.string.save_pet));
     }
 
     private Uri saveBitmapToFile(Bitmap bitmap) {
@@ -259,6 +326,9 @@ public class AddPetActivity extends AppCompatActivity {
         btnSavePet.setEnabled(false);
         btnSavePet.setText("Saving…");
 
+        final boolean editing     = editingPetId != -1L && editingPet != null;
+        final Pet     existingPet = editingPet;
+
         new Thread(() -> {
             String photoUriString = null;
             if (hasSegmented) {
@@ -268,21 +338,35 @@ public class AddPetActivity extends AppCompatActivity {
                         : (fallbackUri != null ? fallbackUri.toString() : null);
             } else if (fallbackUri != null) {
                 photoUriString = fallbackUri.toString();
+            } else if (editing) {
+                photoUriString = existingPet.getPhotoUri();   // keep the saved photo
             }
 
-            Pet pet = new Pet(
-                    name, species, breed, finalWeight,
-                    sex, birthdate, notes,
-                    photoUriString,
-                    "Last seen: —",
-                    ownerId);
-
             AppDatabase db = AppDatabase.getInstance(getApplicationContext());
-            db.petDao().insert(pet);
+
+            if (editing) {
+                Pet updated = new Pet(
+                        name, species, breed, finalWeight,
+                        sex, birthdate, notes,
+                        photoUriString,
+                        existingPet.getLastSeen(),   // not ours to reset
+                        ownerId);
+                updated.setId(existingPet.getId());
+                db.petDao().update(updated);
+            } else {
+                db.petDao().insert(new Pet(
+                        name, species, breed, finalWeight,
+                        sex, birthdate, notes,
+                        photoUriString,
+                        "Last seen: —",
+                        ownerId));
+            }
 
             runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 Toast.makeText(AddPetActivity.this,
-                        "Pet saved", Toast.LENGTH_SHORT).show();
+                        editing ? "Changes saved" : "Pet saved",
+                        Toast.LENGTH_SHORT).show();
                 finish();
             });
         }).start();

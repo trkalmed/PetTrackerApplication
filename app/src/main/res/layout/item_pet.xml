@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/item_pet_card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -47,10 +48,10 @@
             android:ellipsize="end"
             android:fontFamily="@font/poppins_semibold"
             android:maxLines="1"
-            android:text="Marvel"
+            tools:text="Marvel"
             android:textColor="@color/text_primary"
             android:textSize="18sp"
-            app:layout_constraintEnd_toStartOf="@+id/chevronIcon"
+            app:layout_constraintEnd_toStartOf="@id/tagActive"
             app:layout_constraintStart_toEndOf="@id/petImageCard"
             app:layout_constraintTop_toTopOf="@id/petImageCard" />
 
@@ -65,7 +66,7 @@
             android:paddingTop="4dp"
             android:paddingEnd="10dp"
             android:paddingBottom="4dp"
-            android:text="Pet profile"
+            tools:text="Pet profile"
             android:textColor="@color/primary"
             android:textSize="12sp"
             android:textStyle="bold"
@@ -81,19 +82,45 @@
             android:ellipsize="end"
             android:fontFamily="@font/poppins"
             android:maxLines="1"
-            android:text="Last seen: —"
+            tools:text="Last seen: —"
             android:textColor="@color/text_secondary"
             android:textSize="13sp"
-            app:layout_constraintEnd_toStartOf="@id/chevronIcon"
+            app:layout_constraintEnd_toStartOf="@id/tagActive"
             app:layout_constraintStart_toEndOf="@id/petImageCard"
             app:layout_constraintTop_toBottomOf="@id/speciesText" />
 
+        <!-- "Tracking" marker: which pet the dashboard is showing. -->
+        <TextView
+            android:id="@+id/tagActive"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_pet_chip"
+            android:paddingStart="10dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="4dp"
+            android:text="Tracking"
+            android:textColor="@color/primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnPetMenu"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:visibility="visible" />
+
+        <!-- Overflow, not a chevron: tapping the row selects the pet, it does
+             not navigate, so a right-arrow would promise the wrong thing. -->
         <ImageView
-            android:id="@+id/chevronIcon"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:contentDescription="@null"
-            android:src="@drawable/ic_chevron_right_24"
+            android:id="@+id/btnPetMenu"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="More options"
+            android:focusable="true"
+            android:padding="6dp"
+            android:src="@drawable/ic_more_vert_24"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"

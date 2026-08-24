@@ -1,8 +1,8 @@
 # Pet Tracker — Punch List
 
-State: P0 and P1 (#4–#9) fixed on 2026-08-24. Branch `master`, last commit `7a72903`.
-All fixes are staged, not committed. See "Verification status" near the end for what has
-been confirmed by running it versus what still needs a signed-in click-through.
+State: P0, P1 (#4–#9) and P2 (#12–#19) fixed on 2026-08-24. Branch `master`.
+Open: #10 (real data), #11 (cloud sync, deferred), #20 (not fixable as written), and P3.
+See "Verification status" near the end for what was driven on a device versus only compiled.
 
 ---
 
@@ -129,61 +129,82 @@ screen is reachable, they are just empty.
 
 
 ---
+## P2 — ✅ #12–#19 FIXED (2026-08-24) · #11 deferred · #20 not fixable as written
 
-## P2 — Correctness, data, and platform
+Verified by driving the app on the emulator, not just compiling — see "Verification status".
 
-### 11. Pet data is local-only and silently device-bound
-Room DB `pets_db` keyed on the Firebase `uid`, but nothing syncs. Same account on a new
-device shows zero pets and the user has no way to know why. Firebase is in the project
-(auth only) — Firestore would close this.
+### 11. Pet data is local-only and silently device-bound — DEFERRED (your call)
+Room DB `pets_db` keyed on the Firebase `uid`, nothing syncs. Same account on a new device
+shows zero pets with no explanation. Deferred deliberately alongside #10: it needs Firestore
+enabled in the console, security rules, and an offline/conflict story — and the hardware data
+from #10 will need somewhere to live too, so the two are worth designing together rather than
+bolting Firestore on twice.
 
-### 12. `fallbackToDestructiveMigration()` wipes user data on any schema change
-`AppDatabase.java:22`. Fine while iterating; must become a real `Migration` before anyone
-installs an update over an existing build. `@Database(version = 2)` already implies one
-schema change has happened.
+### 12. ✅ `fallbackToDestructiveMigration()` wiped user data on any schema change
+There was no exported schema, so no baseline existed to write a v1→v2 migration against.
 
-### 13. No way to delete or edit a pet
-`PetDao.delete()` is declared and never called. There is no update query at all. Once a pet is
-saved it is permanent and immutable.
+Fixed: `exportSchema = true` with `room.schemaLocation`, so `app/schemas/…/2.json` is now
+committed as the baseline. The blanket fallback became `fallbackToDestructiveMigrationFrom(1)`
+— version 1 predates schema export and can only be wiped, but every version after this must
+ship a real `Migration` or Room refuses to build. That is the point.
 
-### 14. Only the first pet is ever shown
-`MainMenuActivity.java:135` and `FeedingActivity.java:59` both take `pets.get(0)`. Multi-pet
-is half-modelled (the DAO returns a list, `AddPetActivity` can add many) but there is no
-picker and no list. See #16 — the adapter for exactly this already exists, unused.
+### 13. ✅ No way to delete or edit a pet
+`PetDao.delete()` was declared and never called; there was no update query at all.
 
-### 15. Full-size bitmap decode on the main thread
-`MainMenuActivity.java:160` and `Petmenu.java:138` use `ImageView.setImageURI()`, which
-decodes synchronously on the UI thread. Glide is already a dependency. Use it (as
-`PetsAdapter` correctly does) or you will drop frames on large photos.
+Fixed: added `@Update update()` and `deleteById(id, ownerId)` — delete is by id **and** owner
+so a stale `Pet` object cannot remove someone else's row. Both actions are reachable twice
+over: the per-row overflow in the pet list, and an Edit/Delete menu on the detail screen's
+toolbar (hidden until a pet has actually loaded). Both routes confirm first.
+`AddPetActivity` gained an edit mode via a `pet_id` extra — it prefills the form, keeps the
+saved photo unless a new one is picked, preserves `lastSeen`, and updates rather than inserts.
 
-### 16. Dead code: `PetsAdapter` + `item_pet.xml`
-Neither is referenced anywhere — no `RecyclerView` exists in any layout. This is the pet-list
-screen that was never wired up. Either build the list (which also fixes #6 and #14) or delete
-both. Note this is the *only* consumer of the `recyclerview` and `glide` dependencies.
+### 14. ✅ Only the first pet was ever shown
+`MainMenuActivity` and `FeedingActivity` both did `pets.get(0)`.
 
-### 17. Orphaned `res/xml/pref_general.xml`
-`SettingsActivity` is a hand-built `MaterialCardView` screen, not a `PreferenceFragment`.
-The prefs XML is never inflated — the comment at `SettingsActivity.java:22` refers to a
-screen that no longer exists. Delete it and the `androidx.preference` dependency, or migrate
-the Settings screen back to it. Note the two would also disagree on storage:
-`SettingsActivity` uses a private `"app_settings"` file, while `PreferenceFragment` uses the
-default SharedPreferences.
+Fixed: the chosen pet is stored in `Prefs.KEY_ACTIVE_PET_ID` and the dashboard reads it.
+The stored id goes stale when that pet is deleted or the account changes, so both the
+dashboard and the list fall back to the first pet and rewrite the preference rather than
+showing an empty dashboard next to a non-empty list.
 
-### 18. Two independent SharedPreferences files
-`PiConnectionManager` writes to `"pet_tracker_prefs"`; `SettingsActivity` writes to
-`"app_settings"`. Works, but pick one before adding a third.
+### 15. ✅ Full-size bitmap decode on the main thread
+`ImageView.setImageURI()` decodes synchronously on the UI thread. Replaced with Glide in
+`MainMenuActivity` and `Petmenu` (as `PetsAdapter` already did). Both now also reset the
+image when a pet has no photo — previously a stale photo could linger.
 
-### 19. Unhandled activity-lifecycle races in the DB threads
-`MainMenuActivity.loadActivePet()`, `Petmenu.loadPetFromDb()`, `FeedingActivity.load()` all
-use raw `new Thread` + `runOnUiThread` with no cancellation. Rotate or back out while one is
-in flight and it touches a destroyed activity. `FeedingActivity.java:56-57` additionally
-dereferences `getCurrentUser()` with no null check — logging out with the Food tab open is
-an NPE.
+### 16. ✅ Dead code: `PetsAdapter` + `item_pet.xml`
+Both were unreferenced — the pet-list screen that was never wired up. Now live behind the new
+`PetListActivity`. The adapter also gained the species chip it never bound, a "Tracking"
+marker for the active pet, and `DiffUtil` in place of `notifyDataSetChanged()`.
+The row's chevron became an overflow button: tapping a row now *selects* the pet rather than
+navigating, so a right-arrow promised the wrong thing. `ic_menu_24` was a hamburger (drawer),
+so a proper `ic_more_vert_24` was added in the same Lucide style.
 
-### 20. Cleartext HTTP enabled app-wide
-`android:usesCleartextTraffic="true"` in the manifest, needed for the Pi MJPEG stream on
-port 8080. Scope it to the local network with a `network_security_config.xml` rather than
-opening every connection in the app.
+### 17. ✅ Orphaned `res/xml/pref_general.xml`
+Never inflated — `SettingsActivity` is a hand-built card screen, not a `PreferenceFragment`.
+Deleted, along with the `androidx.preference` dependency it was the only consumer of.
+
+### 18. ✅ Two independent SharedPreferences files
+`PiConnectionManager` wrote to `pet_tracker_prefs`, `SettingsActivity` to `app_settings`.
+Consolidated behind a new `Prefs` class holding the file name and every key. Values in the
+retired file are carried over once on first read, so the change is invisible on upgrade.
+
+### 19. ✅ Unhandled activity-lifecycle races in the DB threads
+Every raw `new Thread` + `runOnUiThread` could touch a destroyed activity. All four load paths
+now read the Firebase uid on the main thread *before* starting the worker (which also removed
+the `getCurrentUser()` null-deref in `FeedingActivity`) and guard the UI callback with
+`isFinishing() || isDestroyed()`.
+
+### 20. Cleartext HTTP enabled app-wide — NOT FIXABLE AS I ORIGINALLY WROTE IT
+My earlier advice here was wrong and I did not ship it. A `network-security-config` cannot
+scope this: `<domain>` accepts hostnames and exact IP literals only — **not CIDR ranges**. The
+Pi's address is typed in by the user at runtime, so it cannot be known at build time. A config
+with `192.168.0.0/16` entries under a `cleartextTrafficPermitted="false"` base-config would
+never match, and would break the Pi stream while looking secure.
+
+`android:usesCleartextTraffic="true"` therefore stays. The realistic mitigations, if this
+matters later: pin the exact IP into a generated config once the user saves it, move the Pi
+to HTTPS with a self-signed cert plus a `<trust-anchors>` entry, or accept it — everything
+else in the app (Firebase, ML Kit) is HTTPS regardless.
 
 ---
 
@@ -275,32 +296,35 @@ Nothing covers the DAO, `DashboardStats`, `MjpegInputStream` frame parsing, or t
 `MjpegInputStream.readJpegFrame()` in particular is fiddly byte-marker logic that is trivial
 to unit-test and easy to get subtly wrong.
 
----
-## Verification status
+---## Verification status
 
-**Confirmed by running it:**
-- `:app:assembleDebug` → BUILD SUCCESSFUL, no warnings beyond the pre-existing ML Kit
-  manifest one (#30).
-- Installs and launches on the `Medium_Phone_API_35` emulator; `LoginActivity` resumes with
-  an empty crash buffer.
-- Every `findViewById` id resolves against the layout its activity actually inflates — all
-  9 activities, 94 bindings. This is the check that would have caught the P0 bug, and is
-  worth re-running after any layout edit.
+**Driven on the emulator (API 35), signed in, no crashes in the buffer at any point:**
+
+| Flow | Result |
+|---|---|
+| Add pet → dashboard | saves, dashboard shows the new pet |
+| Dashboard header → pet list (#6, #14) | opens `PetListActivity`, row + species chip + "Tracking" marker render |
+| Row overflow → Details / Edit / Delete (#13) | all three present and working |
+| Edit → save (#13) | title reads "Edit <name>", form prefills, button reads "Save changes", **updates in place — one row, not a duplicate** |
+| Tap a different pet (#14) | returns to dashboard, which now shows that pet; selection persists |
+| Delete with confirm (#13) | confirmation dialog, row disappears |
+| Delete the **active** pet (#14) | list and dashboard both fall back to the empty state, no ghost, no crash |
+| Food tab (#4) | opens `FeedingActivity` — not the old "No pet selected" toast |
+| Pet detail rows (#8) | "Food today: no feeder paired" / "Rooms visited today: no sensors reporting" |
+| Account back button (#9) | returns to the dashboard |
+| Settings back button (#9) | present and working |
+
+**Static checks, re-run after every layout change:**
+- Every `findViewById` id resolves against the layout its activity inflates — 10 activities.
 - Every `ConstraintLayout` constraint target resolves within its own layout.
 
-**Not yet confirmed — needs a signed-in session:**
-The authenticated flows could not be exercised. The screens are not exported, so `adb shell
-am start` is refused (`SecurityException: not exported`), and driving the UI means signing
-in to Firebase — which needs the account password, so it is for you to do, not me.
+**Still not verified:**
+- **#7, the Pi stream.** Needs an actual Raspberry Pi serving MJPEG on the LAN. The
+  intent-building path is shared and exercised, but nothing has connected to a real stream.
+- **#15**, that Glide actually removed the main-thread stall — correct by construction, but no
+  frame profiling was done.
 
-Still to click through once signed in:
-1. Food tab → lands on `FeedingActivity` (not a "No pet selected" toast)
-2. Dashboard pet header → opens `Petmenu` with the right pet
-3. `Petmenu` → Watch live → Pi prompt / stream; Feeding → `FeedingActivity`
-4. Back buttons on Account and Settings
-5. Bottom nav highlight follows the screen when moving between tabs
-
-**Build note for the emulator:** the full debug APK is 131 MB (97 MB of it native libs for
+**Build note for the emulator:** the full debug APK is ~131 MB (97 MB of it native libs for
 four ABIs) and will not install — `INSTALL_FAILED_INSUFFICIENT_STORAGE`. Build emulator-only
 and it drops to 60 MB:
 
@@ -315,13 +339,13 @@ with `adb install -r -t`. This is what #22 and #26 are really about.
 
 ## Suggested order for the next session
 
-P0 (#1–#3) and P1 (#4–#9) are done. Pick up at:
+P0, P1 (#4–#9) and P2 (#12–#19) are done. What is left:
 
-1. **Click through the five flows above** on a signed-in emulator — the only unverified part
-   of the P1 work.
-2. Then pick: **real data** (#10 — now the single thing between this and a working app;
-   every screen is reachable, they are just empty) or **cleanup**
-   (#21–#25, roughly a one-hour sweep that cuts ~5 MB and a dozen dependencies, and would
-   also make the APK installable without the ABI workaround).
-
-Everything so far is **staged, not committed**. Commit when you are happy with it.
+1. **#10 — real data.** The single thing between this and a working app. Every screen is
+   reachable and every empty state is honest; they are just empty. Feeder, motion sensors,
+   detection persistence and GPS all need a backend that does not exist yet.
+2. **#11 — cloud sync.** Deferred to be designed together with #10, since the hardware data
+   needs somewhere to live too.
+3. **P3 cleanup (#21–#26).** Roughly an hour, cuts ~5 MB and a dozen unused dependencies, and
+   would make the APK installable without the ABI workaround above.
+4. **#20** is not fixable as written — see the note in the P2 section.

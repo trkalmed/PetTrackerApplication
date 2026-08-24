@@ -71,7 +71,7 @@ public class FeedingActivity extends AppCompatActivity {
 
             DashboardStats stats = (pets == null || pets.isEmpty())
                     ? new DashboardStats()
-                    : DashboardStats.forPetToday(pets.get(0));
+                    : DashboardStats.forPetToday(getApplicationContext(), pets.get(0));
 
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;

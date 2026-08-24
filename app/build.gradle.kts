@@ -40,6 +40,13 @@ android {
         }
     }
 
+    // The migration test reads the exported schemas from assets.
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/schemas")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -85,4 +92,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    // Drives real SQLite through each Migration and validates the result
+    // against the exported schema JSON.
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
 }

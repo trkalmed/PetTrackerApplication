@@ -1,8 +1,8 @@
 # Pet Tracker — Punch List
 
-State: P0, P1 (#4-#9), P2 (#12-#19) and P3 (#21-#25, #27-#32) fixed on 2026-08-24.
-Open: #10 (real data), #11 (cloud sync, deferred), #20 (not fixable as written),
-#26 applicationId. See "Verification status" for what was driven on a device.
+State: P0-P3 done; #10 backend built and tested, awaiting Pi hardware. 2026-08-24.
+Open: Pi hardware (feeder/load cell), motion sensors, GPS, #11 cloud sync (held),
+#20, #26. See "Verification status" for what is proven versus assumed.
 
 ---
 
@@ -47,7 +47,7 @@ Gitignored, so local-only. Installed: platforms 31/35/36, build-tools 35.0.1.
 
 ---
 
-## P1 — ✅ #4–#9 FIXED (2026-08-24) · #10 still open
+## P1 — ✅ #4–#9 FIXED · #10 backend ready, awaiting hardware
 
 Compiles and installs; app launches clean. See "Verification status" at the bottom for what
 is and is not confirmed by hand.
@@ -110,25 +110,52 @@ Not in the original list, but making the tabs actually navigate (#4, #7) exposed
 selected tab was only set in `onCreate`, so returning from Live left "Live" highlighted while
 you were on Home. Both `MainMenuActivity` and `FeedingActivity` now re-assert their own tab in
 `onResume`.
+### 10. Dashboard data — ⚙️ BACKEND READY (2026-08-24) · awaiting Pi hardware
 
-### 10. The entire dashboard is permanently in the "no data" state — STILL OPEN
-`DashboardStats.forPetToday(pet)` returns `new DashboardStats()` — every field null/empty
-(`DashboardStats.java:60`). Deliberately left alone: this is feature work needing hardware
-that does not exist yet, and inventing numbers would be worse than the honest empty state.
-Its own TODO is the real backlog:
+`DashboardStats.forPetToday(context, pet)` now reads real stored readings instead of
+returning an empty object. The local data layer is built and tested; what is missing is the
+hardware, not the app.
 
-- **Feeder** → `gramsEaten`, `meals` — no endpoint exists yet.
-- **Motion sensors** → `rooms`, `currentRoom` — no table, no transport.
-- **Pi camera** → `cameraOnline`, `detectionsToday`, `lastDetectionTime` —
-  `PiConnectionManager` only stores an IP; nothing pings the Pi or persists detections.
-- **GPS** → `lastGpsFixAgo` — no location permission in the manifest, no provider, nothing.
+**Done — the backend the Pi work plugs into:**
+- Room v3 with two new tables, `feeding_events` and `detection_events`, both keyed on the
+  pet and indexed on `(petId, timestampMillis)`, both cascading on pet delete.
+- A real `MIGRATION_2_3` — the first migration written against the schema baseline P2 set
+  up. Existing pets survive it.
+- `PetDataRepository` — **the integration seam**. Whatever transport ends up carrying the
+  data (HTTP poll, socket, broker), it only has to call `recordFeeding(...)` or
+  `recordDetection(...)`. Nothing above this class knows where a reading came from, so the
+  transport can be written and swapped without touching a single screen.
+- `DayRange` — "today" as a local-day window, so a meal at 23:30 belongs to the day the
+  owner just had rather than to tomorrow in UTC. Handles daylight-saving days correctly.
+- **Detections are live already.** The detector was computing sightings on every frame and
+  throwing them away; `DetectionRecorder` now stores them, filtered to COCO's animal classes
+  (a sofa is not a pet sighting) and throttled to one row per label per 30 s (at ~15 fps a
+  row per frame would be tens of thousands of inserts an hour saying nothing extra).
 
-Until this lands, the dashboard, the Food tab and the pet detail summary all render setup
-prompts. That is now the *only* thing standing between the app and a working flow — every
-screen is reachable, they are just empty.
+**Feeder / load cell — ready to receive, nothing sending yet.**
+`FeedingEvent` records what was *measured* rather than assuming how: `TYPE_EATEN` for a drop
+in load-cell weight, `TYPE_DISPENSED` for what the feeder put in. Both are stored; only
+EATEN drives the dashboard, since they are not the same number. Negative grams and unknown
+types are rejected at the door rather than poisoning totals downstream.
 
+When the Pi is ready, the whole integration is one call:
+
+```java
+new PetDataRepository(context).recordMealEaten(petId, grams, "feeder-01");
+```
+
+**Still genuinely open — no hardware, no data model yet:**
+- **Motion sensors** → `rooms`, `currentRoom`. Deliberately not modelled: guessing at a
+  presence/event shape before the sensors exist would mean rewriting it later.
+- **GPS** → `lastGpsFixAgo`. No location permission, no provider, and a design question the
+  schema cannot answer: the *phone's* location is not the *pet's*. This needs a collar or
+  tag reporting in, which is a hardware decision.
+
+Both stay empty on purpose, so those cards keep showing setup prompts rather than inventing
+numbers.
 
 ---
+
 ## P2 — ✅ #12–#19 FIXED (2026-08-24) · #11 deferred · #20 not fixable as written
 
 Verified by driving the app on the emulator, not just compiling — see "Verification status".
@@ -338,7 +365,16 @@ Replacing the two untouched Android Studio templates:
 | Dashboard / Food / Settings copy after the string extraction (#27) | every label renders, apostrophes escape correctly ("TODAY'S MEALS"), no blank fields |
 
 **Automated:**
-- 13 unit tests, all passing (`MjpegInputStreamTest`, `DashboardStatsTest`).
+- **39 tests, all passing.** 21 unit (`DayRangeTest`, `MjpegInputStreamTest`,
+  `DashboardStatsTest`) and 18 instrumented on an API 35 emulator (`MigrationTest`,
+  `PetDataRepositoryTest`).
+- `MigrationTest` drives `MIGRATION_2_3` through real SQLite and validates the result
+  against the exported schema JSON, so a typo in the CREATE statements fails there rather
+  than on a phone after the pets are already gone. It also asserts existing pets survive.
+- `PetDataRepositoryTest` covers the Pi integration seam end to end against a real database:
+  grams summed per local day, yesterday excluded, DISPENSED not counted as EATEN, negative
+  and unknown readings rejected, camera liveness window, cascade delete, and that rooms/GPS
+  stay empty.
 - Every `findViewById` id resolves against the layout its activity inflates — 10 activities.
 - Every `ConstraintLayout` constraint target resolves within its own layout.
 - Zero unused drawables; zero hardcoded user-facing strings in layouts.
@@ -364,17 +400,24 @@ Output lands in `app/build/intermediates/apk/debug/` and is marked test-only, so
 with `adb install -r -t`.
 
 ---
-
 ## What is left
 
-1. **#10 — real data.** The one thing between this and a working app. Every screen is
-   reachable, every empty state is honest — they are simply empty. The feeder endpoint,
-   motion-sensor storage, detection persistence and GPS all need a backend that does not
-   exist yet.
-2. **#11 — cloud sync.** Deferred to be designed together with #10, since the hardware data
-   needs somewhere to live too.
-3. **#26 — `applicationId`**, to be renamed together with registering the new package in
-   the Firebase console.
-4. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note for the
-   real options.
-5. Smoke-test a signed release build, given shrinking is now on.
+1. **The Pi side.** Auto feeder + load cell first, then whatever carries readings to the
+   phone. The app end is done and tested — see #10 for the one call the integration needs.
+2. **Motion sensors** → `rooms` / `currentRoom`. Not modelled yet, on purpose: the event
+   shape should follow the hardware rather than be guessed at now.
+3. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the phone's location is not the pet's.
+4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing when you come
+   back to it: the local layer was built so this stays a clean addition. Readings are
+   append-only rows with their own timestamps and an explicit source field, which is the
+   shape that syncs and de-duplicates well. The counterweights are Firestore's free-tier
+   read/write quota against per-frame-ish detection volume (the 30 s throttle helps), rules
+   to write, and an offline/conflict story. Nothing done so far forecloses either choice.
+5. **#26 — `applicationId`**, renamed together with registering the new package in Firebase.
+6. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note.
+7. **Smoke-test a signed release build**, since shrinking is on and only build-time verified.
+
+### Housekeeping worth doing eventually
+`feeding_events` and `detection_events` grow without bound. `deleteOlderThan(...)` exists on
+both DAOs but nothing calls it — wire it to a retention window once there is real data volume
+to reason about.

@@ -52,6 +52,9 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
     private CocoObjectDetector cocoDetector;
     private volatile boolean detectionBusy = false;
 
+    /** Stores sightings. Null when no pet is active — nothing to attribute them to. */
+    private DetectionRecorder detectionRecorder;
+
     private ExecutorService cameraExecutor;
 
     private final ActivityResultLauncher<String> cameraPermissionLauncher =
@@ -109,9 +112,25 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Sightings are attributed to the pet the dashboard is tracking. With no
+     * pet chosen there is nothing to attribute them to, so nothing is stored —
+     * the live view still works, it just does not log.
+     */
+    private DetectionRecorder createRecorder(String source) {
+        long petId = Prefs.getActivePetId(this);
+        if (petId <= 0) {
+            Log.i(TAG, "No active pet; detections will not be recorded");
+            return null;
+        }
+        return new DetectionRecorder(this, petId, source);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
+        if (detectionRecorder != null) detectionRecorder.close();
 
         piStreamRunning = false;
         if (piStreamThread != null) {
@@ -185,6 +204,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
         try {
             List<Detection> detections = cocoDetector.detect(bitmap);
             graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+            if (detectionRecorder != null) detectionRecorder.onDetections(detections);
         } catch (Exception e) {
             Log.e(TAG, "Detection failed", e);
         } finally {
@@ -247,6 +267,7 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
                 detectionBusy = true;
                 List<Detection> detections = cocoDetector.detect(bitmap);
                 graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+                if (detectionRecorder != null) detectionRecorder.onDetections(detections);
                 detectionBusy = false;
             }
         } catch (Exception e) {

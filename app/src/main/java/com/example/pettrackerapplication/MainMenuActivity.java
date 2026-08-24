@@ -140,17 +140,23 @@ public class MainMenuActivity extends AppCompatActivity {
                     .petDao()
                     .getPetsForOwner(ownerId);
 
+            // Pick the pet and read its stats here, not in runOnUiThread:
+            // forPetToday hits the database and Room refuses to run on the
+            // main thread.
+            final Pet pet = (pets == null || pets.isEmpty()) ? null : pickActive(pets);
+            final DashboardStats stats = pet == null
+                    ? null : DashboardStats.forPetToday(getApplicationContext(), pet);
+
             runOnUiThread(() -> {
                 // The query outlives a rotation or a back press; touching views
                 // after that throws. Nothing to update once we are going away.
                 if (isFinishing() || isDestroyed()) return;
 
-                if (pets == null || pets.isEmpty()) {
+                if (pet == null) {
                     showNoPets();
                 } else {
-                    Pet pet = pickActive(pets);
                     showPet(pet);
-                    render(DashboardStats.forPetToday(pet));
+                    render(stats);
                 }
             });
         }).start();
@@ -161,7 +167,7 @@ public class MainMenuActivity extends AppCompatActivity {
      * when that pet is deleted or the account changes, so fall back rather than
      * showing an empty dashboard next to a non-empty pet list.
      */
-    private Pet pickActive(List<Pet> pets) {
+    private Pet pickActive(List<Pet> pets) {   // called on the worker thread
         long activeId = Prefs.getActivePetId(this);
         for (Pet pet : pets) {
             if (pet.getId() == activeId) return pet;

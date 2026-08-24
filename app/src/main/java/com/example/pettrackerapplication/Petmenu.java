@@ -134,6 +134,11 @@ public class Petmenu extends AppCompatActivity {
             AppDatabase db  = AppDatabase.getInstance(getApplicationContext());
             Pet         pet = db.petDao().getPetById(petId, ownerId);
 
+            // Read the stats here too — bindPetToViews runs on the UI thread,
+            // and forPetToday queries the database.
+            final DashboardStats stats = pet == null
+                    ? null : DashboardStats.forPetToday(getApplicationContext(), pet);
+
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
 
@@ -141,7 +146,7 @@ public class Petmenu extends AppCompatActivity {
                     Toast.makeText(this, getString(R.string.pet_not_found), Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
-                    bindPetToViews(pet);
+                    bindPetToViews(pet, stats);
                 }
             });
         }).start();
@@ -190,7 +195,7 @@ public class Petmenu extends AppCompatActivity {
         }).start();
     }
 
-    private void bindPetToViews(Pet pet) {
+    private void bindPetToViews(Pet pet, DashboardStats stats) {
         currentPet = pet;
         setDetailMenuVisible(true);
         toolbar.setTitle(pet.getName());
@@ -204,12 +209,10 @@ public class Petmenu extends AppCompatActivity {
         tvBirthdateDetail.setText(emptyOrValue(pet.getBirthdate(), R.string.em_dash));
         tvNotesDetail.setText(emptyOrValue(pet.getNotes(), R.string.no_notes_value));
 
-        // These two rows were repurposed by the dashboard redesign: steps and distance
-        // are gone (no hardware produces them), replaced by grams from the feeder and
-        // minutes from the room sensors. Both read from DashboardStats, so both stay
-        // empty until that reports real values — see DashboardStats.forPetToday.
-        DashboardStats stats = DashboardStats.forPetToday(pet);
-
+        // These two rows were repurposed by the dashboard redesign: steps and
+        // distance are gone (no hardware produces them), replaced by grams from
+        // the feeder and minutes from the room sensors. Grams are real now;
+        // rooms stay empty until motion sensors exist.
         tvFoodToday.setText(stats.gramsEaten == null
                 ? "Food today: no feeder paired"
                 : "Food today: " + stats.gramsEaten + " g");

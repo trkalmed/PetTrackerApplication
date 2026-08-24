@@ -1,5 +1,7 @@
 package com.example.pettrackerapplication;
 
+import android.content.Context;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,12 +52,16 @@ public class DashboardStats {
     }
 
     /**
-     * TODO Replace with the real read: PiConnectionManager for camera + detections,
-     * the feeder endpoint for grams, and the motion-sensor table for room minutes.
-     * Returning an empty object is correct until then — the UI renders setup
-     * prompts rather than inventing numbers.
+     * Today's numbers for one pet, read from the local database.
+     *
+     * Feeder grams and camera detections come from real stored readings now.
+     * Room occupancy and GPS still have no source — no motion sensors, no collar
+     * tag — so those fields stay empty and the screens keep showing setup
+     * prompts, which is the honest thing to render.
+     *
+     * Hits the database, so call it from a background thread.
      */
-    public static DashboardStats forPetToday(Pet pet) {
-        return new DashboardStats();
+    public static DashboardStats forPetToday(Context context, Pet pet) {
+        return new PetDataRepository(context).statsForToday(pet);
     }
 }

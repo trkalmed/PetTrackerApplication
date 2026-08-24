@@ -47,6 +47,12 @@ android {
         }
     }
 
+    // RectF is used by the overlay's pure mapping maths; without this the
+    // unit test hits "not mocked" instead of running.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

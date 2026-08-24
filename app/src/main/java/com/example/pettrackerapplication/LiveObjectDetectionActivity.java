@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Size;
@@ -98,9 +99,15 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
             // The layout shipped with a hardcoded "Kitchen"; say which feed this
             // actually is, since the two look nothing alike in practice.
             tvCameraName.setText(R.string.pi_camera);
+            // piStreamView is fitCenter: the whole frame is visible, letterboxed.
+            graphicOverlay.setScaleMode(BoxMapper.ScaleMode.FIT_CENTER);
+            detectionRecorder = createRecorder(DetectionEvent.SOURCE_PI);
             startPiStream();
         } else {
             tvCameraName.setText(R.string.phone_camera);
+            // PreviewView defaults to FILL_CENTER: fills the view and crops.
+            graphicOverlay.setScaleMode(BoxMapper.ScaleMode.FILL_CENTER);
+            detectionRecorder = createRecorder(DetectionEvent.SOURCE_PHONE);
 
             cameraExecutor = Executors.newSingleThreadExecutor();
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -262,20 +269,39 @@ public class LiveObjectDetectionActivity extends AppCompatActivity {
     @OptIn(markerClass = ExperimentalGetImage.class)
     private void analyzeFrame(ImageProxy imageProxy) {
         try {
+            if (detectionBusy) return;
+
             Bitmap bitmap = imageProxy.toBitmap();
-            if (bitmap != null && !detectionBusy) {
-                detectionBusy = true;
-                List<Detection> detections = cocoDetector.detect(bitmap);
-                graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
-                if (detectionRecorder != null) detectionRecorder.onDetections(detections);
-                detectionBusy = false;
-            }
+            if (bitmap == null) return;
+
+            // toBitmap() hands back the sensor buffer as-is; the rotation needed
+            // to make it upright lives in the image info. Skipping this feeds the
+            // detector a sideways scene, and COCO models are trained on upright
+            // images, so accuracy falls off a cliff in portrait.
+            bitmap = rotateUpright(bitmap, imageProxy.getImageInfo().getRotationDegrees());
+
+            detectionBusy = true;
+            List<Detection> detections = cocoDetector.detect(bitmap);
+            graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+            if (detectionRecorder != null) detectionRecorder.onDetections(detections);
+            detectionBusy = false;
         } catch (Exception e) {
             Log.e(TAG, "Detection failed", e);
             detectionBusy = false;
         } finally {
             imageProxy.close();
         }
+    }
+
+    /** Returns an upright copy, or the original when there is nothing to do. */
+    private static Bitmap rotateUpright(Bitmap source, int rotationDegrees) {
+        if (rotationDegrees == 0) return source;
+        Matrix matrix = new Matrix();
+        matrix.postRotate(rotationDegrees);
+        Bitmap rotated = Bitmap.createBitmap(
+                source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
+        if (rotated != source) source.recycle();
+        return rotated;
     }
 
 }

@@ -16,6 +16,17 @@ import org.tensorflow.lite.task.vision.detector.Detection;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Draws detector output over the camera feed.
+ *
+ * The tricky part is mapping detector coordinates onto the view. Boxes come back
+ * in the analysed image's pixel space, but the view underneath does not show that
+ * image one-to-one: {@code PreviewView} fills and crops, the Pi's {@code ImageView}
+ * letterboxes. The old code scaled x and y independently by the view/image ratio,
+ * which is only correct if the view happens to match the image aspect exactly —
+ * otherwise every box is offset and the wrong shape. {@link ScaleMode} exists so
+ * the same maths as the view underneath is applied here.
+ */
 public class GraphicOverlay extends View {
 
     private final Paint boxPaint;
@@ -25,6 +36,10 @@ public class GraphicOverlay extends View {
     private final List<Detection> detections = new ArrayList<>();
     private int imageWidth = 0;
     private int imageHeight = 0;
+    private BoxMapper.ScaleMode scaleMode = BoxMapper.ScaleMode.FILL_CENTER;
+
+    /** Overrides the detector's label, so a box can say "Biscuit" not "cat". */
+    private String displayName;
 
     private final int[] colors = {
             Color.parseColor("#FF5722"),
@@ -59,10 +74,19 @@ public class GraphicOverlay extends View {
         bgPaint.setAlpha(160);
     }
 
+    public void setScaleMode(BoxMapper.ScaleMode mode) {
+        this.scaleMode = mode;
+    }
+
+    /** Name shown instead of the COCO class, or null to show the class. */
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     /**
-     * Each Detection from the COCO TFLite model already carries its own
-     * label + confidence score, so no separate label map is needed here
-     * (unlike the old ML Kit version of this class).
+     * @param imgWidth  width of the bitmap the detector actually saw — after any
+     *                  rotation, not the raw sensor buffer
+     * @param imgHeight height of that same bitmap
      */
     public synchronized void setResults(
             List<Detection> newDetections, int imgWidth, int imgHeight) {
@@ -78,17 +102,14 @@ public class GraphicOverlay extends View {
         super.onDraw(canvas);
         if (imageWidth == 0 || imageHeight == 0) return;
 
-        float scaleX = getWidth() / (float) imageWidth;
-        float scaleY = getHeight() / (float) imageHeight;
-
         for (int i = 0; i < detections.size(); i++) {
             Detection detection = detections.get(i);
-            RectF box = detection.getBoundingBox();
 
-            float left   = box.left   * scaleX;
-            float top    = box.top    * scaleY;
-            float right  = box.right  * scaleX;
-            float bottom = box.bottom * scaleY;
+            RectF box = detection.getBoundingBox();
+            float[] mapped = BoxMapper.map(box.left, box.top, box.right, box.bottom,
+                    imageWidth, imageHeight, getWidth(), getHeight(), scaleMode);
+            float left = mapped[0], top = mapped[1];
+            float right = mapped[2], bottom = mapped[3];
 
             int color = colors[i % colors.length];
             boxPaint.setColor(color);
@@ -98,19 +119,23 @@ public class GraphicOverlay extends View {
 
             float textWidth  = textPaint.measureText(label);
             float textHeight = textPaint.getTextSize();
-            bgPaint.setColor(color);
-            canvas.drawRect(left, top - textHeight - 8,
-                    left + textWidth + 16, top, bgPaint);
 
-            canvas.drawText(label, left + 8, top - 8, textPaint);
+            // Keep the caption on screen when the box touches the top edge,
+            // otherwise it is drawn off the canvas and simply never seen.
+            float captionBottom = top < textHeight + 8 ? bottom + textHeight + 8 : top;
+
+            bgPaint.setColor(color);
+            canvas.drawRect(left, captionBottom - textHeight - 8,
+                    left + textWidth + 16, captionBottom, bgPaint);
+            canvas.drawText(label, left + 8, captionBottom - 8, textPaint);
         }
     }
 
     private String buildLabel(Detection detection) {
         List<Category> categories = detection.getCategories();
-        if (categories.isEmpty()) return "Object";
+        if (categories.isEmpty()) return displayName != null ? displayName : "Object";
         Category best = categories.get(0);
-        return best.getLabel() + " (" +
-                String.format("%.0f", best.getScore() * 100f) + "%)";
+        String name = displayName != null ? displayName : best.getLabel();
+        return name + " (" + String.format("%.0f", best.getScore() * 100f) + "%)";
     }
 }

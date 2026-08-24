@@ -6,10 +6,7 @@ import android.util.Log;
 import org.tensorflow.lite.support.label.Category;
 import org.tensorflow.lite.task.vision.detector.Detection;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -18,9 +15,9 @@ import java.util.concurrent.Executors;
  *
  * Two filters, both load-bearing:
  *
- *  1. **Animals only.** COCO knows eighty classes and the living room is full of
- *     sofas and potted plants. Storing a chair as a pet sighting would make
- *     "detections today" meaningless.
+ *  1. **Animals only**, per {@link PetLabels}. COCO knows eighty classes and a
+ *     living room is full of sofas and potted plants; storing a chair as a pet
+ *     sighting would make "detections today" meaningless.
  *  2. **Throttling.** The detector runs on every frame it can keep up with. One
  *     row per frame would be tens of thousands of inserts an hour and would not
  *     say anything a sighting every {@value #THROTTLE_MS} ms does not.
@@ -34,10 +31,6 @@ public final class DetectionRecorder {
 
     /** Minimum gap between stored sightings of the same label. */
     private static final long THROTTLE_MS = 30_000L;
-
-    /** COCO's animal classes. Anything else in frame is furniture. */
-    private static final Set<String> ANIMAL_LABELS = new HashSet<>(Arrays.asList(
-            "cat", "dog", "bird", "horse", "sheep", "cow", "bear"));
 
     private final PetDataRepository repository;
     private final ExecutorService writer = Executors.newSingleThreadExecutor();
@@ -69,7 +62,9 @@ public final class DetectionRecorder {
 
             Category best = categories.get(0);
             String label = best.getLabel();
-            if (label == null || !ANIMAL_LABELS.contains(label.toLowerCase())) continue;
+            // Belt and braces: the detector already allow-lists these, but this
+            // class must not depend on how it was configured.
+            if (!PetLabels.isAnimal(label)) continue;
 
             Long previous = lastStoredAt.get(label);
             if (previous != null && now - previous < THROTTLE_MS) continue;

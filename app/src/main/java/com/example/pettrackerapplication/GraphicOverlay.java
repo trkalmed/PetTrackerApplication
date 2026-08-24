@@ -33,7 +33,11 @@ public class GraphicOverlay extends View {
     private final Paint textPaint;
     private final Paint bgPaint;
 
+    /** How long a box survives frames with no detection, to stop it strobing. */
+    private static final long HOLD_MS = 400L;
+
     private final List<Detection> detections = new ArrayList<>();
+    private long lastNonEmptyAt = 0L;
     private int imageWidth = 0;
     private int imageHeight = 0;
     private BoxMapper.ScaleMode scaleMode = BoxMapper.ScaleMode.FILL_CENTER;
@@ -90,8 +94,22 @@ public class GraphicOverlay extends View {
      */
     public synchronized void setResults(
             List<Detection> newDetections, int imgWidth, int imgHeight) {
+        boolean empty = newDetections == null || newDetections.isEmpty();
+
+        // A detector drops the odd frame even while the cat sits still, and
+        // clearing on every one of those makes the boxes strobe. Hold the last
+        // result briefly instead: if the pet really has left, the boxes still
+        // disappear within HOLD_MS.
+        if (empty && !detections.isEmpty()
+                && System.currentTimeMillis() - lastNonEmptyAt < HOLD_MS) {
+            return;
+        }
+
         detections.clear();
-        if (newDetections != null) detections.addAll(newDetections);
+        if (!empty) {
+            detections.addAll(newDetections);
+            lastNonEmptyAt = System.currentTimeMillis();
+        }
         imageWidth = imgWidth;
         imageHeight = imgHeight;
         postInvalidate();

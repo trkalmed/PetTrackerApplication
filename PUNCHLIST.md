@@ -402,20 +402,27 @@ with `adb install -r -t`.
 ---
 ## What is left
 
-1. **The Pi side.** Auto feeder + load cell first, then whatever carries readings to the
-   phone. The app end is done and tested — see #10 for the one call the integration needs.
-2. **Motion sensors** → `rooms` / `currentRoom`. Not modelled yet, on purpose: the event
-   shape should follow the hardware rather than be guessed at now.
-3. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the phone's location is not the pet's.
-4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing when you come
+1. **The Pi side.** The service now exists in `pi/` — HTTP contract, event buffering, meal
+   detection and MJPEG streaming, all built and tested against simulated sensors. Run
+   `python3 pi/run.py --fake` and point the app at it. What is left there is hardware:
+   wiring each sensor and filling in the stubs in `pi/pettracker/sensors/real.py`, one at a
+   time, watching `/health`.
+2. **The app-side poller.** Nothing in the Android app calls `GET /events` yet. That is the
+   remaining software gap between the two halves: poll the Pi, walk the cursor, and feed
+   each event into `PetDataRepository.recordFeeding(...)`. See `pi/README.md` for the
+   contract.
+3. **Motion sensors** → `rooms` / `currentRoom`. The Pi emits `motion` events with a room
+   name already; the Android side still has no table or aggregation for them.
+4. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not the pet's.
+5. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing when you come
    back to it: the local layer was built so this stays a clean addition. Readings are
    append-only rows with their own timestamps and an explicit source field, which is the
    shape that syncs and de-duplicates well. The counterweights are Firestore's free-tier
    read/write quota against per-frame-ish detection volume (the 30 s throttle helps), rules
    to write, and an offline/conflict story. Nothing done so far forecloses either choice.
-5. **#26 — `applicationId`**, renamed together with registering the new package in Firebase.
-6. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note.
-7. **Smoke-test a signed release build**, since shrinking is on and only build-time verified.
+6. **#26 — `applicationId`**, renamed together with registering the new package in Firebase.
+7. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note.
+8. **Smoke-test a signed release build**, since shrinking is on and only build-time verified.
 
 ### Housekeeping worth doing eventually
 `feeding_events` and `detection_events` grow without bound. `deleteOlderThan(...)` exists on

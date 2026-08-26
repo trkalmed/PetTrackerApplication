@@ -172,7 +172,7 @@
                     android:layout_height="56dp"
                     android:layout_marginTop="24dp"
                     android:backgroundTint="@color/primary"
-                    tools:text="Login"
+                    android:text="@string/login"
                     android:textAllCaps="false"
                     android:textColor="@color/on_primary"
                     android:textSize="16sp"

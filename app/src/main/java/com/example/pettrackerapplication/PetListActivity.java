@@ -22,11 +22,11 @@ import java.util.List;
  * My pets. Tapping a row picks the pet the dashboard tracks; the overflow on
  * each row holds Details / Edit / Delete.
  */
-public class PetListActivity extends AppCompatActivity implements PetsAdapter.OnPetClickListener {
+public class PetListActivity extends AppCompatActivity implements Petmenu.PetsAdapter.OnPetClickListener {
 
     private RecyclerView rvPets;
     private View         emptyPets;
-    private PetsAdapter  adapter;
+    private Petmenu.PetsAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,7 +42,7 @@ public class PetListActivity extends AppCompatActivity implements PetsAdapter.On
         rvPets    = findViewById(R.id.rvPets);
         emptyPets = findViewById(R.id.emptyPets);
 
-        adapter = new PetsAdapter(new ArrayList<>(), this);
+        adapter = new Petmenu.PetsAdapter(new ArrayList<>(), this);
         rvPets.setLayoutManager(new LinearLayoutManager(this));
         rvPets.setAdapter(adapter);
     }

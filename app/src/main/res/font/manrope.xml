@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Body and UI face.
+
+  The patch shipped this expecting two static TTFs, manrope_regular.ttf and
+  manrope_bold.ttf, which are not in the project. What is here instead is the
+  variable font, whose wght axis covers the whole range in one file — so both
+  weights point at the same TTF and pick their instance with
+  fontVariationSettings. One 163 KB file rather than two, and any intermediate
+  weight is available later without adding another.
+
+  fontVariationSettings needs API 26; minSdk is 26.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/manrope_variable"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        android:fontVariationSettings="'wght' 400" />
+    <font
+        android:font="@font/manrope_variable"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        android:fontVariationSettings="'wght' 700" />
+</font-family>

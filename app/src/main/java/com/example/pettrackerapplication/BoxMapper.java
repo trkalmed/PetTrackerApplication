@@ -1,18 +1,6 @@
 package com.example.pettrackerapplication;
 
-/**
- * Maps detector boxes from image pixels to view pixels.
- *
- * Plain arithmetic on floats, deliberately free of {@code RectF} and any other
- * Android type, so it runs in an ordinary JVM unit test. This is where the
- * overlay used to be wrong, and the failure mode — boxes near the right place
- * but subtly offset and the wrong shape — is very easy to miss by eye and very
- * easy to blame on the model instead.
- *
- * A view never distorts the image: it scales uniformly, then either letterboxes
- * the remainder or crops the overflow. So there is one scale factor, not one per
- * axis, plus a centring offset that simply goes negative when cropping.
- */
+
 public final class BoxMapper {
 
     /** How the view beneath the overlay fits the image. */

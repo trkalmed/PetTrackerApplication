@@ -23,11 +23,6 @@ public interface DetectionDao {
             + "ORDER BY timestampMillis DESC LIMIT 1")
     DetectionEvent getMostRecentInRange(long petId, long fromMillis, long toMillis);
 
-    /**
-     * Timestamp of the newest sighting, or null if there are none.
-     * Used as the camera's liveness proxy: a detection means the camera was
-     * demonstrably working at that moment.
-     */
     @Query("SELECT MAX(timestampMillis) FROM detection_events WHERE petId = :petId")
     Long getMostRecentTimestamp(long petId);
 

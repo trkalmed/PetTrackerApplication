@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DARK. Green chassis, aqua accent, its own room hues. -->
+<resources>
+    <color name="primary">#2F8259</color>
+    <color name="primary_dark">#6FD39B</color>
+    <color name="primary_light">#1E4436</color>
+    <color name="primary_tint">#163023</color>
+    <color name="on_primary">#F2FBF4</color>
+
+    <color name="accent_2">#5AC8E8</color>
+    <color name="accent_2_dark">#9FE2F2</color>
+    <color name="accent_2_light">#153039</color>
+    <color name="accent_2_tint">#122A31</color>
+
+    <color name="background">#0F1A14</color>
+    <color name="surface">#1A2A21</color>
+    <color name="surface_raised">#16241C</color>
+    <color name="divider">#24382C</color>
+
+    <color name="text_primary">#E6F0E8</color>
+    <color name="text_secondary">#93A79A</color>
+    <color name="text_disabled">#7A8C81</color>
+
+    <color name="header_start">#1B3A28</color>
+    <color name="header_end">#123C4C</color>
+
+    <color name="tab_home">#6FD39B</color>
+    <color name="tab_live">#5AC8E8</color>
+    <color name="tab_food">#E8B85C</color>
+    <color name="tab_settings">#A8C86B</color>
+
+    <color name="room_1">#F2748C</color>
+    <color name="room_2">#E8B85C</color>
+    <color name="room_3">#5AC8E8</color>
+    <color name="room_4">#9BE07A</color>
+
+    <color name="ramp_1">#F2748C</color>
+    <color name="ramp_2">#E8B85C</color>
+    <color name="ramp_3">#5AC8E8</color>
+    <color name="ramp_4">#9BE07A</color>
+
+    <color name="scrim_photo">#66000000</color>
+    <color name="danger">#F2748C</color>
+    <color name="danger_tint">#2A1A1D</color>
+</resources>

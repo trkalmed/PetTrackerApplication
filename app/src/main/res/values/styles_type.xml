@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Display face: names, numbers, card titles. Body stays Manrope. -->
+<resources>
+    <style name="TextAppearance.PetTracker.Display" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="fontFamily">@font/bricolage</item>
+        <item name="android:fontFamily">@font/bricolage</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+
+    <style name="TextAppearance.PetTracker.Number" parent="TextAppearance.PetTracker.Display">
+        <item name="android:textSize">44sp</item>
+    </style>
+
+    <style name="Widget.PetTracker.Button.Primary" parent="Widget.Material3.Button">
+        <item name="android:background">@drawable/bg_button_primary</item>
+        <item name="backgroundTint">@null</item>
+        <item name="android:textColor">@color/on_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="cornerRadius">999dp</item>
+    </style>
+</resources>

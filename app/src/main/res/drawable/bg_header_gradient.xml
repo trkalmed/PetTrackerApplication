@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Header block: green to teal, rounded bottom corners only. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="@color/header_start"
+        android:endColor="@color/header_end"
+        android:type="linear" />
+    <corners
+        android:topLeftRadius="0dp"
+        android:topRightRadius="0dp"
+        android:bottomLeftRadius="36dp"
+        android:bottomRightRadius="36dp" />
+</shape>

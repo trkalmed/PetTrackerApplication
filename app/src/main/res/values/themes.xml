@@ -1,17 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PetTrackerApplication" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.PetTrackerApplication" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorOnPrimary">@color/on_primary</item>
         <item name="colorPrimaryContainer">@color/primary_light</item>
-        <item name="colorOnPrimaryContainer">#643312</item>
+        <item name="colorOnPrimaryContainer">@color/primary_dark</item>
         <item name="colorSecondary">@color/accent_2</item>
         <item name="colorOnSecondary">@color/on_primary</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/text_primary</item>
         <item name="android:colorBackground">@color/background</item>
         <item name="colorOutline">@color/divider</item>
-        <item name="fontFamily">@font/poppins</item>
-        <item name="android:fontFamily">@font/poppins</item>
+        <item name="colorError">@color/danger</item>
+        <item name="fontFamily">@font/manrope</item>
+        <item name="android:fontFamily">@font/manrope</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.PetTracker.Display</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.PetTracker.Display</item>
+    </style>
+
+    <!-- AMOLED: applied on top of the dark theme, true black, no elevation -->
+    <style name="ThemeOverlay.PetTracker.Amoled" parent="">
+        <item name="android:colorBackground">#000000</item>
+        <item name="colorSurface">#000000</item>
+        <item name="colorSurfaceVariant">#000000</item>
+        <item name="colorOutline">#33FFFFFF</item>
+        <item name="colorPrimary">#6FD39B</item>
+        <item name="colorPrimaryContainer">#000000</item>
+        <item name="colorOnSurface">#EDF5EF</item>
+        <item name="elevationOverlayEnabled">false</item>
     </style>
 </resources>

@@ -172,16 +172,14 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnChangePassword"
+                    style="@style/Widget.PetTracker.Button.Primary"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginBottom="12dp"
-            android:backgroundTint="@color/primary"
             android:text="@string/send_password_reset_email"
             android:textAllCaps="false"
-            android:textColor="@android:color/white"
             android:textSize="15sp"
-            android:textStyle="bold"
-            app:cornerRadius="18dp" />
+            android:textStyle="bold"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLogout"

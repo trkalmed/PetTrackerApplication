@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="@color/background">
+    android:background="@drawable/bg_page_wash">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -168,16 +168,14 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnLogin"
+                    style="@style/Widget.PetTracker.Button.Primary"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
                     android:layout_marginTop="24dp"
-                    android:backgroundTint="@color/primary"
                     android:text="@string/login"
                     android:textAllCaps="false"
-                    android:textColor="@color/on_primary"
                     android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="999dp" />
+                    android:textStyle="bold"/>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnGoToRegister"

@@ -17,7 +17,6 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.PickVisualMediaRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.bumptech.glide.Glide;
 import com.google.android.material.button.MaterialButton;
@@ -39,7 +38,7 @@ import java.io.InputStream;
 import java.util.Calendar;
 import java.util.Locale;
 
-public class AddPetActivity extends AppCompatActivity {
+public class AddPetActivity extends ThemedActivity {
     private static final String TAG = "AddPetActivity";
     private MaterialCardView      cardPhoto;
     private ImageView             imgPreview;

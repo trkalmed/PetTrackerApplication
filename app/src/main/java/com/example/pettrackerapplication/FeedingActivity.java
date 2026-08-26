@@ -9,7 +9,6 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 
@@ -20,7 +19,7 @@ import com.google.firebase.auth.FirebaseUser;
 import java.util.List;
 
 /** The Food tab. Everything on it is grams the feeder actually weighed. */
-public class FeedingActivity extends AppCompatActivity {
+public class FeedingActivity extends ThemedActivity {
 
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
     private ProgressBar  barToday;
@@ -51,6 +50,7 @@ public class FeedingActivity extends AppCompatActivity {
         super.onResume();
         // Re-assert Food after returning from another tab. Its listener branch is a no-op.
         nav.setSelectedItemId(R.id.nav_food);
+        NavTint.apply(this, nav, R.id.nav_food);
         load();
     }
 
@@ -141,8 +141,10 @@ public class FeedingActivity extends AppCompatActivity {
     private void setupBottomNavigation() {
         nav = findViewById(R.id.bottomNav);
         nav.setSelectedItemId(R.id.nav_food);
+        NavTint.apply(this, nav, R.id.nav_food);
         nav.setOnItemSelectedListener(item -> {
             int id = item.getItemId();
+            NavTint.apply(this, nav, id);
             if (id == R.id.nav_food) return true;
             if (id == R.id.nav_home) {
                 // An explicit intent, not finish() — this screen is not always

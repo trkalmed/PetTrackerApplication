@@ -300,15 +300,13 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTracking"
+                    style="@style/Widget.PetTracker.Button.Primary"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginBottom="10dp"
-                android:backgroundTint="@color/primary"
                 android:text="@string/watch_live"
                 android:textAllCaps="false"
-                android:textColor="@color/on_primary"
                 android:textSize="16sp"
-                app:cornerRadius="999dp"
                 app:icon="@drawable/ic_camera_24"
                 app:iconGravity="textStart"
                 app:iconTint="@color/on_primary" />

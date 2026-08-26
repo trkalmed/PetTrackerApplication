@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="@drawable/bg_page_wash"
     android:fillViewport="true">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -369,16 +369,14 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSavePet"
+                    style="@style/Widget.PetTracker.Button.Primary"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
                     android:layout_marginTop="24dp"
-                    android:backgroundTint="@color/primary"
                     android:text="@string/save_pet"
                     android:textAllCaps="false"
-                    android:textColor="@android:color/white"
                     android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="18dp" />
+                    android:textStyle="bold"/>
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

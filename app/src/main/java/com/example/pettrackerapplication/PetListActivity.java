@@ -7,7 +7,6 @@ import android.widget.PopupMenu;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -22,7 +21,7 @@ import java.util.List;
  * My pets. Tapping a row picks the pet the dashboard tracks; the overflow on
  * each row holds Details / Edit / Delete.
  */
-public class PetListActivity extends AppCompatActivity implements Petmenu.PetsAdapter.OnPetClickListener {
+public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapter.OnPetClickListener {
 
     private RecyclerView rvPets;
     private View         emptyPets;

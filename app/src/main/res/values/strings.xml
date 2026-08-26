@@ -186,4 +186,9 @@
     <string name="creating_account">Creating account…</string>
     <string name="sign_up">Sign up</string>
     <string name="add_your_pet">Add your pet</string>
+    <string name="appearance">Appearance</string>
+    <string name="appearance_summary">Light, dark or true black</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_amoled">AMOLED</string>
 </resources>

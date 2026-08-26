@@ -2,21 +2,23 @@ package com.example.pettrackerapplication;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.TypedValue;
 import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
-public class SettingsActivity extends AppCompatActivity {
+public class SettingsActivity extends ThemedActivity {
 
     private static final boolean DEFAULT_SOUND_ENABLED = true;
     private static final int     DEFAULT_SOUND_VOLUME  = 70;
@@ -29,6 +31,9 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView         tvPiConnectionSummary;
     private MaterialSwitch   swSound;
     private SeekBar          sbSoundVolume;
+
+    private MaterialCardView tileLight, tileDark, tileAmoled;
+    private TextView         labelLight, labelDark, labelAmoled;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,6 +51,15 @@ public class SettingsActivity extends AppCompatActivity {
         tvPiConnectionSummary = findViewById(R.id.tvPiConnectionSummary);
         swSound               = findViewById(R.id.swSound);
         sbSoundVolume          = findViewById(R.id.sbSoundVolume);
+
+        tileLight   = findViewById(R.id.tileLight);
+        tileDark    = findViewById(R.id.tileDark);
+        tileAmoled  = findViewById(R.id.tileAmoled);
+        labelLight  = findViewById(R.id.labelLight);
+        labelDark   = findViewById(R.id.labelDark);
+        labelAmoled = findViewById(R.id.labelAmoled);
+
+        setupAppearance();
 
         // ── Account management — opens the Account screen ──────────────────
         cardAccountManagement.setOnClickListener(v ->
@@ -91,6 +105,57 @@ public class SettingsActivity extends AppCompatActivity {
         super.onResume();
         // Refresh in case the IP was changed from Petmenu since this screen was last shown
         updatePiConnectionSummary();
+    }
+
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Appearance
+    // ══════════════════════════════════════════════════════════════════════
+
+    private void setupAppearance() {
+        findViewById(R.id.themeLight).setOnClickListener(
+                v -> chooseTheme(ThemeManager.LIGHT));
+        findViewById(R.id.themeDark).setOnClickListener(
+                v -> chooseTheme(ThemeManager.DARK));
+        findViewById(R.id.themeAmoled).setOnClickListener(
+                v -> chooseTheme(ThemeManager.AMOLED));
+
+        markSelectedTheme();
+    }
+
+    private void chooseTheme(@ThemeManager.Mode String mode) {
+        if (mode.equals(ThemeManager.current(this))) return;
+
+        ThemeManager.apply(this, mode);
+
+        // Light <-> Dark recreates every started activity on its own, because
+        // the night resource set changes. Switching between Dark and AMOLED does
+        // not: both are night modes, and the difference is a theme overlay that
+        // is only read as an activity is built. So force it.
+        recreate();
+    }
+
+    /** Rings the chosen tile and bolds its label. */
+    private void markSelectedTheme() {
+        String mode = ThemeManager.current(this);
+
+        style(tileLight, labelLight, ThemeManager.LIGHT.equals(mode));
+        style(tileDark, labelDark, ThemeManager.DARK.equals(mode));
+        style(tileAmoled, labelAmoled, ThemeManager.AMOLED.equals(mode));
+    }
+
+    private void style(MaterialCardView tile, TextView label, boolean selected) {
+        tile.setStrokeWidth(dp(selected ? 3 : 1));
+        tile.setStrokeColor(ContextCompat.getColor(
+                this, selected ? R.color.primary : R.color.divider));
+        label.setTextColor(ContextCompat.getColor(
+                this, selected ? R.color.text_primary : R.color.text_secondary));
+        label.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
+    private int dp(int value) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics());
     }
 
     // ══════════════════════════════════════════════════════════════════════

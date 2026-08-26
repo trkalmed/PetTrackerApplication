@@ -11,7 +11,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 
@@ -35,7 +34,7 @@ import java.util.List;
  *  3. Bottom nav is four destinations (Home / Live / Food / Settings). "Add pet"
  *     is a create action and moved to the FAB.
  */
-public class MainMenuActivity extends AppCompatActivity {
+public class MainMenuActivity extends ThemedActivity {
 
     private ImageView imgPetAvatar;
     private TextView  tvPetName, tvPetSubtitle;
@@ -59,9 +58,16 @@ public class MainMenuActivity extends AppCompatActivity {
     /** The pet currently on screen. Null until one loads, or when the owner has none. */
     private Pet currentPet;
 
-    /** Room bar colours: accent, accent-400, sage, sage-300. Cycles if there are more rooms. */
+    /**
+     * One hue per room, cycling if there are more rooms than colours.
+     *
+     * Colour resources rather than literals so the dark palette can differ:
+     * the light hues are too saturated to sit on a dark ground, and
+     * values-night/colors.xml overrides all four. The bar and its legend read
+     * the same array, so they cannot drift apart.
+     */
     private static final int[] ROOM_COLORS = {
-            0xFFC67139, 0xFFF6A06B, 0xFF8FA073, 0xFFCCDBB2
+            R.color.room_1, R.color.room_2, R.color.room_3, R.color.room_4
     };
 
     @Override
@@ -99,6 +105,7 @@ public class MainMenuActivity extends AppCompatActivity {
         // Coming back from another tab leaves that tab highlighted, so re-assert
         // Home. Safe to fire the listener: its nav_home branch is a no-op.
         bottomNav.setSelectedItemId(R.id.nav_home);
+        NavTint.apply(this, bottomNav, R.id.nav_home);
         loadActivePet();
     }
 
@@ -282,7 +289,7 @@ public class MainMenuActivity extends AppCompatActivity {
 
         for (int i = 0; i < s.rooms.size(); i++) {
             DashboardStats.RoomStay stay = s.rooms.get(i);
-            int color = ROOM_COLORS[i % ROOM_COLORS.length];
+            int color = ContextCompat.getColor(this, ROOM_COLORS[i % ROOM_COLORS.length]);
 
             View seg = new View(this);
             LinearLayout.LayoutParams p =
@@ -385,9 +392,11 @@ public class MainMenuActivity extends AppCompatActivity {
     private void setupBottomNavigation() {
         bottomNav = findViewById(R.id.bottomNav);
         bottomNav.setSelectedItemId(R.id.nav_home);
+        NavTint.apply(this, bottomNav, R.id.nav_home);
 
         bottomNav.setOnItemSelectedListener(item -> {
             int id = item.getItemId();
+            NavTint.apply(this, bottomNav, id);
 
             if (id == R.id.nav_home) {
                 return true;                                  // already here

@@ -24,6 +24,9 @@ public final class Prefs {
     // Pi connection
     public static final String KEY_PI_IP = "pi_ip_address";
 
+    /** Light / Dark / AMOLED. See ThemeManager. */
+    public static final String KEY_THEME_MODE = "theme_mode";
+
     /** Which pet the dashboard tracks. -1 = none chosen, fall back to the first. */
     public static final String KEY_ACTIVE_PET_ID = "active_pet_id";
 

@@ -235,13 +235,20 @@ public class Petmenu extends ThemedActivity {
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
+            imgPetPhoto.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            imgPetPhoto.setPadding(0, 0, 0, 0);
             Glide.with(this)
                     .load(Uri.parse(photoUri))
                     .centerCrop()
                     .placeholder(R.drawable.ic_pets_24)
                     .into(imgPetPhoto);
         } else {
+            // centerCrop is right for a photograph and wrong for the fallback
+            // icon: a 24dp vector cropped to fill a 250dp header becomes a
+            // giant paw. Inset and centre it instead.
             Glide.with(this).clear(imgPetPhoto);
+            imgPetPhoto.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            imgPetPhoto.setPadding(dp(72), dp(72), dp(72), dp(72));
             imgPetPhoto.setImageResource(R.drawable.ic_pets_24);
         }
     }
@@ -296,6 +303,12 @@ public class Petmenu extends ThemedActivity {
     }
 
     /** The value, or the given fallback resource when it is blank. */
+    private int dp(int value) {
+        return (int) android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics());
+    }
+
     private String emptyOrValue(String value, @StringRes int fallbackRes) {
         if (value == null || value.trim().isEmpty()) return getString(fallbackRes);
         return value;

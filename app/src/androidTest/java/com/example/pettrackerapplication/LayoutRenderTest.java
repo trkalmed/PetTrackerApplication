@@ -127,6 +127,11 @@ public class LayoutRenderTest {
     }
 
     @Test
+    public void renderAccount() {
+        render(R.layout.activity_account, "account", false);
+    }
+
+    @Test
     public void renderPetDetail() {
         render(R.layout.pet_menu, "petdetail", false);
     }

@@ -15,31 +15,40 @@
         android:layout_height="wrap_content"
         android:paddingBottom="24dp">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/topAppBar"
+        <!-- Same gradient panel as the dashboard, Account and Settings — but
+             here it sits behind the photo rather than replacing it, so the pet
+             keeps its picture and the screen still reads as one family. -->
+        <LinearLayout
+            android:id="@+id/headerBlock"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:background="@color/background"
+            android:background="@drawable/bg_header_gradient"
+            android:orientation="vertical"
+            android:paddingBottom="20dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/topAppBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@android:color/transparent"
             app:navigationIcon="@drawable/ic_arrow_back_24"
-            app:navigationIconTint="@color/text_primary"
-            app:title="" />
+            app:navigationIconTint="@color/on_header"
+            app:title=""
+            app:titleTextColor="@color/on_header" />
 
         <!-- Rounded, washed photo header — square corners were the one hard edge left -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/petHeaderSquare"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="250dp"
             android:layout_marginStart="18dp"
             android:layout_marginTop="4dp"
             android:layout_marginEnd="18dp"
             app:cardCornerRadius="32dp"
-            app:cardElevation="3dp"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/topAppBar">
+            app:cardElevation="3dp">
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -77,6 +86,7 @@
                     android:textSize="26sp" />
             </FrameLayout>
         </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
         <!-- Today: the three facts the hardware reports -->
         <androidx.cardview.widget.CardView
@@ -91,7 +101,7 @@
             app:cardElevation="3dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/petHeaderSquare">
+            app:layout_constraintTop_toBottomOf="@id/headerBlock">
 
             <LinearLayout
                 android:layout_width="match_parent"

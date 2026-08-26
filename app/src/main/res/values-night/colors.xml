@@ -42,4 +42,8 @@
     <color name="scrim_photo">#66000000</color>
     <color name="danger">#F2748C</color>
     <color name="danger_tint">#2A1A1D</color>
+
+    <!-- text and chips sitting on the header gradient -->
+    <color name="on_header">#F2FBF4</color>
+    <color name="on_header_secondary">#A9CDBA</color>
 </resources>

@@ -32,9 +32,21 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="18dp"
-                android:paddingTop="14dp">
+                android:orientation="vertical">
+
+                <!-- ── The green block: identity, device status and today's food
+                         all sit on one gradient panel, as in the design. It spans
+                         the full width, so the horizontal padding that used to be
+                         on the scroll column lives here instead. ── -->
+                <LinearLayout
+                    android:id="@+id/headerBlock"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_header_gradient"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="18dp"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="22dp">
 
                 <!-- ── Header: who, then account ─────────────────────────── -->
                 <LinearLayout
@@ -88,7 +100,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="@font/poppins_semibold"
-                                android:textColor="@color/text_primary"
+                                android:textColor="@color/on_header"
                                 android:textSize="24sp"
                                 tools:text="Marvel" />
 
@@ -96,7 +108,7 @@
                                 android:id="@+id/tvPetSubtitle"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:textColor="@color/text_secondary"
+                                android:textColor="@color/on_header_secondary"
                                 android:textSize="13sp" />
                         </LinearLayout>
                     </LinearLayout>
@@ -108,7 +120,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?attr/selectableItemBackground"
-                        app:cardBackgroundColor="@color/surface"
+                        app:cardBackgroundColor="#2BFFFFFF"
                         app:cardCornerRadius="22dp"
                         app:cardElevation="0dp">
 
@@ -118,7 +130,7 @@
                             android:contentDescription="@string/account"
                             android:padding="11dp"
                             app:srcCompat="@drawable/ic_account_circle_24"
-                            app:tint="@color/text_primary" />
+                            app:tint="@color/on_header" />
                     </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
 
@@ -129,7 +141,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:background="@drawable/bg_pill"
-                    android:backgroundTint="@color/surface"
+                    android:backgroundTint="#2BFFFFFF"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
@@ -151,7 +163,7 @@
                         android:layout_marginStart="9dp"
                         android:fontFamily="@font/poppins_semibold"
                         tools:text="Camera offline"
-                        android:textColor="@color/text_primary"
+                        android:textColor="@color/on_header"
                         android:textSize="13sp" />
 
                     <TextView
@@ -161,7 +173,7 @@
                         android:layout_marginStart="10dp"
                         android:layout_weight="1"
                         tools:text="No GPS fix yet"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="@color/on_header_secondary"
                         android:textSize="13sp" />
 
                     <ImageView
@@ -169,7 +181,7 @@
                         android:layout_height="18dp"
                         android:contentDescription="@string/open_device_settings"
                         app:srcCompat="@drawable/ic_chevron_right_24"
-                        app:tint="@color/primary_dark" />
+                        app:tint="@color/on_header_secondary" />
                 </LinearLayout>
 
                 <!-- ── Food today: grams, from the feeder ────────────────── -->
@@ -178,9 +190,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    app:cardBackgroundColor="@color/surface"
+                    app:cardBackgroundColor="@android:color/transparent"
                     app:cardCornerRadius="32dp"
-                    app:cardElevation="3dp">
+                    app:cardElevation="0dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -196,7 +208,7 @@
                             android:layout_height="wrap_content"
                             android:letterSpacing="0.1"
                             android:text="@string/food_today"
-                            android:textColor="@color/primary_dark"
+                            android:textColor="@color/on_header_secondary"
                             android:textSize="11sp" />
 
                         <FrameLayout
@@ -204,19 +216,14 @@
                             android:layout_height="170dp"
                             android:layout_marginTop="14dp">
 
-                            <com.google.android.material.progressindicator.CircularProgressIndicator
+                            <!-- Not CircularProgressIndicator: that paints one
+                                 colour, and the design sweeps the four ramp hues
+                                 around the arc. -->
+                            <com.example.pettrackerapplication.RampRing
                                 android:id="@+id/foodProgress"
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:layout_gravity="center"
-                                android:indeterminate="false"
-                                android:max="100"
-                                android:progress="0"
-                                app:indicatorColor="@color/primary"
-                                app:indicatorSize="160dp"
-                                app:trackColor="@color/divider"
-                                app:trackCornerRadius="8dp"
-                                app:trackThickness="16dp" />
+                                android:layout_gravity="center" />
 
                             <LinearLayout
                                 android:layout_width="wrap_content"
@@ -231,7 +238,7 @@
                                     android:layout_height="wrap_content"
                                     android:fontFamily="@font/poppins_semibold"
                                     tools:text="0 g"
-                                    android:textColor="@color/text_primary"
+                                    android:textColor="@color/on_header"
                                     android:textSize="36sp" />
 
                                 <TextView
@@ -239,7 +246,7 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     tools:text="of 300 g"
-                                    android:textColor="@color/text_secondary"
+                                    android:textColor="@color/on_header_secondary"
                                     android:textSize="13sp" />
                             </LinearLayout>
                         </FrameLayout>
@@ -261,11 +268,21 @@
                             android:layout_marginTop="14dp"
                             android:gravity="center"
                             android:text="@string/no_feeder_paired_yet_add_one"
-                            android:textColor="@color/text_secondary"
+                            android:textColor="@color/on_header_secondary"
                             android:textSize="13sp"
                             android:visibility="gone" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
+                </LinearLayout>
+                <!-- ── end of the gradient block ─────────────────────────── -->
+
+                <LinearLayout
+                    android:id="@+id/contentColumn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="18dp"
+                    android:paddingTop="16dp">
 
                 <!-- ── Rooms: minutes, from the motion sensors ───────────── -->
                 <com.google.android.material.card.MaterialCardView
@@ -491,6 +508,7 @@
                         android:text="@string/add_your_first_pet_to_start"
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp" />
+                </LinearLayout>
                 </LinearLayout>
 
             </LinearLayout>

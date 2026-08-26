@@ -19,7 +19,6 @@ import com.bumptech.glide.Glide;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 
@@ -42,7 +41,7 @@ public class MainMenuActivity extends ThemedActivity {
     private View     dotDeviceStatus;
     private TextView tvCameraStatus, tvGpsStatus;
 
-    private CircularProgressIndicator foodProgress;
+    private RampRing foodProgress;
     private TextView     tvGramsEaten, tvGramsTarget, tvFoodEmpty;
     private LinearLayout mealsContainer;
 

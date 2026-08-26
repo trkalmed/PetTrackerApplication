@@ -1,8 +1,8 @@
 # Pet Tracker — Punch List
 
-State: P0-P3 done; #10 backend built and tested, awaiting Pi hardware. 2026-08-24.
-Open: Pi hardware (feeder/load cell), motion sensors, GPS, #11 cloud sync (held),
-#20, #26. See "Verification status" for what is proven versus assumed.
+State: P0-P3 done. Sensor data layer built. Detector upgraded. Green theme applied.
+Open: Pi hardware, the app-side /events poller, motion sensors, GPS, #11 cloud sync
+(held), #20, #26. See "What is left" at the end. 2026-08-26.
 
 ---
 
@@ -345,6 +345,60 @@ Replacing the two untouched Android Studio templates:
   started inventing numbers. When #10 lands, that test should be *replaced*, not deleted.
 
 ---
+## Theme — ✅ APPLIED (2026-08-26)
+
+The green theme patch from `Mobile app design feedbackcolortheme.zip`
+(`android-theme-patch/`), applied in full plus the layout work the README's
+section 3 calls for.
+
+**Note on the README:** its "no layout XML has to change" line is scoped to the
+*recolor only*. Section 3 is titled "the only layout edits" — the green header
+panel is `bg_header_gradient` on a container, not a colour token, so it needs
+layout changes. Section 7 of that README is stale: all four "still-open code
+fixes" it lists were already done here.
+
+### Applied
+- **Recolor** — forest green / deep teal, 35 tokens, every existing name kept.
+  `values-night/` gives 33 of them a dark value. `Theme.Material3.DayNight`.
+- **Typography** — Bricolage Grotesque (display) + Manrope (body).
+- **Gradients** — page wash on Login / Register / Add pet; primary button style;
+  `progress_ramp` on the feeding bar and the volume seekbar.
+- **Header panels** — dashboard, pet detail, Account and Settings all carry the
+  full-width gradient panel with rounded bottom corners. Account and Settings
+  dropped their header cards entirely; pet detail keeps its photo with the
+  panel behind it.
+- **RampRing** — custom view for the food ring. `CircularProgressIndicator`
+  paints one colour; the design sweeps the four ramp hues, so this draws an arc
+  with a `SweepGradient`. Reads `ramp_1..ramp_4`, so the night ramp applies
+  free.
+- **Room hues + per-tab nav accent** — `NavTint` rebuilds the state list per
+  selection, because a selector knows *something* is checked, not *which*.
+- **Theme picker** — Light / Dark / AMOLED, with an Appearance card in Settings.
+  `ThemeManager` persists, `ThemedActivity` applies the AMOLED overlay before
+  inflation, `PetTrackerApp` applies the stored theme before any activity
+  starts (otherwise cold start flashes light-then-dark).
+
+### Fixed along the way
+- The build was broken on arrival: fonts had been added under their download
+  names, and Android resource filenames take only lowercase, digits and
+  underscore.
+- The patch's font XMLs expect four static TTFs that do not exist; both
+  families were rewritten against the two **variable** fonts using
+  `fontVariationSettings` (needs API 26; minSdk is 26).
+- Three labels rendered blank at rest — `btnLogin`, `btnRegister`,
+  `tvAddPetTitle`. The P3 string extraction had moved `android:text` to
+  `tools:text` for any view something calls `setText` on, but those calls are
+  *conditional*. The other 31 were audited and are set unconditionally.
+- A pet with no photo showed a giant paw: `centerCrop` on a 24dp fallback
+  vector in a 250dp header.
+
+### Not done
+The **meal chips** under the food ring and the **room bar with its legend** are
+the only gaps versus the mockup, and both are data rather than styling — they
+render as soon as the feeder and motion sensors report.
+
+---
+
 ## Verification status
 
 **Driven on the emulator (API 35), signed in, crash buffer empty at every point:**
@@ -400,6 +454,39 @@ Output lands in `app/build/intermediates/apk/debug/` and is marked test-only, so
 with `adb install -r -t`.
 
 ---
+### Tools worth knowing about
+
+**`LayoutRenderTest`** (androidTest) renders any layout straight to PNG, light
+or dark, **with no sign-in**. Every interesting screen sits behind Firebase
+auth, which makes the theme impossible to check on a device without an account.
+It inflates inside `SettingsActivity` (the one screen with no auth guard, whose
+`LayoutInflater` carries a properly themed activity context — a
+`ContextThemeWrapper` over the application context is *not* enough,
+`CircularProgressIndicator` refuses to inflate from one) and fills in
+representative values, because `tools:text` is design-time only.
+
+Gradle's `connectedAndroidTest` uninstalls the app afterwards, taking the PNGs
+with it. To keep them:
+
+```bash
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pandroid.injected.build.abi=x86_64
+adb install -r -t app/build/intermediates/apk/debug/app-debug.apk
+adb install -r -t app/build/intermediates/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -e class com.example.pettrackerapplication.LayoutRenderTest \
+  com.example.pettrackerapplication.test/androidx.test.runner.AndroidJUnitRunner
+adb pull /sdcard/Android/data/com.example.pettrackerapplication/files/dashboard_light.png
+```
+
+**Two static checks** that have each caught a real bug, worth re-running after
+any layout edit: every `findViewById` id resolves against a layout the file
+actually inflates, and every `ConstraintLayout` target resolves within its own
+layout. The first is what would have caught the original P0 crash.
+
+**The Pi service** runs with no hardware: `python3 pi/run.py --fake`, then put
+the printed IP into the app's Pi Connection dialog.
+
+---
+
 ## What is left
 
 1. **The Pi side.** The service now exists in `pi/` — HTTP contract, event buffering, meal

@@ -24,6 +24,19 @@ public final class Prefs {
     // Pi connection
     public static final String KEY_PI_IP = "pi_ip_address";
 
+    /**
+     * How far through the Pi's event log this device has read.
+     *
+     * Stored next to the host it belongs to: the cursor is a row id in one
+     * particular Pi's database, so it means nothing after the app is pointed at
+     * a different machine. See {@link PiEventSync} for what happens then.
+     */
+    public static final String KEY_PI_CURSOR      = "pi_event_cursor";
+    public static final String KEY_PI_CURSOR_HOST = "pi_event_cursor_host";
+
+    /** When the last successful sync finished, epoch millis. 0 = never. */
+    public static final String KEY_PI_LAST_SYNC = "pi_last_sync_millis";
+
     /** Light / Dark / AMOLED. See ThemeManager. */
     public static final String KEY_THEME_MODE = "theme_mode";
 
@@ -40,6 +53,33 @@ public final class Prefs {
 
     public static void clearActivePetId(Context context) {
         get(context).edit().remove(KEY_ACTIVE_PET_ID).apply();
+    }
+
+    /**
+     * The pet the app is tracking, out of the ones this owner has.
+     *
+     * The stored id goes stale whenever that pet is deleted or the account
+     * changes, so this falls back to the first pet and writes the choice back
+     * rather than leaving a screen empty next to a non-empty list.
+     *
+     * Every screen that shows "the pet" has to agree on which one it is, and now
+     * more than before: {@link PiSync} files the Pi's readings against this id,
+     * so a screen picking differently would show someone else's meals. That is
+     * why the rule lives here and not in three activities.
+     *
+     * @return the chosen pet, or null if the owner has none
+     */
+    public static Pet chooseActive(Context context, java.util.List<Pet> pets) {
+        if (pets == null || pets.isEmpty()) return null;
+
+        long activeId = getActivePetId(context);
+        for (Pet pet : pets) {
+            if (pet.getId() == activeId) return pet;
+        }
+
+        Pet first = pets.get(0);
+        setActivePetId(context, first.getId());
+        return first;
     }
 
     private static final String KEY_MIGRATED = "migrated_from_app_settings";

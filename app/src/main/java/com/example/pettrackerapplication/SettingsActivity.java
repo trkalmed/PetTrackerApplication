@@ -12,6 +12,10 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 
@@ -105,6 +109,7 @@ public class SettingsActivity extends ThemedActivity {
         super.onResume();
         // Refresh in case the IP was changed from Petmenu since this screen was last shown
         updatePiConnectionSummary();
+        checkPiConnection();
     }
 
 
@@ -164,8 +169,43 @@ public class SettingsActivity extends ThemedActivity {
 
     private void updatePiConnectionSummary() {
         String ip = PiConnectionManager.getSavedIp(this);
-        tvPiConnectionSummary.setText(
-                ip.isEmpty() ? "Not connected" : "Connected: " + ip);
+        if (ip.isEmpty()) {
+            tvPiConnectionSummary.setText(R.string.pi_not_connected);
+            return;
+        }
+
+        long lastSync = PiSync.lastSyncMillis(this);
+        tvPiConnectionSummary.setText(lastSync == 0
+                ? getString(R.string.pi_connected_not_synced, ip)
+                : getString(R.string.pi_connected_synced, ip,
+                        new SimpleDateFormat("HH:mm", Locale.getDefault())
+                                .format(new Date(lastSync))));
+    }
+
+    /**
+     * Asks the Pi whether it is actually there, and says so on the card.
+     *
+     * A saved address is not a connection. Typing one in and seeing it echoed
+     * back tells you nothing — the mistakes here are a typo, a Pi that is off,
+     * and a phone on the guest network, and all three look identical until
+     * something tries to reach it.
+     */
+    private void checkPiConnection() {
+        String ip = PiConnectionManager.getSavedIp(this);
+        if (ip.isEmpty()) {
+            updatePiConnectionSummary();
+            return;
+        }
+
+        tvPiConnectionSummary.setText(getString(R.string.pi_checking, ip));
+        PiSync.checkHealth(this, (health, error) -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (health != null) {
+                updatePiConnectionSummary();
+            } else {
+                tvPiConnectionSummary.setText(getString(R.string.pi_unreachable, ip));
+            }
+        });
     }
 
     private void showPiIpDialog() {
@@ -190,7 +230,9 @@ public class SettingsActivity extends ThemedActivity {
                     String ip = input.getText().toString().trim();
                     if (!ip.isEmpty()) {
                         PiConnectionManager.saveIp(this, ip);
-                        updatePiConnectionSummary();
+                        // Reach for it straight away: finding out now that the
+                        // address is wrong is the entire value of this screen.
+                        checkPiConnection();
                     }
                 })
                 .setNeutralButton(R.string.action_clear, (dialog, which) -> {

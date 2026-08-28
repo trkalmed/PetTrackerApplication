@@ -72,6 +72,96 @@ public class MigrationTest {
     }
 
     @Test
+    public void migrate3To4_schemaMatchesTheExportedVersion4() throws IOException {
+        helper.createDatabase(TEST_DB, 3).close();
+
+        helper.runMigrationsAndValidate(TEST_DB, 4, true, AppDatabase.MIGRATION_3_4);
+    }
+
+    @Test
+    public void migrate3To4_keepsReadingsThatWereAlreadyStored() throws IOException {
+        SupportSQLiteDatabase db = helper.createDatabase(TEST_DB, 3);
+
+        ContentValues pet = new ContentValues();
+        pet.put("id", 1L);
+        pet.put("name", "Biscuit");
+        pet.put("ownerId", "owner-1");
+        db.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+
+        ContentValues meal = new ContentValues();
+        meal.put("petId", 1L);
+        meal.put("timestampMillis", 1_752_000_000_000L);
+        meal.put("grams", 40);
+        meal.put("type", FeedingEvent.TYPE_EATEN);
+        meal.put("source", "load-cell");
+        db.insert("feeding_events",
+                android.database.sqlite.SQLiteDatabase.CONFLICT_ABORT, meal);
+        db.close();
+
+        SupportSQLiteDatabase migrated =
+                helper.runMigrationsAndValidate(TEST_DB, 4, true, AppDatabase.MIGRATION_3_4);
+
+        // This one adds a column to a table that already holds a user's history,
+        // rather than only creating new ones.
+        try (Cursor c = migrated.query(
+                "SELECT grams, remoteId FROM feeding_events WHERE petId = 1")) {
+            assertTrue("the meal should have survived", c.moveToFirst());
+            assertEquals(40, c.getInt(0));
+            assertTrue("a reading recorded before the Pi existed has no remote id",
+                    c.isNull(1));
+        }
+    }
+
+    @Test
+    public void migrate3To4_theSamePiEventCannotBeStoredTwice() throws IOException {
+        SupportSQLiteDatabase db = migratedToFour();
+
+        assertTrue(insertRoomEvent(db, 7L, "pir", 99L) > 0);
+
+        // The unique index is what makes re-polling the Pi free, and it has to
+        // exist in a *migrated* database, not only in a freshly created one.
+        assertEquals(-1, insertRoomEvent(db, 7L, "pir", 99L));
+    }
+
+    @Test
+    public void migrate3To4_localReadingsDoNotCollideWithEachOther() throws IOException {
+        SupportSQLiteDatabase db = migratedToFour();
+
+        // Every locally recorded reading has a null remote id. SQLite treats
+        // nulls in a unique index as distinct, which is the only reason a unique
+        // index over a mostly-null column is usable at all — worth pinning,
+        // because the opposite behaviour would silently drop every reading after
+        // the first.
+        assertTrue(insertRoomEvent(db, 7L, "local", null) > 0);
+        assertTrue(insertRoomEvent(db, 7L, "local", null) > 0);
+    }
+
+    private SupportSQLiteDatabase migratedToFour() throws IOException {
+        helper.createDatabase(TEST_DB, 3).close();
+        SupportSQLiteDatabase db =
+                helper.runMigrationsAndValidate(TEST_DB, 4, true, AppDatabase.MIGRATION_3_4);
+
+        ContentValues pet = new ContentValues();
+        pet.put("id", 7L);
+        pet.put("name", "Nutmeg");
+        pet.put("ownerId", "owner-1");
+        db.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+        return db;
+    }
+
+    private long insertRoomEvent(SupportSQLiteDatabase db, long petId, String source,
+                                 Long remoteId) {
+        ContentValues sighting = new ContentValues();
+        sighting.put("petId", petId);
+        sighting.put("timestampMillis", 1_752_000_000_000L);
+        sighting.put("room", "Kitchen");
+        sighting.put("source", source);
+        sighting.put("remoteId", remoteId);
+        return db.insert("room_events",
+                android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE, sighting);
+    }
+
+    @Test
     public void migrate2To3_newTablesAreUsable() throws IOException {
         helper.createDatabase(TEST_DB, 2).close();
         SupportSQLiteDatabase db =

@@ -26,6 +26,9 @@ public class FeedingActivity extends ThemedActivity {
     private LinearLayout mealList, emptyFeeder;
     private BottomNavigationView nav;
 
+    /** Collects readings from the Pi while this screen is in front of the user. */
+    private PiSync.Poller piPoller;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -43,6 +46,7 @@ public class FeedingActivity extends ThemedActivity {
                 startActivity(new Intent(this, SettingsActivity.class)));
 
         setupBottomNavigation();
+        piPoller = new PiSync.Poller(this, this::onSynced);
     }
 
     @Override
@@ -52,6 +56,18 @@ public class FeedingActivity extends ThemedActivity {
         nav.setSelectedItemId(R.id.nav_food);
         NavTint.apply(this, nav, R.id.nav_food);
         load();
+        piPoller.start();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        piPoller.stop();
+    }
+
+    private void onSynced(PiEventSync.Result result) {
+        if (isFinishing() || isDestroyed()) return;
+        if (result.storedAnything()) load();
     }
 
     private void load() {
@@ -69,9 +85,13 @@ public class FeedingActivity extends ThemedActivity {
                     .petDao()
                     .getPetsForOwner(ownerId);
 
-            DashboardStats stats = (pets == null || pets.isEmpty())
+            // The same pet the dashboard shows and the same pet the Pi's readings
+            // are filed against — this screen used to take pets.get(0), which is
+            // a different pet as soon as the owner has two.
+            Pet pet = Prefs.chooseActive(getApplicationContext(), pets);
+            DashboardStats stats = pet == null
                     ? new DashboardStats()
-                    : DashboardStats.forPetToday(getApplicationContext(), pets.get(0));
+                    : DashboardStats.forPetToday(getApplicationContext(), pet);
 
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;

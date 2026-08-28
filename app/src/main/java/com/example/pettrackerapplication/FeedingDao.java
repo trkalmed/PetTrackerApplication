@@ -2,6 +2,7 @@ package com.example.pettrackerapplication;
 
 import androidx.room.Dao;
 import androidx.room.Insert;
+import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
 
 import java.util.List;
@@ -9,7 +10,12 @@ import java.util.List;
 @Dao
 public interface FeedingDao {
 
-    @Insert
+    /**
+     * IGNORE, not ABORT: the unique index over (petId, source, remoteId) makes a
+     * re-delivered Pi reading collide, and a collision there means "already have
+     * it" rather than an error. Returns -1 when the row was dropped.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     long insert(FeedingEvent event);
 
     @Insert

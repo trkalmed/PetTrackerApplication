@@ -57,6 +57,9 @@ public class MainMenuActivity extends ThemedActivity {
     /** The pet currently on screen. Null until one loads, or when the owner has none. */
     private Pet currentPet;
 
+    /** Collects readings from the Pi while this screen is in front of the user. */
+    private PiSync.Poller piPoller;
+
     /**
      * One hue per room, cycling if there are more rooms than colours.
      *
@@ -96,6 +99,8 @@ public class MainMenuActivity extends ThemedActivity {
 
         // The header is the only way into the pet detail screen.
         findViewById(R.id.rowPetHeader).setOnClickListener(v -> openPetDetail());
+
+        piPoller = new PiSync.Poller(this, this::onSynced);
     }
 
     @Override
@@ -106,6 +111,21 @@ public class MainMenuActivity extends ThemedActivity {
         bottomNav.setSelectedItemId(R.id.nav_home);
         NavTint.apply(this, bottomNav, R.id.nav_home);
         loadActivePet();
+        piPoller.start();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Nothing polls the Pi while the dashboard is not on screen. The Pi
+        // buffers, so the next resume collects whatever happened meanwhile.
+        piPoller.stop();
+    }
+
+    /** A sync finished. Only a sync that stored something changes what is drawn. */
+    private void onSynced(PiEventSync.Result result) {
+        if (isFinishing() || isDestroyed()) return;
+        if (result.storedAnything()) loadActivePet();
     }
 
     private void bindViews() {
@@ -149,7 +169,7 @@ public class MainMenuActivity extends ThemedActivity {
             // Pick the pet and read its stats here, not in runOnUiThread:
             // forPetToday hits the database and Room refuses to run on the
             // main thread.
-            final Pet pet = (pets == null || pets.isEmpty()) ? null : pickActive(pets);
+            final Pet pet = Prefs.chooseActive(getApplicationContext(), pets);
             final DashboardStats stats = pet == null
                     ? null : DashboardStats.forPetToday(getApplicationContext(), pet);
 
@@ -166,21 +186,6 @@ public class MainMenuActivity extends ThemedActivity {
                 }
             });
         }).start();
-    }
-
-    /**
-     * The pet chosen in the list, or the first one. The stored id goes stale
-     * when that pet is deleted or the account changes, so fall back rather than
-     * showing an empty dashboard next to a non-empty pet list.
-     */
-    private Pet pickActive(List<Pet> pets) {   // called on the worker thread
-        long activeId = Prefs.getActivePetId(this);
-        for (Pet pet : pets) {
-            if (pet.getId() == activeId) return pet;
-        }
-        Pet first = pets.get(0);
-        Prefs.setActivePetId(this, first.getId());
-        return first;
     }
 
     private void showNoPets() {
@@ -280,6 +285,11 @@ public class MainMenuActivity extends ThemedActivity {
         if (s.rooms.isEmpty() || total == 0) {
             roomBar.setVisibility(View.GONE);
             tvRoomsEmpty.setVisibility(View.VISIBLE);
+            // Sensors that have never reported need pairing; sensors that have
+            // reported before and are quiet today are simply a quiet day.
+            tvRoomsEmpty.setText(s.roomsReporting
+                    ? R.string.no_motion_yet_today
+                    : R.string.no_motion_sensors_reporting_pair_them);
             return;
         }
 
@@ -305,7 +315,12 @@ public class MainMenuActivity extends ThemedActivity {
     private void renderGlanceCards(DashboardStats s) {
         if (s.currentRoom == null) {
             tvCurrentRoom.setText(R.string.unknown);
-            tvCurrentRoomSince.setText(R.string.waiting_for_a_sensor);
+            // A PIR reports movement, not presence, so going quiet means the
+            // trail went cold — not that the pet is still where it was last
+            // seen. Say when that was instead of claiming a room.
+            tvCurrentRoomSince.setText(s.lastMotionTime == null
+                    ? getString(R.string.waiting_for_a_sensor)
+                    : getString(R.string.no_motion_since, s.lastMotionTime));
         } else {
             tvCurrentRoom.setText(s.currentRoom);
             tvCurrentRoomSince.setText(getString(R.string.room_since, s.currentRoomSince));

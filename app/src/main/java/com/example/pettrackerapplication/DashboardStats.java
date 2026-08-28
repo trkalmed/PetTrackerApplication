@@ -34,8 +34,22 @@ public class DashboardStats {
 
     // Room motion sensors
     public List<RoomStay> rooms = new ArrayList<>();
-    public String currentRoom;              // null = no sensor reporting
-    public String currentRoomSince;         // "14:20"
+
+    /**
+     * Whether any motion sensor has ever reported for this pet.
+     *
+     * The same distinction the feeder makes with a null {@link #gramsEaten}:
+     * no sensors paired is a setup prompt, while paired and quiet since
+     * midnight is a real, empty day. An empty {@link #rooms} alone cannot tell
+     * those apart.
+     */
+    public boolean roomsReporting;
+
+    public String currentRoom;              // null = nowhere known right now
+    public String currentRoomSince;         // "14:20", when this visit started
+
+    /** When motion was last seen, set only while {@link #currentRoom} is null. */
+    public String lastMotionTime;           // "09:12"
 
     // Pi camera
     public boolean cameraOnline;
@@ -54,10 +68,12 @@ public class DashboardStats {
     /**
      * Today's numbers for one pet, read from the local database.
      *
-     * Feeder grams and camera detections come from real stored readings now.
-     * Room occupancy and GPS still have no source — no motion sensors, no collar
-     * tag — so those fields stay empty and the screens keep showing setup
-     * prompts, which is the honest thing to render.
+     * Feeder grams, room occupancy and camera detections all come from real
+     * stored readings now — the first two arrive from the Pi through
+     * {@link PiEventSync}. GPS still has no source: the Pi's own position is not
+     * the pet's, and a collar tag is hardware nobody has built yet. That field
+     * stays empty and its card keeps showing a setup prompt, which is the honest
+     * thing to render.
      *
      * Hits the database, so call it from a background thread.
      */

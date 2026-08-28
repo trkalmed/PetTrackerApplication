@@ -182,16 +182,20 @@ public class PetDataRepositoryTest {
     // ── Things with no hardware yet ─────────────────────────────────────────
 
     @Test
-    public void roomsAndGpsStayEmptyUntilThatHardwareExists() {
+    public void gpsStaysEmptyUntilThatHardwareExists() {
         repository.recordFeeding(petId, todayAt(HOUR), 50, FeedingEvent.TYPE_EATEN, "f");
 
         DashboardStats stats = repository.statsForToday(pet());
 
-        // Guards the honest empty state: these must not start reporting numbers
-        // before motion sensors and a collar tag exist.
+        // Guards the honest empty state. A collar tag is the only thing that
+        // could fill this: the Pi's own position is the kitchen floor, and the
+        // phone's is the owner's pocket.
+        assertNull(stats.lastGpsFixAgo);
+
+        // Feeder readings say nothing about rooms. See RoomOccupancyTest for
+        // what motion sightings do.
         assertTrue(stats.rooms.isEmpty());
         assertNull(stats.currentRoom);
-        assertNull(stats.lastGpsFixAgo);
     }
 
     @Test

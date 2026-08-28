@@ -1,8 +1,9 @@
 # Pet Tracker — Punch List
 
 State: P0-P3 done. Sensor data layer built. Detector upgraded. Green theme applied.
-Open: Pi hardware, the app-side /events poller, motion sensors, GPS, #11 cloud sync
-(held), #20, #26. See "What is left" at the end. 2026-08-26.
+The two halves are joined: the app polls the Pi, and motion sightings become rooms.
+Open: Pi hardware (camera, load cell, servo, GPS), #11 cloud sync (held), #20, #26.
+See "What is left" at the end. 2026-08-28.
 
 ---
 
@@ -399,6 +400,79 @@ render as soon as the feeder and motion sensors report.
 
 ---
 
+## Pi ↔ app — ✅ JOINED (2026-08-28)
+
+The gap the last handoff called "the remaining software gap between the two
+halves". The app now polls `GET /events`, and PIR sightings became the room
+chart the dashboard has always drawn but never had data for.
+
+### App side — the poller
+
+`PiClient` → `PiEventSync` → `PetDataRepository`, with `PiSync` running it for a
+screen. Six new classes, split so the judgement is testable without a network
+and the transport is testable without a database.
+
+Four decisions worth knowing:
+
+- **Re-reading is free.** Every stored reading now carries `remoteId`, the id it
+  had on the Pi, under a unique index on (petId, source, remoteId). Room's insert
+  is `OnConflictStrategy.IGNORE`, so a replay is a no-op. This is load-bearing:
+  without it, "recover from a rewound cursor" and "double today's meals" would be
+  the same operation.
+- **The cursor is checked in both directions.** It is a row id in one particular
+  Pi's database, so it is reset when the saved host changes *and* when
+  `/health.latest_cursor` is lower than it — which means that Pi's log was pruned
+  or rebuilt. Without the second check a phone silently stops receiving anything
+  and looks exactly like a quiet house.
+- **Foreground only, deliberately.** Background polling needs a foreground
+  service and its permanent notification, or WorkManager and its 15-minute floor.
+  Neither buys anything: the Pi buffers, so nothing is lost by not listening.
+  When push notifications ("Biscuit has not eaten today") are wanted, that is
+  when background sync earns its keep.
+- **A sync ends.** 20 pages per run, 500 events a page. A month of unsynced Pi
+  does not stall the screen that asked.
+
+**Bug found and fixed while wiring it:** `FeedingActivity` rendered `pets.get(0)`
+while the poller filed readings against the *active* pet — different pets as soon
+as an owner has two. Both screens now go through `Prefs.chooseActive`.
+
+### Motion → rooms
+
+Room v4: a `room_events` table, and `remoteId` added to `feeding_events`.
+`MIGRATION_3_4` is real — existing meals survive the added column, and the
+migration test asserts it against the exported `4.json`.
+
+The interesting part is not storage but interpretation, and it lives in
+`PetDataRepository.readRooms` where it can be changed without the history being
+wrong. A PIR reports *movement*, never presence: it fires as the cat crosses the
+kitchen and says nothing while the cat sleeps in it. So each sighting speaks for
+the time until the next one anywhere, capped at 15 minutes — well past the Pi's
+30 s debounce, short enough that going quiet reads as "we no longer know".
+
+That cap is why the dashboard now distinguishes three states rather than two:
+no sensors paired, sensors quiet today, and "no motion since 09:12" in place of
+claiming the pet is still where it was last seen.
+
+### Pi side — the PIR sensors
+
+`GpioMotionSensor` had a body but not a working one:
+
+- **RPi.GPIO cannot drive a Pi 5.** It imports fine and fails at `setup()`, so
+  every PIR would have reported unavailable with no clue why. `sensors/gpio.py`
+  now tries gpiozero, then RPi.GPIO, then lgpio, and names the winner in the log.
+- **The 60 s warm-up was documented but not implemented.** A settling HC-SR501
+  fires more or less constantly; all of it would have been stored as motion.
+  Discarded now, not queued — and `--pir-warmup 0` exists because the warm-up
+  belongs to the sensor powering up, not to the process restarting.
+- **Pins were not configurable.** `--pir-pins` now pairs with `--rooms`, and
+  mismatched lengths or repeated pins are refused at startup rather than
+  silently dropping a room, as `zip()` did.
+- **`run.py --check-motion`** is the bring-up tool: every sensor's state live,
+  one line each, plus a summary naming the likely cause for anything that never
+  fired. `/health` only says whether a library claimed the pin; this says whether
+  the sensor labelled "Kitchen" is the one that fires when you wave at the
+  kitchen.
+
 ## Verification status
 
 **Driven on the emulator (API 35), signed in, crash buffer empty at every point:**
@@ -418,10 +492,39 @@ render as soon as the feeder and motion sensors report.
 | Settings back button (#9) | present and working |
 | Dashboard / Food / Settings copy after the string extraction (#27) | every label renders, apostrophes escape correctly ("TODAY'S MEALS"), no blank fields |
 
+**On real hardware (2026-08-28):**
+
+| Check | Result |
+|---|---|
+| Three HC-SR501 PIRs on GPIO 17 / 27 / 22 | all three fire, `--check-motion` counts one trigger per wave |
+| GPIO backend on the Pi | **gpiozero** claimed every pin; RPi.GPIO was never needed |
+| Room-to-pin mapping | each sensor lights up the room it is standing in |
+| `Monitor` debounce, live | one event per room per 30 s across a real walk-about |
+| Events survive a service restart | the SQLite buffer replayed everything after a `pkill` |
+| App polling the real `pi/run.py` | events collected, room chart drawn, Settings shows "synced HH:mm" |
+| "Currently in" against stale motion | correctly showed "no motion since 15:23" rather than claiming a room |
+
+That last row is the whole dwell rule working in the field: an hour-old sighting
+fills the room bar but does not claim the pet is still there.
+
 **Automated:**
-- **39 tests, all passing.** 21 unit (`DayRangeTest`, `MjpegInputStreamTest`,
-  `DashboardStatsTest`) and 18 instrumented on an API 35 emulator (`MigrationTest`,
-  `PetDataRepositoryTest`).
+- **108 app tests, all passing** on an API 35 emulator (2026-08-28): 52 unit
+  (`DayRangeTest`, `MjpegInputStreamTest`, `DashboardStatsTest`, `BoxMapperTest`,
+  `PiEventTest`, `PiClientTest`) and 56 instrumented (`MigrationTest`,
+  `PetDataRepositoryTest`, `PiEventSyncTest`, `RoomOccupancyTest`,
+  `PiSyncIntegrationTest`).
+- **67 Pi tests, all passing**, no hardware and no network: `python3 -m unittest
+  discover -s tests` in `pi/`.
+- `PiClientTest` drives the client against a real socket serving the documented
+  JSON, including a 500, an HTML page (someone typing their router's address),
+  and a connection cut mid-reply.
+- `PiSyncIntegrationTest` runs the whole chain on the device — saved address to
+  URL, HTTP over a socket, cursor through SharedPreferences, work off the main
+  thread and the answer back on it — because the seams are where this fails and
+  none of the unit tests cross them.
+- `RoomOccupancyTest` pins the dwell rule, which is a judgement rather than a
+  fact: what a sighting is worth, when a visit starts, and that silence makes the
+  pet's room unknown rather than unchanged.
 - `MigrationTest` drives `MIGRATION_2_3` through real SQLite and validates the result
   against the exported schema JSON, so a typo in the CREATE statements fails there rather
   than on a phone after the pets are already gone. It also asserts existing pets survive.
@@ -443,8 +546,16 @@ render as soon as the feeder and motion sensors report.
 - **#15**, that Glide actually removed the main-thread stall — correct by construction, but
   no frame profiling was done.
 
-**Emulator build note:** a full debug APK carries native libs for four ABIs. Build
-emulator-only to cut it to 22 MB:
+**Emulator note:** a full debug APK carries native libs for four ABIs and will
+fail to install on a stock AVD with `INSTALL_FAILED_INSUFFICIENT_STORAGE`. Pass
+the ABI to `connectedAndroidTest` as well as to `assembleDebug`:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest -Pandroid.injected.build.abi=x86_64   -Pandroid.testInstrumentationRunnerArguments.class=com.example.pettrackerapplication.PiSyncIntegrationTest
+```
+
+`connectedAndroidTest` does not accept `--tests`; the runner-argument above is
+how to select a class. To build the APK emulator-only:
 
 ```bash
 ./gradlew :app:assembleDebug -Pandroid.injected.build.abi=x86_64
@@ -489,27 +600,34 @@ the printed IP into the app's Pi Connection dialog.
 
 ## What is left
 
-1. **The Pi side.** The service now exists in `pi/` — HTTP contract, event buffering, meal
-   detection and MJPEG streaming, all built and tested against simulated sensors. Run
-   `python3 pi/run.py --fake` and point the app at it. What is left there is hardware:
-   wiring each sensor and filling in the stubs in `pi/pettracker/sensors/real.py`, one at a
-   time, watching `/health`.
-2. **The app-side poller.** Nothing in the Android app calls `GET /events` yet. That is the
-   remaining software gap between the two halves: poll the Pi, walk the cursor, and feed
-   each event into `PetDataRepository.recordFeeding(...)`. See `pi/README.md` for the
-   contract.
-3. **Motion sensors** → `rooms` / `currentRoom`. The Pi emits `motion` events with a room
-   name already; the Android side still has no table or aggregation for them.
-4. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not the pet's.
-5. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing when you come
-   back to it: the local layer was built so this stays a clean addition. Readings are
-   append-only rows with their own timestamps and an explicit source field, which is the
-   shape that syncs and de-duplicates well. The counterweights are Firestore's free-tier
-   read/write quota against per-frame-ish detection volume (the 30 s throttle helps), rules
-   to write, and an offline/conflict story. Nothing done so far forecloses either choice.
-6. **#26 — `applicationId`**, renamed together with registering the new package in Firebase.
-7. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note.
-8. **Smoke-test a signed release build**, since shrinking is on and only build-time verified.
+1. **The Pi hardware.** The service and the PIR path are done and tested; the
+   camera, load cell, servo and GPS are still stubs in
+   `pi/pettracker/sensors/real.py`, each with its wiring and its traps written
+   down. Bring them up one at a time watching `/health`, in the order in
+   `pi/README.md` — camera first, since the app already consumes the stream.
+2. **The PIR sensors themselves.** Software-complete, hardware-unverified: no
+   PIR has been wired yet. `run.py --check-motion` is the tool, and the GPIO
+   backends can only be confirmed on a real Pi.
+3. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
+   the pet's. Still deliberately empty.
+4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing
+   when you come back to it: the local layer was built so this stays a clean
+   addition. Readings are append-only rows with their own timestamps, an explicit
+   source, and now a stable remote id — which is exactly the shape that syncs and
+   de-duplicates well. The counterweights are Firestore's free-tier quota against
+   detection volume, rules to write, and an offline/conflict story.
+5. **#26 — `applicationId`**, renamed together with registering the new package
+   in Firebase.
+6. **#20 — cleartext HTTP** is not fixable as originally written; see the P2 note.
+   Now slightly more relevant: the poller talks plain HTTP to the Pi as well as
+   the stream does.
+7. **Smoke-test a signed release build**, since shrinking is on and only
+   build-time verified. `PiClient`, `PiEvent` and `RoomEvent` are ordinary
+   classes with no reflection, so no new keep rules were needed — but that is an
+   argument, not a test.
+8. **`POST /feed` has no button.** The Pi will dispense on request and nothing in
+   the app asks it to. A "Feed now" control on the Food tab is the obvious next
+   feature, and the client method is ~15 lines.
 
 ### Housekeeping worth doing eventually
 `feeding_events` and `detection_events` grow without bound. `deleteOlderThan(...)` exists on

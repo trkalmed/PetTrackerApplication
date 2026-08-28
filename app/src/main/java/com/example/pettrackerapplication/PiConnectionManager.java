@@ -32,11 +32,23 @@ public class PiConnectionManager {
         Prefs.get(context).edit().remove(Prefs.KEY_PI_IP).apply();
     }
 
-    /** Returns the full stream URL, or null if no IP has been saved yet. */
-    public static String getStreamUrl(Context context) {
+    /**
+     * The Pi's HTTP root, or null if no IP has been saved yet.
+     *
+     * One place builds this. The stream and the event poller are two clients of
+     * the same service on the same port, and having each assemble its own URL is
+     * how they end up disagreeing about which port that is.
+     */
+    public static String getBaseUrl(Context context) {
         String ip = getSavedIp(context);
         if (ip.isEmpty()) return null;
-        return "http://" + ip + ":" + STREAM_PORT + "/stream";
+        return "http://" + ip + ":" + STREAM_PORT;
+    }
+
+    /** Returns the full stream URL, or null if no IP has been saved yet. */
+    public static String getStreamUrl(Context context) {
+        String base = getBaseUrl(context);
+        return base == null ? null : base + "/stream";
     }
 
     /**

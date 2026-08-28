@@ -96,6 +96,11 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
+    // org.json ships in android.jar as stubs that throw (or, with
+    // returnDefaultValues below, silently return nothing) on the JVM. The real
+    // implementation on the unit-test classpath is what lets the Pi wire format
+    // be parsed in a fast local test instead of on an emulator.
+    testImplementation("org.json:json:20231013")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     // Drives real SQLite through each Migration and validates the result

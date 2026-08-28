@@ -191,4 +191,14 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_amoled">AMOLED</string>
+
+    <!-- Pi sync. "Not reporting" and "reporting nothing" are different states
+         and each one gets its own sentence. -->
+    <string name="no_motion_yet_today">No motion yet today</string>
+    <string name="no_motion_since">no motion since %1$s</string>
+    <string name="pi_not_connected">Not connected</string>
+    <string name="pi_connected_synced">Connected: %1$s · synced %2$s</string>
+    <string name="pi_connected_not_synced">Connected: %1$s · not synced yet</string>
+    <string name="pi_checking">%1$s · checking…</string>
+    <string name="pi_unreachable">%1$s · not reachable</string>
 </resources>

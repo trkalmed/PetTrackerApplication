@@ -25,7 +25,10 @@ import androidx.room.PrimaryKey;
                 parentColumns = "id",
                 childColumns = "petId",
                 onDelete = ForeignKey.CASCADE),
-        indices = {@Index(value = {"petId", "timestampMillis"})})
+        indices = {
+                @Index(value = {"petId", "timestampMillis"}),
+                @Index(value = {"petId", "source", "remoteId"}, unique = true)
+        })
 public class FeedingEvent {
 
     /** Food the feeder put into the bowl. */
@@ -50,6 +53,15 @@ public class FeedingEvent {
 
     /** Free-text origin, e.g. "feeder-01". Useful once there is more than one. */
     private String source;
+
+    /**
+     * The id this reading had on the Pi, or null when it was recorded locally.
+     *
+     * Paired with the unique index over (petId, source, remoteId), this is what
+     * makes re-polling the Pi harmless: a reading that arrives twice collides
+     * and is dropped rather than counted twice. See {@link PiEventSync}.
+     */
+    private Long remoteId;
 
     public FeedingEvent(long petId, long timestampMillis, int grams,
                         @NonNull String type, String source) {
@@ -78,4 +90,7 @@ public class FeedingEvent {
 
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
+
+    public Long getRemoteId() { return remoteId; }
+    public void setRemoteId(Long remoteId) { this.remoteId = remoteId; }
 }

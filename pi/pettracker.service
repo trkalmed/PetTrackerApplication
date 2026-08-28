@@ -48,7 +48,9 @@ EnvironmentFile=-@DIR@/service.env
 ExecStart=/usr/bin/python3 run.py \
     --rooms ${PETTRACKER_ROOMS} \
     --pir-pins ${PETTRACKER_PIR_PINS} \
-    --camera ${PETTRACKER_CAMERA}     --scale-pins ${PETTRACKER_SCALE_PINS}     --scale-factor ${PETTRACKER_SCALE_FACTOR}
+    --camera ${PETTRACKER_CAMERA} \
+    --scale-pins ${PETTRACKER_SCALE_PINS} \
+    --scale-factor ${PETTRACKER_SCALE_FACTOR}
 
 # A sensor read that kills the process should not take the house's motion log
 # with it until someone notices. Five seconds is long enough that a genuinely

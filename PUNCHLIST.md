@@ -2,8 +2,9 @@
 
 State: P0-P3 done. Sensor data layer built. Detector upgraded. Green theme applied.
 The two halves are joined: the app polls the Pi, and motion sightings become rooms.
-Open: Pi hardware (camera, load cell, servo, GPS), #11 cloud sync (held), #20, #26.
-See "What is left" at the end. 2026-08-28.
+On real hardware: three PIRs, a USB camera, motion snapshots, and the live
+detector running against the Pi stream. Open: the load cell, the servo, the CSI
+camera stub, GPS, #11 cloud sync (held), #20, #26. 2026-08-28.
 
 ---
 
@@ -503,6 +504,9 @@ claiming the pet is still where it was last seen.
 | Events survive a service restart | the SQLite buffer replayed everything after a `pkill` |
 | App polling the real `pi/run.py` | events collected, room chart drawn, Settings shows "synced HH:mm" |
 | "Currently in" against stale motion | correctly showed "no motion since 15:23" rather than claiming a room |
+| USB webcam via `--camera usb` | `/health` reports it, `/stream` serves video |
+| Motion snapshots | a JPEG per motion event, served from `/snapshot?name=…` |
+| **#7, the Pi stream, in the app** | live view connects and the TFLite detector runs against the Pi feed |
 
 That last row is the whole dwell rule working in the field: an hour-old sighting
 fills the room bar but does not claim the pet is still there.
@@ -538,8 +542,6 @@ fills the room bar but does not claim the pet is still there.
 - Builds are warning-free.
 
 **Still not verified:**
-- **#7, the Pi stream.** Needs a real Raspberry Pi serving MJPEG on the LAN. The
-  intent-building path is shared and exercised, but nothing has connected to a live stream.
 - **The release build.** R8 succeeds and the mapping file shows the reflective classes were
   kept, but the release APK is unsigned so it could not be installed. A wrong keep rule
   fails at runtime, not build time — smoke-test a signed release before shipping.
@@ -600,15 +602,20 @@ the printed IP into the app's Pi Connection dialog.
 
 ## What is left
 
-1. **The Pi hardware.** The service and the PIR path are done and tested; the
-   camera, load cell, servo and GPS are still stubs in
-   `pi/pettracker/sensors/real.py`, each with its wiring and its traps written
-   down. Bring them up one at a time watching `/health`, in the order in
-   `pi/README.md` — camera first, since the app already consumes the stream.
-2. **The PIR sensors themselves.** Software-complete, hardware-unverified: no
-   PIR has been wired yet. `run.py --check-motion` is the tool, and the GPIO
-   backends can only be confirmed on a real Pi.
-3. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
+1. **The load cell (HX711).** The last empty card on the dashboard, and the
+   app's headline feature: the food ring, the meal chips and the whole Food tab
+   have nothing to draw. `HX711Scale.read_grams` and `tare` are stubs, and the
+   calibration factor can only be found with a known weight on the real bowl.
+2. **The servo**, on its own 5 V supply. `ServoFeeder.dispense` is a stub, and
+   `POST /feed` has no button in the app to call it.
+3. **The CSI camera.** `PiCamera.read_jpeg` is a stub. The USB path works, so
+   this only matters for a second camera or a neater physical build.
+4. **Snapshots in the app.** Motion events now carry a `snapshot` file name and
+   nothing displays it. `GET /snapshot?name=…` is ready; the room card is the
+   obvious place to show one.
+5. **A systemd unit** so the service survives a reboot and a closed terminal,
+   rather than depending on `nohup` each time.
+6. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
    the pet's. Still deliberately empty.
 4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing
    when you come back to it: the local layer was built so this stays a clean

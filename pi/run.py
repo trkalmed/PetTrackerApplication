@@ -33,6 +33,52 @@ def pir_pins(args, rooms):
     return pins
 
 
+def build_scale(args, log):
+    """The load cell on its own, for the two bring-up modes."""
+    from pettracker.sensors.real import (DEFAULT_SCALE_PINS, HX711Scale,
+                                         parse_pins)
+
+    pins = parse_pins(args.scale_pins) if args.scale_pins else DEFAULT_SCALE_PINS
+    if len(pins) != 2:
+        raise ValueError("--scale-pins takes exactly two pins: DT,SCK")
+
+    return HX711Scale(
+        dout_pin=pins[0], sck_pin=pins[1],
+        calibration_factor=(args.scale_factor
+                            if args.scale_factor is not None
+                            else HX711Scale.UNCALIBRATED))
+
+
+def scale_mode(args, log) -> int:
+    """--check-scale and --calibrate-scale, without starting the service.
+
+    Both need the bowl still and nobody else clocking the amplifier, so the
+    monitor thread stays off. Two readers on one HX711 interleave their clock
+    pulses and produce two corrupt samples rather than one good one.
+    """
+    from pettracker.bringup import calibrate_scale, check_scale
+
+    if args.fake:
+        from pettracker.sensors.fake import build_fake_sensor_set
+        scale = build_fake_sensor_set().scale
+    else:
+        try:
+            scale = build_scale(args, log)
+        except ValueError as e:
+            log.error("%s", e)
+            return 2
+
+    try:
+        if args.calibrate_scale:
+            return 0 if calibrate_scale(scale) is not None else 1
+        check_scale(scale)
+        return 0
+    finally:
+        close = getattr(scale, "close", None)
+        if close:
+            close()
+
+
 def check_motion_mode(args, rooms, log) -> int:
     """--check-motion: watch the PIRs and exit, without starting the service.
 
@@ -91,6 +137,18 @@ def main() -> int:
                         help="where motion snapshots are written (default ./snapshots)")
     parser.add_argument("--no-snapshots", action="store_true",
                         help="do not save a picture when motion fires")
+    parser.add_argument("--scale-pins", default=None,
+                        help="HX711 data and clock as BCM GPIO numbers, "
+                             "\"DT,SCK\" (default 5,6)")
+    parser.add_argument("--scale-factor", type=float, default=None,
+                        help="counts per gram, from --calibrate-scale. Without "
+                             "it every weight is raw counts wearing a gram label")
+    parser.add_argument("--check-scale", action="store_true",
+                        help="watch the load cell live and exit. Use this while "
+                             "wiring it")
+    parser.add_argument("--calibrate-scale", action="store_true",
+                        help="find the counts-per-gram factor with a known "
+                             "weight, print it, and exit")
     parser.add_argument("--check-motion", action="store_true",
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
@@ -107,6 +165,9 @@ def main() -> int:
 
     if args.check_motion:
         return check_motion_mode(args, rooms, log)
+
+    if args.check_scale or args.calibrate_scale:
+        return scale_mode(args, log)
 
     pins = None
     if not args.fake:
@@ -127,10 +188,18 @@ def main() -> int:
             log.error("real sensors need Raspberry Pi libraries: %s", e)
             log.error("on a laptop, run with --fake")
             return 1
+        from pettracker.sensors.real import HX711Scale, parse_pins
+
         try:
+            scale_pins = parse_pins(args.scale_pins) if args.scale_pins else None
+            if scale_pins is not None and len(scale_pins) != 2:
+                raise ValueError("--scale-pins takes exactly two pins: DT,SCK")
             sensors = build_real_sensor_set(
                 rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup,
-                camera=args.camera, camera_device=args.camera_device)
+                camera=args.camera, camera_device=args.camera_device,
+                scale_pins=scale_pins,
+                scale_factor=(args.scale_factor if args.scale_factor is not None
+                              else HX711Scale.UNCALIBRATED))
         except ValueError as e:
             log.error("%s", e)
             return 2

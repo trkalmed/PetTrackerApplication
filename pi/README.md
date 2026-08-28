@@ -278,8 +278,7 @@ watch `/health`:
    * **`--camera csi`** is the ribbon camera, and `PiCamera.read_jpeg` is still
      a stub. Filling it in with picamera2 is the remaining work there.
    * **`--camera none`** for a rig that has neither.
-2. **HX711 + load cell.** Calibrate, then watch `kind: "weight"` events and tune
-   the detector constants.
+2. **HX711 + load cell.** See below — it has two tools.
 3. **Servo** — external supply first.
 4. **PIR ×3.** See below; this one has a tool.
 5. **GPS**, last.
@@ -318,6 +317,66 @@ Once the rooms are right, start the service normally and confirm the other half:
 motion should appear in `/events` as `{"kind": "motion", "room": "Kitchen"}`,
 debounced to one event per room per 30 s no matter how long the sensor is held.
 
+### The load cell
+
+Wiring: VCC to 5V, GND to GND, DT and SCK to any two free GPIOs (5 and 6 by
+default, `--scale-pins "DT,SCK"` to change them). The four wires from the cell
+itself go to E+, E-, A+ and A- on the amplifier; if you get a pair the wrong way
+round the readings simply run backwards, which the calibration tool notices and
+explains rather than refusing.
+
+There is no driver to install. The HX711 protocol is in `pettracker/hx711.py`,
+because every HX711 package on PyPI is built on RPi.GPIO and would hit the same
+Pi 5 wall the PIR sensors did.
+
+**First, is it alive:**
+
+```bash
+python3 run.py --check-scale
+```
+
+Press on the bowl. The raw counts should move by thousands. If they do not move
+at all, the cell is not taking the load — usually the bowl is resting on
+something else as well. If there is no reading at all, DT and SCK are on
+different pins than you told it, or the amplifier has no power.
+
+**Then, what a gram is:**
+
+```bash
+python3 run.py --calibrate-scale
+```
+
+It tares an empty bowl, asks you to add a known weight — a kitchen weight, or
+water, where 1 ml is 1 g — and prints the counts-per-gram factor. Use something
+heavy: your uncertainty about the weight divides straight through into the
+factor.
+
+Put the result in `service.env` so it survives a restart:
+
+```
+PETTRACKER_SCALE_FACTOR=428.70
+```
+
+**Until you do that the factor is 1.0**, which means every "gram" the service
+reports is a raw count. The service says so at startup, and it is worth
+believing: a nudge of the bowl reads as a 40,000 g meal, and the meal detector
+will happily log it.
+
+Recalibrate whenever the bowl or its mounting changes.
+
+Three things the driver does that a naive one does not, all of which produce a
+plausible wrong number rather than an error:
+
+* **Saturated readings are rejected.** A disconnected or miswired cell rails the
+  amplifier to full scale, and full scale as a weight is an enormous meal.
+* **Readings are a median, not a mean.** The clock line must not stay high for
+  more than 60 µs, and Python cannot promise that — a garbage collection is
+  enough. The occasional sample is therefore completely wrong rather than
+  slightly wrong, which a mean would let through and a median ignores.
+* **A failed read is None, never 0.** An amplifier that has stopped answering
+  and a bowl with nothing in it are different facts, and only one of them means
+  the pet has eaten everything.
+
 ### Motion snapshots
 
 With a working camera, every motion event also saves a JPEG — the difference
@@ -339,12 +398,13 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-87 tests, no hardware and no network required. They cover the meal detector
+106 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and
-snapshot naming and retention (including the path-traversal defence), and the
-HTTP contract driven against a real server
+snapshot naming and retention (including the path-traversal defence), the HX711
+bit protocol against a fake amplifier, and the HTTP contract driven against a
+real server
 on a real socket — including parsing the MJPEG stream the same way the Android
 `MjpegInputStream` does.
 
@@ -359,6 +419,7 @@ pettracker/
   store.py              SQLite event buffer and the polling cursor
   bringup.py            --check-motion, the live sensor view
   snapshots.py          the JPEGs saved when something moves
+  hx711.py              the load-cell protocol, two wires and no dependencies
   sensors/
     base.py             what the service needs from hardware
     gpio.py             claiming an input pin on any Pi generation

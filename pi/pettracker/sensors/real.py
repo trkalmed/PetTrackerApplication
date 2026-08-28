@@ -17,8 +17,9 @@ import threading
 import time
 from typing import List, Optional
 
+from ..hx711 import HX711
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
-from .gpio import open_input
+from .gpio import open_input, open_output
 
 log = logging.getLogger(__name__)
 
@@ -34,56 +35,112 @@ _CLAIM_THE_PIN = object()
 class HX711Scale(Scale):
     """Load cell through an HX711 amplifier.
 
-    Wiring: VCC to 5V, GND to GND, DT and SCK to any two free GPIOs.
+    Wiring: VCC to 5V, GND to GND, DT and SCK to any two free GPIOs. The
+    protocol lives in :mod:`pettracker.hx711`; this class is the part that turns
+    counts into grams, which is to say the part that needs calibrating.
 
-    The number that matters is the **calibration factor**, and it cannot be
-    guessed: raw counts per gram depend on the specific cell, the amplifier
-    gain, and how the bowl sits on it. Find it once with a known weight —
+    **The calibration factor cannot be guessed.** Counts per gram depend on the
+    specific cell, the amplifier gain, and how the bowl sits on it. Find it once:
 
-        1. Empty the bowl, call tare()
-        2. Put a known mass on it (a 100 g kitchen weight, or water: 1 ml = 1 g)
-        3. factor = raw_reading / known_grams
+        1. Empty the bowl and run ``run.py --check-scale``
+        2. Press t to tare
+        3. Put a known mass on it — a 100 g kitchen weight, or water, where
+           1 ml is 1 g
+        4. The tool prints the factor to pass as --scale-factor
 
-    Re-do it if the bowl or mounting changes. Store it in the config rather than
-    hard-coding it here.
-
-    The HX711 also needs settling time after power-up, and its readings are
-    noisy enough that a median of several samples beats a single read.
+    Re-do it if the bowl or its mounting changes. A factor of 1.0 means
+    uncalibrated, and the readings are then raw counts wearing a gram label —
+    the meal detector would report a nudge of the bowl as a 40,000 g meal.
     """
 
+    #: What the factor is when nobody has calibrated anything.
+    UNCALIBRATED = 1.0
+
     def __init__(self, dout_pin: int = 5, sck_pin: int = 6,
-                 calibration_factor: float = 1.0, samples: int = 5):
+                 calibration_factor: float = UNCALIBRATED, samples: int = 5,
+                 gain: int = 128):
         self._calibration_factor = calibration_factor
         self._samples = samples
         self._offset = 0.0
         self._hx = None
-        try:
-            # pip install hx711 (or vendor one of the several small drivers)
-            from hx711 import HX711  # type: ignore
 
-            self._hx = HX711(dout_pin=dout_pin, pd_sck_pin=sck_pin)
-            log.info("HX711 on DT=%d SCK=%d", dout_pin, sck_pin)
-        except Exception as e:
-            log.warning("HX711 unavailable: %s", e)
+        dout = open_input(dout_pin)
+        sck = open_output(sck_pin)
+        if dout is None or sck is None:
+            # One claimed and the other not would leave a pin held for nothing.
+            if dout is not None:
+                dout.close()
+            if sck is not None:
+                sck.close()
+            log.warning("HX711 unavailable: could not claim DT=%d SCK=%d",
+                        dout_pin, sck_pin)
+            return
+
+        self._hx = HX711(dout, sck, gain=gain)
+        log.info("HX711 on DT=%d SCK=%d via %s", dout_pin, sck_pin, dout.backend)
+
+        if calibration_factor == self.UNCALIBRATED:
+            # Loud, because everything downstream will look like it is working:
+            # readings arrive, the dashboard fills in, and every number on it is
+            # counts pretending to be grams.
+            log.warning("HX711 is uncalibrated — pass --scale-factor. "
+                        "Until then every weight is raw counts, not grams.")
 
     def read_grams(self) -> Optional[float]:
         if self._hx is None:
             return None
-        raise NotImplementedError(
-            "Read `samples` raw values, take the median, subtract the offset, "
-            "divide by the calibration factor. Return None if the read fails "
-            "rather than 0 — an empty bowl and a broken amplifier must not "
-            "look the same."
-        )
+
+        raw = self._hx.read_median(self._samples)
+        if raw is None:
+            # None, never 0. An amplifier that has stopped answering and a bowl
+            # with nothing in it are different facts, and only one of them means
+            # the pet has eaten everything.
+            return None
+
+        if not self._calibration_factor:
+            return None
+        return (raw - self._offset) / self._calibration_factor
 
     def tare(self) -> None:
+        """Treats the current weight as zero.
+
+        Averages more samples than a normal reading: this number is subtracted
+        from every future one, so an outlier here is an outlier forever.
+        """
         if self._hx is None:
             return
-        raise NotImplementedError("Average several raw reads into self._offset.")
+
+        raw = self._hx.read_median(max(self._samples * 3, 15))
+        if raw is None:
+            log.warning("could not tare — the HX711 is not returning readings")
+            return
+        self._offset = float(raw)
+        log.info("tared at %d counts", raw)
+
+    def read_raw(self) -> Optional[int]:
+        """Counts, before the offset and the factor. For calibration only."""
+        return self._hx.read_median(self._samples) if self._hx else None
+
+    @property
+    def offset(self) -> float:
+        return self._offset
+
+    @property
+    def calibration_factor(self) -> float:
+        return self._calibration_factor
+
+    @property
+    def calibrated(self) -> bool:
+        return self._calibration_factor != self.UNCALIBRATED
 
     @property
     def available(self) -> bool:
         return self._hx is not None
+
+    def close(self) -> None:
+        if self._hx is not None:
+            self._hx.close()
+            self._hx = None
 
 
 class GpioMotionSensor(MotionSensor):
@@ -390,6 +447,10 @@ class Neo6mLocationSensor(LocationSensor):
 #: boot (0/1 are the ID EEPROM, 2/3 have fixed pull-ups, 14/15 are the UART).
 DEFAULT_PIR_PINS = [17, 27, 22]
 
+#: HX711 data and clock, BCM numbering. Any two free pins will do; these avoid
+#: the SPI and I2C peripherals in case something else on the rig wants them.
+DEFAULT_SCALE_PINS = [5, 6]
+
 
 def parse_pins(spec: str) -> List[int]:
     """Turns ``"17,27,22"`` into ``[17, 27, 22]``.
@@ -492,7 +553,9 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           pir_pins: Optional[List[int]] = None,
                           pir_warmup_s: float = 60.0,
                           camera: str = "csi",
-                          camera_device: int = 0) -> SensorSet:
+                          camera_device: int = 0,
+                          scale_pins: Optional[List[int]] = None,
+                          scale_factor: float = HX711Scale.UNCALIBRATED) -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
@@ -507,8 +570,10 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         previously always the CSI one, which meant a USB camera could be plugged
         in, working, and still reported as absent.
     """
+    dout, sck = (scale_pins or DEFAULT_SCALE_PINS)
     return SensorSet(
-        scale=HX711Scale(),
+        scale=HX711Scale(dout_pin=dout, sck_pin=sck,
+                         calibration_factor=scale_factor),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=ServoFeeder(),
         camera=build_camera(camera, camera_device),

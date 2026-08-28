@@ -164,3 +164,118 @@ def _summarise(watches: Sequence[_Watch], out) -> None:
         print("\n  More than one sensor fired. If you only waved at one, they are "
               "either pointing at the same space or one pin is misidentified — "
               "the rooms in --rooms are in the same order as --pir-pins.", file=out)
+
+
+def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0.5,
+                out=None, clock=time.monotonic) -> None:
+    """Prints what the load cell is reading, live.
+
+    The counterpart to :func:`check_motion` for the bowl. A load cell gives you
+    no sign of life at all until something interprets it — no click, no LED — so
+    the first question is simply whether the numbers move when you press on it.
+
+    Raw counts are shown alongside grams because they are the honest reading:
+    grams are counts divided by a factor somebody measured, and if that factor
+    is wrong the grams are wrong in a way only the counts reveal.
+    """
+    out = out or sys.stdout
+
+    if not scale.available:
+        print("\nThe HX711 could not be opened. Check DT and SCK are on the pins "
+              "you passed to --scale-pins, and that the amplifier has 5V.", file=out)
+        return
+
+    print("\nLoad cell. Press on the bowl and watch the numbers move.", file=out)
+    print("Ctrl-C to stop.\n", file=out)
+    if not getattr(scale, "calibrated", True):
+        print("  Uncalibrated: 'grams' below is really raw counts.", file=out)
+        print("  Run --calibrate-scale to find the factor.\n", file=out)
+
+    started = clock()
+    interactive = getattr(out, "isatty", lambda: False)()
+    try:
+        while duration_s is None or clock() - started < duration_s:
+            raw = scale.read_raw() if hasattr(scale, "read_raw") else None
+            grams = scale.read_grams()
+
+            if raw is None and grams is None:
+                line = "  no reading — the amplifier is not answering"
+            else:
+                line = (f"  raw {raw if raw is not None else '—':>10}"
+                        f"   {grams:>10.1f} g" if grams is not None
+                        else f"  raw {raw:>10}   (no grams)")
+
+            if interactive:
+                out.write("\r\033[K" + line)
+            else:
+                out.write(line + "\n")
+            out.flush()
+            time.sleep(interval_s)
+    except KeyboardInterrupt:
+        pass
+    print(file=out)
+
+
+def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:
+    """Walks through finding the calibration factor, and returns it.
+
+    Counts per gram cannot be derived, looked up or guessed — they depend on the
+    cell, the amplifier and how the bowl sits on it. The only way is to weigh
+    something whose weight you already know, which is what this does.
+
+    :returns: the factor, or None if it could not be measured
+    """
+    out = out or sys.stdout
+
+    if not scale.available:
+        print("The HX711 could not be opened — nothing to calibrate.", file=out)
+        return None
+
+    print("\nCalibrating the load cell.\n", file=out)
+    print("1. Empty the bowl and leave it still.", file=out)
+    ask("   Press Enter when it is settled... ")
+
+    scale.tare()
+    zero = scale.read_raw()
+    if zero is None:
+        print("   No reading. Check the wiring and try again.", file=out)
+        return None
+    print(f"   Zero is {zero} counts.\n", file=out)
+
+    print("2. Put a known weight in the bowl — a kitchen weight, or water,", file=out)
+    print("   where 1 ml is 1 g. Heavier is better: the error in your", file=out)
+    print("   knowledge of the weight divides through into the factor.", file=out)
+    answer = ask("   How many grams? ")
+
+    try:
+        known = float(answer)
+    except (TypeError, ValueError):
+        print("   That is not a number of grams.", file=out)
+        return None
+    if known <= 0:
+        print("   The weight has to be more than nothing.", file=out)
+        return None
+
+    loaded = scale.read_raw()
+    if loaded is None:
+        print("   No reading with the weight on. Check the wiring.", file=out)
+        return None
+
+    factor = (loaded - zero) / known
+    if factor == 0:
+        print("   The reading did not change when you added weight. The cell is", file=out)
+        print("   probably not taking the load — check that the bowl rests on it", file=out)
+        print("   and nothing else.", file=out)
+        return None
+
+    print(f"\n   Loaded reading: {loaded} counts", file=out)
+    print(f"   Factor: {factor:.2f} counts per gram\n", file=out)
+    print("Pass this to the service, and put it in service.env so it survives", file=out)
+    print("a restart:\n", file=out)
+    print(f"   PETTRACKER_SCALE_FACTOR={factor:.2f}\n", file=out)
+    if factor < 0:
+        print("The factor is negative, which means the reading falls as weight is", file=out)
+        print("added. That is a wiring swap, not a problem — E+ and E- or A+ and", file=out)
+        print("A- are the other way round. It works exactly as well like this.\n",
+              file=out)
+    return factor

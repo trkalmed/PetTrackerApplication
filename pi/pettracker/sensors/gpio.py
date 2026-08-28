@@ -124,9 +124,91 @@ def _lgpio_chip() -> int:
     return 0
 
 
+class DigitalOutput:
+    """One output pin, claimed and ready to drive.
+
+    The HX711 needs a clock line, which is the first thing here that has to
+    *write* a pin rather than read one. Same three backends, same reason.
+    """
+
+    backend = "none"
+
+    def write(self, high: bool) -> None:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        """Releases the pin. Safe to call more than once."""
+
+
+class _GpiozeroOutput(DigitalOutput):
+    backend = "gpiozero"
+
+    def __init__(self, pin: int):
+        from gpiozero import DigitalOutputDevice  # type: ignore
+
+        self._device = DigitalOutputDevice(pin, initial_value=False)
+
+    def write(self, high: bool) -> None:
+        # .value rather than .on()/.off(): one attribute write instead of a
+        # method dispatch, and this runs 24 times per weight reading inside a
+        # window the chip times out of.
+        self._device.value = 1 if high else 0
+
+    def close(self) -> None:
+        try:
+            self._device.close()
+        except Exception:
+            pass
+
+
+class _RpiGpioOutput(DigitalOutput):
+    backend = "RPi.GPIO"
+
+    def __init__(self, pin: int):
+        import RPi.GPIO as GPIO  # type: ignore
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+        self._gpio = GPIO
+        self._pin = pin
+
+    def write(self, high: bool) -> None:
+        self._gpio.output(self._pin, high)
+
+    def close(self) -> None:
+        try:
+            self._gpio.cleanup(self._pin)
+        except Exception:
+            pass
+
+
+class _LgpioOutput(DigitalOutput):
+    backend = "lgpio"
+
+    def __init__(self, pin: int):
+        import lgpio  # type: ignore
+
+        self._lgpio = lgpio
+        self._handle = lgpio.gpiochip_open(_lgpio_chip())
+        lgpio.gpio_claim_output(self._handle, pin, 0)
+        self._pin = pin
+
+    def write(self, high: bool) -> None:
+        self._lgpio.gpio_write(self._handle, self._pin, 1 if high else 0)
+
+    def close(self) -> None:
+        try:
+            self._lgpio.gpio_free(self._handle, self._pin)
+            self._lgpio.gpiochip_close(self._handle)
+        except Exception:
+            pass
+
+
 #: Tried in order. gpiozero first because it picks a working low-level driver
 #: for the board it is running on, which is the whole problem being solved here.
 _BACKENDS = (_GpiozeroInput, _RpiGpioInput, _LgpioInput)
+_OUTPUT_BACKENDS = (_GpiozeroOutput, _RpiGpioOutput, _LgpioOutput)
 
 
 def open_input(pin: int) -> Optional[DigitalInput]:
@@ -147,4 +229,24 @@ def open_input(pin: int) -> Optional[DigitalInput]:
         return claimed
 
     log.warning("GPIO %d unavailable (%s)", pin, "; ".join(errors))
+    return None
+
+
+def open_output(pin: int) -> Optional[DigitalOutput]:
+    """Claims ``pin`` as an output, or returns None if no backend can.
+
+    None rather than an exception, for the same reason as :func:`open_input`: a
+    missing amplifier must leave the service running the sensors it does have.
+    """
+    errors = []
+    for backend in _OUTPUT_BACKENDS:
+        try:
+            claimed = backend(pin)
+        except Exception as e:
+            errors.append(f"{backend.backend}: {e}")
+            continue
+        log.info("GPIO %d claimed for output via %s", pin, claimed.backend)
+        return claimed
+
+    log.warning("GPIO %d unavailable for output (%s)", pin, "; ".join(errors))
     return None

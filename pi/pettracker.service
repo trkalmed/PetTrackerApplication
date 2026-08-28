@@ -27,10 +27,15 @@ WorkingDirectory=@DIR@
 # Defaults. To change the rooms, pins or camera, put the same names in
 # @DIR@/service.env instead of editing this file — that survives a reinstall
 # and does not need root. Declared before EnvironmentFile so the file wins.
-Environment=PYTHONUNBUFFERED=1
-Environment=PETTRACKER_ROOMS=Kitchen,Living room,Hall
-Environment=PETTRACKER_PIR_PINS=17,27,22
-Environment=PETTRACKER_CAMERA=usb
+#
+# The quotes matter. Environment= takes a space-separated list of assignments,
+# so an unquoted Kitchen,Living room,Hall sets PETTRACKER_ROOMS=Kitchen,Living
+# and throws the rest away — which surfaces as "2 room(s) but 3 pin(s)" at
+# startup, an error about the pins that is really about the rooms.
+Environment="PYTHONUNBUFFERED=1"
+Environment="PETTRACKER_ROOMS=Kitchen,Living room,Hall"
+Environment="PETTRACKER_PIR_PINS=17,27,22"
+Environment="PETTRACKER_CAMERA=usb"
 EnvironmentFile=-@DIR@/service.env
 
 # ${VAR}, not $VAR. systemd splits $VAR on whitespace, which would turn

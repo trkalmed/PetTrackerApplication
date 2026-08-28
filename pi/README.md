@@ -65,9 +65,19 @@ PETTRACKER_PIR_PINS=17,27,22,23
 PETTRACKER_CAMERA=usb
 ```
 
-Then restart. Note the unit uses `${VAR}` rather than `$VAR`: systemd splits the
-latter on whitespace, which would turn `Kitchen,Living room,Hall` into three
-arguments and silently drop two rooms.
+Then restart. `service.env` is the better place for a room list containing a
+space, because systemd parses it a line at a time and leaves the value alone.
+
+Two whitespace traps in the unit itself, both of which produce a room list that
+is quietly shorter than the one you wrote:
+
+* `ExecStart` uses `${VAR}`, not `$VAR`. The latter is split on whitespace, so
+  `Kitchen,Living room,Hall` would arrive as three separate arguments.
+* `Environment=` takes a space-separated list of assignments, so the value has
+  to be quoted: `Environment="PETTRACKER_ROOMS=Kitchen,Living room,Hall"`.
+  Unquoted, it sets `Kitchen,Living` and discards the rest — which the service
+  then reports as "2 room(s) but 3 pin(s)", an error about the pins that is
+  really about the rooms.
 
 **A USB camera can lose a race with boot.** Snapshots are enabled at startup
 only if a camera answered, so if `/health` reports `"camera": false` after a

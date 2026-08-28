@@ -21,6 +21,14 @@ from .gpio import open_input
 
 log = logging.getLogger(__name__)
 
+#: Default for GpioMotionSensor's pin_input, meaning "go and claim the real pin".
+#: A sentinel rather than None, because None is what open_input returns when no
+#: backend could claim one — so it has to be passable, and has to mean "this
+#: sensor has no pin". Conflating the two made a test that thought it was
+#: checking an unavailable sensor quietly claim GPIO 22 on a real Pi and pass
+#: for the wrong reason.
+_CLAIM_THE_PIN = object()
+
 
 class HX711Scale(Scale):
     """Load cell through an HX711 amplifier.
@@ -103,14 +111,18 @@ class GpioMotionSensor(MotionSensor):
     """
 
     def __init__(self, room: str, pin: int, warmup_s: float = 60.0,
-                 clock=time.monotonic, pin_input=None):
+                 clock=time.monotonic, pin_input=_CLAIM_THE_PIN):
+        """
+        :param pin_input: omit it to claim ``pin`` for real. Pass an object with
+            ``read()``/``close()`` to drive the logic from a test, or None to
+            build a sensor that has no pin at all — which is what a Pi with a
+            missing library or an unclaimable pin actually produces.
+        """
         self._room = room
         self._pin = pin
         self._warmup_s = warmup_s
         self._clock = clock
-        # Injectable so tests can drive the logic without a Pi; None means
-        # "claim the real pin".
-        self._input = pin_input if pin_input is not None else open_input(pin)
+        self._input = open_input(pin) if pin_input is _CLAIM_THE_PIN else pin_input
         self._started_at = clock()
         self._warm = warmup_s <= 0
 

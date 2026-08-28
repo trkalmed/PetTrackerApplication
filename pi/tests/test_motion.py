@@ -198,13 +198,22 @@ class PinConfigurationTest(unittest.TestCase):
         self.assertEqual([("Kitchen", 17), ("Hall", 27)],
                          pin_map(["Kitchen", "Hall"], [17, 27]))
 
-    def test_building_sensors_without_a_pi_yields_unavailable_sensors(self):
+    def test_building_sensors_works_with_or_without_gpio(self):
         sensors = build_motion_sensors(["Kitchen", "Hall"], [17, 27])
 
-        # No RPi.GPIO, no gpiozero, no lgpio — and still a running service.
-        self.assertEqual(["Kitchen", "Hall"], [s.room for s in sensors])
-        self.assertEqual([17, 27], [s.pin for s in sensors])
-        self.assertFalse(any(s.available for s in sensors))
+        try:
+            # Deliberately says nothing about `available`: on a laptop no
+            # backend can claim a pin, and on a Pi every backend can. What has
+            # to hold either way is that the service starts and each room keeps
+            # the pin it was given — an earlier version of this test asserted
+            # the laptop answer and failed the first time it met real hardware.
+            self.assertEqual(["Kitchen", "Hall"], [s.room for s in sensors])
+            self.assertEqual([17, 27], [s.pin for s in sensors])
+        finally:
+            # On a Pi this claimed two real pins. Give them back, or the next
+            # run of the service cannot open them.
+            for sensor in sensors:
+                sensor.close()
 
 
 class BringUpViewTest(unittest.TestCase):

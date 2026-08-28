@@ -16,6 +16,7 @@ import sys
 
 from pettracker.monitor import Monitor
 from pettracker.server import DEFAULT_PORT, PetTrackerServer, local_ip
+from pettracker.snapshots import SnapshotStore
 from pettracker.store import EventStore
 
 
@@ -82,6 +83,14 @@ def main() -> int:
                              "warm-up belongs to the sensor powering up, not to "
                              "this process, so pass 0 when restarting the service "
                              "on a rig that has been powered for a while")
+    parser.add_argument("--camera", default="csi",
+                        help="which camera this Pi has: csi (ribbon), usb, or none")
+    parser.add_argument("--camera-device", type=int, default=0,
+                        help="which /dev/videoN, for --camera usb (default 0)")
+    parser.add_argument("--snapshot-dir", default="snapshots",
+                        help="where motion snapshots are written (default ./snapshots)")
+    parser.add_argument("--no-snapshots", action="store_true",
+                        help="do not save a picture when motion fires")
     parser.add_argument("--check-motion", action="store_true",
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
@@ -118,15 +127,30 @@ def main() -> int:
             log.error("real sensors need Raspberry Pi libraries: %s", e)
             log.error("on a laptop, run with --fake")
             return 1
-        sensors = build_real_sensor_set(
-            rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup)
+        try:
+            sensors = build_real_sensor_set(
+                rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup,
+                camera=args.camera, camera_device=args.camera_device)
+        except ValueError as e:
+            log.error("%s", e)
+            return 2
 
     store = EventStore(args.db)
-    monitor = Monitor(sensors, store)
+
+    # No camera means no snapshots to take, so do not create the directory for
+    # them either — an empty folder appearing on a feeder-only Pi is a small
+    # lie about what the service is doing.
+    snapshots = None
+    if not args.no_snapshots and sensors.camera.available:
+        snapshots = SnapshotStore(args.snapshot_dir)
+        log.info("motion snapshots: %s", snapshots.directory)
+
+    monitor = Monitor(sensors, store, snapshots=snapshots)
     monitor.start()
 
     server = PetTrackerServer(sensors, store, monitor,
-                              host=args.host, port=args.port, stream_fps=args.fps)
+                              host=args.host, port=args.port, stream_fps=args.fps,
+                              snapshots=snapshots)
 
     address = local_ip() or "<this machine's IP>"
     log.info("listening on %s:%d", args.host, args.port)
@@ -134,6 +158,8 @@ def main() -> int:
     log.info("  stream : http://%s:%d/stream", address, args.port)
     log.info("  events : http://%s:%d/events?since=0", address, args.port)
     log.info("  health : http://%s:%d/health", address, args.port)
+    if snapshots is not None:
+        log.info("  motion snapshots are saved and served from /snapshot?name=…")
 
     try:
         server.serve_forever()

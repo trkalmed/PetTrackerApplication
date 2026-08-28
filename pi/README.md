@@ -30,7 +30,8 @@ python3 run.py
 ```
 
 Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
-`--pir-pins "17,27,22"`, `--pir-warmup`, `--fps`, `--db`, `-v`.
+`--pir-pins "17,27,22"`, `--pir-warmup`, `--camera csi|usb|none`,
+`--camera-device`, `--snapshot-dir`, `--no-snapshots`, `--fps`, `--db`, `-v`.
 
 While wiring the PIR sensors, `--check-motion` skips the service entirely and
 shows the pins live — see **Bringing the hardware up**.
@@ -88,12 +89,29 @@ Event kinds:
 | `kind` | Fields | Meaning |
 |---|---|---|
 | `feeding` | `grams`, `type` | `EATEN` (weight left the bowl) or `DISPENSED` (weight arrived) |
-| `motion` | `room` | A PIR fired, debounced to one event per room per 30 s |
+| `motion` | `room`, `snapshot` | A PIR fired, debounced to one event per room per 30 s. `snapshot` is the file name to fetch from `/snapshot`, and is absent when there is no camera |
 | `weight` | `grams` | Raw bowl weight, logged once a minute for diagnostics |
 
 **Events carry no pet id.** A load cell cannot tell which cat ate; the app
 attributes readings to whichever pet is active. That is why
 `PetDataRepository.recordFeeding(petId, ...)` takes the id on the app side.
+
+### `GET /snapshot?name=<file>`
+
+The JPEG taken when a motion event fired, named by that event's `snapshot`
+field. `image/jpeg`, cacheable forever — a snapshot never changes once written.
+
+404 for a name that has been pruned **and** for a name of the wrong shape. Those
+are deliberately the same answer: a file name arriving in a URL is untrusted
+input, and distinguishing "invalid" from "missing" tells whoever asked that the
+difference is worth exploring. Names are generated to one strict pattern and
+checked against that same pattern on the way back out.
+
+Snapshots are deleted on the same schedule as the events that name them, so an
+`/events` reply never points at a picture that has already gone — but a phone
+that has been offline for longer than the retention window can still find a
+`snapshot` field with nothing behind it. Treat a 404 here as "no picture", not
+as an error.
 
 ### `GET /stream`
 
@@ -202,8 +220,16 @@ Each sensor reports itself unavailable rather than crashing when its hardware is
 missing, so the service starts with everything unplugged. Add one at a time and
 watch `/health`:
 
-1. **Pi camera → `/stream`.** Highest value, lowest risk, and the app already
-   consumes it, so you get a real end-to-end result first.
+1. **A camera → `/stream`.** Highest value, lowest risk, and the app already
+   consumes it, so you get a real end-to-end result first. Pick which one with
+   `--camera`:
+
+   * **`--camera usb`** works today. Needs `sudo apt install python3-opencv`
+     (apt, not pip — pip builds OpenCV from source and takes hours on a Pi). Use
+     `--camera-device N` if the webcam is not `/dev/video0`.
+   * **`--camera csi`** is the ribbon camera, and `PiCamera.read_jpeg` is still
+     a stub. Filling it in with picamera2 is the remaining work there.
+   * **`--camera none`** for a rig that has neither.
 2. **HX711 + load cell.** Calibrate, then watch `kind: "weight"` events and tune
    the detector constants.
 3. **Servo** — external supply first.
@@ -244,17 +270,33 @@ Once the rooms are right, start the service normally and confirm the other half:
 motion should appear in `/events` as `{"kind": "motion", "room": "Kitchen"}`,
 debounced to one event per room per 30 s no matter how long the sensor is held.
 
+### Motion snapshots
+
+With a working camera, every motion event also saves a JPEG — the difference
+between "the hall sensor fired at 03:00" and knowing which animal it was. The
+event carries the file name; `/snapshot?name=…` serves it.
+
+They are taken on the same debounce as the event, so a cat that settles in one
+room produces one photo every 30 s rather than one every poll. Worst case is
+still around 2,800 files per room per day, which is why they expire with their
+events — and why `--no-snapshots` exists.
+
+The camera is read by the monitor thread and by anyone watching `/stream`, so
+`UsbCamera` serialises reads. Without that the two interleave and the driver can
+hand back a half-decoded frame.
+
 ## Tests
 
 ```bash
 python3 -m unittest discover -s tests
 ```
 
-67 tests, no hardware and no network required. They cover the meal detector
+87 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and
-the HTTP contract driven against a real server
+snapshot naming and retention (including the path-traversal defence), and the
+HTTP contract driven against a real server
 on a real socket — including parsing the MJPEG stream the same way the Android
 `MjpegInputStream` does.
 
@@ -268,6 +310,7 @@ pettracker/
   meals.py              weight readings -> meals (pure logic, no I/O)
   store.py              SQLite event buffer and the polling cursor
   bringup.py            --check-motion, the live sensor view
+  snapshots.py          the JPEGs saved when something moves
   sensors/
     base.py             what the service needs from hardware
     gpio.py             claiming an input pin on any Pi generation

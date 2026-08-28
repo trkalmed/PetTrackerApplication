@@ -9,6 +9,7 @@ Endpoints — see README.md for the full contract:
 
     GET  /health              is it alive, which sensors are reporting
     GET  /events?since=<id>   readings since a cursor, plus the next cursor
+    GET  /snapshot?name=<n>   the JPEG saved when a motion event fired
     GET  /stream              MJPEG, the URL PiConnectionManager already builds
     POST /feed  {"grams": N}  run the feeder
     POST /tare                zero the scale
@@ -24,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .monitor import Monitor
 from .sensors.base import SensorSet
+from .snapshots import SnapshotStore
 from .store import EventStore
 
 log = logging.getLogger(__name__)
@@ -55,6 +57,10 @@ class _Handler(BaseHTTPRequestHandler):
     def sensors(self) -> SensorSet:
         return self.server.sensors        # type: ignore[attr-defined]
 
+    @property
+    def snapshots(self) -> Optional[SnapshotStore]:
+        return self.server.snapshots      # type: ignore[attr-defined]
+
     def log_message(self, fmt, *args):
         # BaseHTTPRequestHandler writes to stderr by default, which on a Pi
         # running under systemd means every polled request lands in the journal.
@@ -85,6 +91,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._health()
         if route.path == "/events":
             return self._events(parse_qs(route.query))
+        if route.path == "/snapshot":
+            return self._snapshot(parse_qs(route.query))
         if route.path == "/stream":
             return self._stream()
         self._send_json({"error": "not found"}, 404)
@@ -144,6 +152,34 @@ class _Handler(BaseHTTPRequestHandler):
         self.monitor.tare()
         self._send_json({"ok": True})
 
+    def _snapshot(self, query: dict) -> None:
+        """Serves one saved frame by the name its motion event carries.
+
+        The name is validated by SnapshotStore rather than here, and a name that
+        does not match what it writes gets the same 404 as one that has been
+        pruned. Saying "invalid" instead would be telling anyone who asks that
+        the difference is worth exploring.
+        """
+        name = (query.get("name") or [""])[0]
+        path = self.snapshots.path_for(name) if self.snapshots else None
+        if path is None:
+            return self._send_json({"error": "not found"}, 404)
+
+        try:
+            with open(path, "rb") as image:
+                body = image.read()
+        except OSError:
+            return self._send_json({"error": "not found"}, 404)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(body)))
+        # Snapshots never change once written, so a phone that has one can keep
+        # it rather than fetching it again on every dashboard refresh.
+        self.send_header("Cache-Control", "public, max-age=86400, immutable")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _stream(self) -> None:
         """multipart/x-mixed-replace, the format MjpegInputStream expects."""
         camera = self.sensors.camera
@@ -191,12 +227,13 @@ class PetTrackerServer(ThreadingHTTPServer):
 
     def __init__(self, sensors: SensorSet, store: EventStore, monitor: Monitor,
                  host: str = "0.0.0.0", port: int = DEFAULT_PORT,
-                 stream_fps: int = 10):
+                 stream_fps: int = 10, snapshots: Optional[SnapshotStore] = None):
         super().__init__((host, port), _Handler)
         self.sensors = sensors
         self.store = store
         self.monitor = monitor
         self.stream_fps = stream_fps
+        self.snapshots = snapshots
         self.started_at = time.time()
 
 

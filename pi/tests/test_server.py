@@ -9,6 +9,7 @@ breaks it should break a test.
 import json
 import os
 import sys
+import shutil
 import tempfile
 import threading
 import unittest
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from pettracker.monitor import Monitor
 from pettracker.sensors.fake import build_fake_sensor_set
 from pettracker.server import PetTrackerServer
+from pettracker.snapshots import SnapshotStore
 from pettracker.store import KIND_FEEDING, KIND_MOTION, EventStore
 
 
@@ -33,11 +35,14 @@ class ServerTest(unittest.TestCase):
 
         cls.sensors = build_fake_sensor_set(seed=7)
         cls.store = EventStore(cls.path)
-        cls.monitor = Monitor(cls.sensors, cls.store)
+        cls.snapshots_dir = tempfile.mkdtemp()
+        cls.snapshots = SnapshotStore(cls.snapshots_dir)
+        cls.monitor = Monitor(cls.sensors, cls.store, snapshots=cls.snapshots)
         # Port 0 lets the OS pick a free one, so the suite cannot collide with a
         # service already running on 8080.
         cls.server = PetTrackerServer(
-            cls.sensors, cls.store, cls.monitor, host="127.0.0.1", port=0)
+            cls.sensors, cls.store, cls.monitor, host="127.0.0.1", port=0,
+            snapshots=cls.snapshots)
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -47,6 +52,7 @@ class ServerTest(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
         cls.store.close()
+        shutil.rmtree(cls.snapshots_dir, ignore_errors=True)
         for suffix in ("", "-wal", "-shm"):
             try:
                 os.unlink(cls.path + suffix)
@@ -181,6 +187,41 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(body["ok"])
 
     # ── routing ─────────────────────────────────────────────────────────────
+
+    # ── /snapshot ───────────────────────────────────────────────────────────
+
+    def test_a_saved_snapshot_is_served_as_an_image(self):
+        frame = bytes([0xFF, 0xD8]) + b" frame " + bytes([0xFF, 0xD9])
+        name = self.snapshots.save(frame, "Kitchen", 1_752_000_000_000)
+
+        with urllib.request.urlopen(
+                self.url(f"/snapshot?name={name}"), timeout=5) as response:
+            self.assertEqual(200, response.status)
+            self.assertEqual("image/jpeg", response.headers["Content-Type"])
+            self.assertEqual(frame, response.read())
+
+    def test_a_snapshot_that_does_not_exist_is_404(self):
+        status, body = self.get_expecting_error(
+            "/snapshot?name=motion-20200101-000000-000-kitchen.jpg")
+
+        # Pruned since its event was written. Ordinary, not an error worth
+        # distinguishing.
+        self.assertEqual(404, status)
+
+    def test_a_name_that_climbs_out_of_the_directory_is_404(self):
+        # Same answer as a missing file on purpose: telling the caller that
+        # "invalid" and "not found" differ is telling them the difference is
+        # worth exploring.
+        for attempt in ("../../etc/passwd", "/etc/passwd", "kitchen.jpg", ""):
+            status, _ = self.get_expecting_error(f"/snapshot?name={attempt}")
+            self.assertEqual(404, status, attempt)
+
+    def get_expecting_error(self, path):
+        try:
+            with urllib.request.urlopen(self.url(path), timeout=5) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
 
     def test_unknown_paths_are_404(self):
         for path in ("/nope", "/events/extra"):

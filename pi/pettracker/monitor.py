@@ -15,6 +15,7 @@ from typing import Dict, Optional
 
 from .meals import MealDetector
 from .sensors.base import SensorSet
+from .snapshots import SnapshotStore
 from .store import KIND_FEEDING, KIND_MOTION, KIND_WEIGHT, EventStore
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class Monitor:
         weight_log_interval_s: float = 60.0,
         prune_interval_s: float = 3600.0,
         detector: Optional[MealDetector] = None,
+        snapshots: Optional[SnapshotStore] = None,
     ):
         """
         :param motion_debounce_s: a PIR latches high for seconds and retriggers
@@ -39,6 +41,10 @@ class Monitor:
             visit becomes hundreds of rows saying the same thing.
         :param weight_log_interval_s: raw weights are recorded occasionally for
             diagnostics. Meals come from the detector, not from these.
+        :param snapshots: where motion snapshots are written, or None for a rig
+            with no camera or with snapshots turned off. The picture is taken on
+            the same debounce as the event, so a cat that settles in one room
+            produces one photo every 30 s rather than one per poll.
         """
         self._sensors = sensors
         self._store = store
@@ -47,6 +53,7 @@ class Monitor:
         self._weight_log_interval = weight_log_interval_s
         self._prune_interval = prune_interval_s
         self._detector = detector or MealDetector()
+        self._snapshots = snapshots
 
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -102,6 +109,12 @@ class Monitor:
             removed = self._store.prune(now_ms)
             if removed:
                 log.info("pruned %d old events", removed)
+            if self._snapshots is not None:
+                # On the same schedule as the events: a snapshot outliving the
+                # event that explains it is just a file nobody can interpret.
+                removed = self._snapshots.prune(now)
+                if removed:
+                    log.info("pruned %d old snapshots", removed)
 
     def _poll_scale(self, now: float, now_ms: int) -> None:
         grams = self._sensors.scale.read_grams()
@@ -138,13 +151,45 @@ class Monitor:
                 continue
 
             self._last_motion_at[sensor.room] = now
+
+            payload = {"room": sensor.room}
+            snapshot = self._capture(sensor.room, now_ms)
+            if snapshot is not None:
+                payload["snapshot"] = snapshot
+
             self._store.append(
                 KIND_MOTION,
-                {"room": sensor.room},
+                payload,
                 timestamp_ms=now_ms,
                 source="pir",
             )
-            log.info("motion in %s", sensor.room)
+            log.info("motion in %s%s", sensor.room,
+                     " (snapshot)" if snapshot else "")
+
+    def _capture(self, room: str, now_ms: int) -> Optional[str]:
+        """One frame, if there is a camera and it is willing.
+
+        Every failure here is swallowed on purpose. A camera that has been
+        unplugged, a driver that returns nothing, a full SD card — none of those
+        should cost the motion event, which is the reading that actually
+        matters. The event simply arrives without a picture.
+        """
+        if self._snapshots is None:
+            return None
+
+        camera = self._sensors.camera
+        if not camera.available:
+            return None
+
+        try:
+            frame = camera.read_jpeg()
+        except Exception:
+            log.exception("could not read a frame for %s", room)
+            return None
+
+        if frame is None:
+            return None
+        return self._snapshots.save(frame, room, now_ms)
 
     # ── commands ────────────────────────────────────────────────────────────
 

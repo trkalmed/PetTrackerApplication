@@ -13,6 +13,7 @@ only real constraints are noted per sensor.
 """
 
 import logging
+import threading
 import time
 from typing import List, Optional
 
@@ -292,6 +293,12 @@ class UsbCamera(Camera):
 
     def __init__(self, device_index: int = 0, width: int = 640, height: int = 480):
         self._capture = None
+        # The monitor thread now takes snapshots while an HTTP thread may be
+        # serving /stream, and a VideoCapture is not safe for two readers: the
+        # frames interleave, and the driver can return a half-decoded buffer.
+        # One reader at a time; a frame takes tens of milliseconds, so nothing
+        # waits long.
+        self._lock = threading.Lock()
         try:
             import cv2  # type: ignore
 
@@ -309,9 +316,15 @@ class UsbCamera(Camera):
     def read_jpeg(self) -> Optional[bytes]:
         if self._capture is None:
             return None
-        ok, frame = self._capture.read()
+        with self._lock:
+            if self._capture is None:          # closed while we waited
+                return None
+            ok, frame = self._capture.read()
         if not ok:
             return None
+        # Encoding is pure CPU on a copy of the frame, so it happens outside the
+        # lock — a 10 fps stream would otherwise hold the camera most of the time
+        # and starve the snapshot.
         ok, buffer = self._cv2.imencode(".jpg", frame)
         return buffer.tobytes() if ok else None
 
@@ -320,9 +333,10 @@ class UsbCamera(Camera):
         return self._capture is not None
 
     def close(self) -> None:
-        if self._capture is not None:
-            self._capture.release()
-            self._capture = None
+        with self._lock:
+            if self._capture is not None:
+                self._capture.release()
+                self._capture = None
 
 
 class Neo6mLocationSensor(LocationSensor):
@@ -436,9 +450,49 @@ def build_motion_sensors(rooms: Optional[List[str]] = None,
     ]
 
 
+class NoCamera(Camera):
+    """A rig with no camera at all.
+
+    Not a failure state: a Pi doing feeder and motion duty has no reason to hold
+    a video device open, and "none" has to be sayable without one of the real
+    camera classes logging a warning about hardware nobody asked for.
+    """
+
+    def read_jpeg(self) -> Optional[bytes]:
+        return None
+
+    @property
+    def available(self) -> bool:
+        return False
+
+
+#: What --camera accepts. One camera per service: the CSI and USB devices cannot
+#: share a single /stream, so this is a choice rather than a list.
+CAMERA_KINDS = ("csi", "usb", "none")
+
+
+def build_camera(kind: str = "csi", device_index: int = 0) -> Camera:
+    """The camera named, or a stub if the rig has none.
+
+    :param kind: one of :data:`CAMERA_KINDS`
+    :param device_index: which /dev/videoN, for a USB camera
+    """
+    if kind not in CAMERA_KINDS:
+        raise ValueError(
+            f"unknown camera '{kind}' (expected one of {', '.join(CAMERA_KINDS)})")
+
+    if kind == "usb":
+        return UsbCamera(device_index=device_index)
+    if kind == "none":
+        return NoCamera()
+    return PiCamera()
+
+
 def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           pir_pins: Optional[List[int]] = None,
-                          pir_warmup_s: float = 60.0) -> SensorSet:
+                          pir_warmup_s: float = 60.0,
+                          camera: str = "csi",
+                          camera_device: int = 0) -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
@@ -449,11 +503,14 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
     :param pir_warmup_s: how long to ignore the PIRs for. The warm-up belongs to
         the *sensor's* power-up, not to this process, so a service restart on a
         rig that has been powered for hours can pass 0 and lose nothing.
+    :param camera: which camera this Pi has — see :func:`build_camera`. It was
+        previously always the CSI one, which meant a USB camera could be plugged
+        in, working, and still reported as absent.
     """
     return SensorSet(
         scale=HX711Scale(),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=ServoFeeder(),
-        camera=PiCamera(),
+        camera=build_camera(camera, camera_device),
         location=Neo6mLocationSensor(),
     )

@@ -13,9 +13,11 @@ only real constraints are noted per sensor.
 """
 
 import logging
+import time
 from typing import List, Optional
 
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
+from .gpio import open_input
 
 log = logging.getLogger(__name__)
 
@@ -76,48 +78,100 @@ class HX711Scale(Scale):
 
 
 class GpioMotionSensor(MotionSensor):
-    """One HC-SR501 PIR.
+    """One HC-SR501 PIR, watching one room.
 
     Wiring: VCC to 5V, GND to GND, OUT to a GPIO. The output is 3.3V logic on
-    these modules, so no divider is needed.
+    these modules, so no divider is needed. Which GPIO does not matter; which
+    library reads it does, and :mod:`pettracker.sensors.gpio` sorts that out.
 
-    Two traps:
+    Two traps, both handled here rather than left to the reader:
 
-    * **Warm-up.** They settle for up to 60 s after power-up and fire
-      constantly until they do. Ignore everything for the first minute after
-      boot or the log fills with phantom motion.
+    * **Warm-up.** A PIR settles for up to a minute after power-up and fires
+      more or less constantly until it does. Those pulses are the sensor
+      stabilising, not an animal, so :meth:`poll` reports nothing for the first
+      ``warmup_s`` seconds. They are discarded rather than queued — replaying
+      phantom motion once the warm-up ends would defeat the point.
     * **The two pots.** Sensitivity and hold time are set physically on the
-      board, not in code. Hold time in particular interacts with the debounce in
-      Monitor — set the pot short and let the software do the debouncing, or the
-      two fight each other.
+      board, not in code. Hold time interacts with the debounce in
+      :class:`~pettracker.monitor.Monitor`: turn the pot to its shortest hold
+      and let the software debounce, or the two fight and one visit becomes
+      either one event or fifty depending on which wins.
+
+    ``run.py --check-motion`` reads :meth:`read_raw` in a loop and prints every
+    sensor's state live, which is how you confirm that the sensor labelled
+    "Kitchen" is the one that fires when you wave at the kitchen.
     """
 
-    def __init__(self, room: str, pin: int):
+    def __init__(self, room: str, pin: int, warmup_s: float = 60.0,
+                 clock=time.monotonic, pin_input=None):
         self._room = room
         self._pin = pin
-        self._gpio = None
-        try:
-            import RPi.GPIO as GPIO  # type: ignore
+        self._warmup_s = warmup_s
+        self._clock = clock
+        # Injectable so tests can drive the logic without a Pi; None means
+        # "claim the real pin".
+        self._input = pin_input if pin_input is not None else open_input(pin)
+        self._started_at = clock()
+        self._warm = warmup_s <= 0
 
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(pin, GPIO.IN)
-            self._gpio = GPIO
-            log.info("PIR '%s' on GPIO %d", room, pin)
-        except Exception as e:
-            log.warning("PIR '%s' unavailable: %s", room, e)
+        if self._input is None:
+            log.warning("PIR '%s' unavailable on GPIO %d", room, pin)
+        else:
+            log.info("PIR '%s' on GPIO %d via %s", room, pin, self._input.backend)
 
     @property
     def room(self) -> str:
         return self._room
 
-    def poll(self) -> bool:
-        if self._gpio is None:
+    @property
+    def pin(self) -> int:
+        return self._pin
+
+    @property
+    def backend(self) -> str:
+        return self._input.backend if self._input is not None else "none"
+
+    @property
+    def warmup_remaining_s(self) -> float:
+        """Seconds left before this sensor is believed. 0 once it is warm."""
+        if self._warm:
+            return 0.0
+        return max(0.0, self._warmup_s - (self._clock() - self._started_at))
+
+    def read_raw(self) -> bool:
+        """The pin as it actually is, warm-up ignored.
+
+        What the bring-up tool shows: during the first minute the useful
+        question is "is this wire connected", not "did the cat move".
+        """
+        if self._input is None:
             return False
-        return bool(self._gpio.input(self._pin))
+        try:
+            return bool(self._input.read())
+        except Exception as e:
+            # A wire pulled out mid-run must not take the monitor thread down.
+            log.warning("PIR '%s' read failed: %s", self._room, e)
+            return False
+
+    def poll(self) -> bool:
+        high = self.read_raw()
+
+        if not self._warm:
+            if self.warmup_remaining_s > 0:
+                return False
+            self._warm = True
+            log.info("PIR '%s' warmed up, now reporting", self._room)
+
+        return high
 
     @property
     def available(self) -> bool:
-        return self._gpio is not None
+        return self._input is not None
+
+    def close(self) -> None:
+        if self._input is not None:
+            self._input.close()
+            self._input = None
 
 
 class ServoFeeder(Feeder):
@@ -305,25 +359,88 @@ class Neo6mLocationSensor(LocationSensor):
         return self._serial is not None
 
 
+#: One PIR per room, in the order --rooms lists them. BCM numbering. These three
+#: are free on every Pi header revision and avoid the pins with special jobs at
+#: boot (0/1 are the ID EEPROM, 2/3 have fixed pull-ups, 14/15 are the UART).
+DEFAULT_PIR_PINS = [17, 27, 22]
+
+
+def parse_pins(spec: str) -> List[int]:
+    """Turns ``"17,27,22"`` into ``[17, 27, 22]``.
+
+    Raises ValueError with a usable message rather than letting a typo become a
+    sensor that silently never fires.
+    """
+    pins = []
+    for piece in spec.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            pin = int(piece)
+        except ValueError:
+            raise ValueError(f"'{piece}' is not a GPIO number") from None
+        if not 2 <= pin <= 27:
+            # BCM numbering on a 40-pin header. 0 and 1 are the ID EEPROM and
+            # must not be claimed.
+            raise ValueError(f"GPIO {pin} is not a usable header pin (expected 2-27)")
+        pins.append(pin)
+    return pins
+
+
+def pin_map(rooms: List[str], pins: List[int]) -> List[tuple]:
+    """Pairs room names with pins, complaining about the mistakes that matter.
+
+    A room list and a pin list of different lengths is the easiest way to bring
+    up "Hall" and quietly never read it, because :func:`zip` would drop the
+    extra silently.
+    """
+    if len(rooms) != len(pins):
+        raise ValueError(
+            f"{len(rooms)} room(s) but {len(pins)} pin(s): "
+            "give one --pir-pins entry per --rooms entry"
+        )
+    duplicates = {p for p in pins if pins.count(p) > 1}
+    if duplicates:
+        raise ValueError(
+            "the same GPIO cannot watch two rooms: "
+            + ", ".join(str(p) for p in sorted(duplicates))
+        )
+    return list(zip(rooms, pins))
+
+
+def build_motion_sensors(rooms: Optional[List[str]] = None,
+                         pins: Optional[List[int]] = None,
+                         warmup_s: float = 60.0) -> List[GpioMotionSensor]:
+    """The PIR sensors on their own, for the service and for bring-up."""
+    if rooms is None:
+        rooms = ["Kitchen", "Living room", "Hall"]
+    if pins is None:
+        pins = DEFAULT_PIR_PINS[:len(rooms)]
+
+    return [
+        GpioMotionSensor(room, pin, warmup_s=warmup_s)
+        for room, pin in pin_map(rooms, pins)
+    ]
+
+
 def build_real_sensor_set(rooms: Optional[List[str]] = None,
-                          pir_pins: Optional[List[int]] = None) -> SensorSet:
+                          pir_pins: Optional[List[int]] = None,
+                          pir_warmup_s: float = 60.0) -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
     is missing, so the service still starts with one thing unplugged and
     /health says which. That is what makes it possible to bring the sensors up
     one at a time.
-    """
-    if rooms is None:
-        rooms = ["Kitchen", "Living room", "Hall"]
-    if pir_pins is None:
-        pir_pins = [17, 27, 22]
 
+    :param pir_warmup_s: how long to ignore the PIRs for. The warm-up belongs to
+        the *sensor's* power-up, not to this process, so a service restart on a
+        rig that has been powered for hours can pass 0 and lose nothing.
+    """
     return SensorSet(
         scale=HX711Scale(),
-        motion_sensors=[
-            GpioMotionSensor(room, pin) for room, pin in zip(rooms, pir_pins)
-        ],
+        motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=ServoFeeder(),
         camera=PiCamera(),
         location=Neo6mLocationSensor(),

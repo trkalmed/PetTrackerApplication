@@ -30,7 +30,10 @@ python3 run.py
 ```
 
 Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
-`--fps`, `--db`, `-v`.
+`--pir-pins "17,27,22"`, `--pir-warmup`, `--fps`, `--db`, `-v`.
+
+While wiring the PIR sensors, `--check-motion` skips the service entirely and
+shows the pins live — see **Bringing the hardware up**.
 
 ## The HTTP contract
 
@@ -159,9 +162,27 @@ exactly like a software bug.
 a known mass on it, and divide: `factor = raw / known_grams`. Redo it if the
 bowl or its mounting changes.
 
+**RPi.GPIO does not work on a Pi 5.** It imports fine and then fails at
+`setup()` with "Cannot determine SOC peripheral base address", because the Pi 5
+put GPIO behind a new chip. `sensors/gpio.py` tries gpiozero, then RPi.GPIO,
+then lgpio, and logs which one claimed the pin — so on a Pi 5 the answer is
+gpiozero or lgpio, and both ship with Raspberry Pi OS. This is the first thing
+to check when a correctly wired sensor reads nothing.
+
 **PIR sensors need ~60 s to settle** after power-up and fire constantly until
-they do. They also have two physical pots — sensitivity and hold time. Set hold
-short and let the software debounce, or the two fight each other.
+they do. That warm-up is handled: `GpioMotionSensor` reports nothing for the
+first `--pir-warmup` seconds and discards what it sees rather than queueing it.
+The warm-up belongs to the *sensor* powering up, not to the process, so a
+service restart on a rig that has been powered for hours can pass
+`--pir-warmup 0` and lose nothing.
+
+They also have two physical pots — sensitivity and hold time. Set hold short and
+let the software debounce, or the two fight each other: the debounce in
+`Monitor` already collapses a hold into one event per room per 30 s.
+
+**Rooms and pins are positional.** `--rooms "Kitchen,Hall"` with
+`--pir-pins "17,27"` puts the kitchen on GPIO 17. Mismatched lengths and
+repeated pins are refused at startup rather than silently dropping a room.
 
 **GPS needs the serial console disabled** (`raspi-config` → Interface Options →
 Serial Port → login shell **no**, hardware serial **yes**), then use
@@ -186,8 +207,42 @@ watch `/health`:
 2. **HX711 + load cell.** Calibrate, then watch `kind: "weight"` events and tune
    the detector constants.
 3. **Servo** — external supply first.
-4. **PIR ×3.**
+4. **PIR ×3.** See below; this one has a tool.
 5. **GPS**, last.
+
+### The PIR sensors
+
+`/health` answers "did a library manage to claim the pin". That is not the same
+question as "is this sensor pointing at the room its name says", and only the
+second one matters once the app starts drawing charts from it. A PIR whose OUT
+wire is on the wrong GPIO is indistinguishable, in the event log, from a cat
+that never goes in the hall.
+
+So wire one, then watch it:
+
+```bash
+python3 run.py --check-motion --rooms "Kitchen,Hall" --pir-pins "17,27" --pir-warmup 0
+```
+
+```
+  room             pin  backend    state  fired   last
+  Kitchen           17  gpiozero     ●        3    1s ago
+  Hall              27  none         ·        0    unavailable
+```
+
+Wave at one sensor. Exactly one line should light up, and it should be the one
+whose room name matches where you are standing. If the wrong name lights up, two
+pins are swapped. If nothing does, work through the backend column first (`none`
+means no library could claim the pin), then the wiring, then the sensitivity
+pot. Ctrl-C prints a summary naming the likely cause for each sensor that never
+fired.
+
+It runs against the fakes too — `python3 run.py --fake --check-motion` — which
+is a fair way to see what a working rig looks like before you have one.
+
+Once the rooms are right, start the service normally and confirm the other half:
+motion should appear in `/events` as `{"kind": "motion", "room": "Kitchen"}`,
+debounced to one event per room per 30 s no matter how long the sensor is held.
 
 ## Tests
 
@@ -195,9 +250,11 @@ watch `/health`:
 python3 -m unittest discover -s tests
 ```
 
-38 tests, no hardware and no network required. They cover the meal detector
+67 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
-clock that jumps backwards), and the HTTP contract driven against a real server
+clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
+with no backend, and the debounce that turns a held sensor into one event), and
+the HTTP contract driven against a real server
 on a real socket — including parsing the MJPEG stream the same way the Android
 `MjpegInputStream` does.
 
@@ -210,8 +267,10 @@ pettracker/
   monitor.py            the polling loop: sensors in, events out
   meals.py              weight readings -> meals (pure logic, no I/O)
   store.py              SQLite event buffer and the polling cursor
+  bringup.py            --check-motion, the live sensor view
   sensors/
     base.py             what the service needs from hardware
+    gpio.py             claiming an input pin on any Pi generation
     fake.py             simulated implementations
     real.py             Raspberry Pi implementations
 tests/

@@ -43,11 +43,19 @@ class MotionSensor(ABC):
 
     @abstractmethod
     def poll(self) -> bool:
-        """True if motion is being detected right now."""
+        """True if motion is being detected right now.
+
+        "Right now" is the honest description: a PIR reports movement, not
+        presence. Turning a sequence of these into "the cat is in the kitchen"
+        is the app's job, not this one's.
+        """
 
     @property
     @abstractmethod
     def available(self) -> bool: ...
+
+    def close(self) -> None:
+        """Releases the pin. Safe to call more than once."""
 
 
 class Feeder(ABC):
@@ -129,4 +137,12 @@ class SensorSet:
         }
 
     def close(self) -> None:
+        """Releases every device that holds one.
+
+        Motion sensors are included because a claimed GPIO stays claimed:
+        restarting the service without freeing the pins leaves the next run
+        unable to open them, which looks exactly like a wiring fault.
+        """
         self.camera.close()
+        for sensor in self.motion_sensors:
+            sensor.close()

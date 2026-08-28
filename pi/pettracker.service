@@ -1,0 +1,55 @@
+# Pet Tracker as a system service.
+#
+# Installed by install-service.sh, which substitutes @USER@ and @DIR@ — do not
+# copy this file into /etc/systemd/system by hand with those still in it.
+#
+# Why a service at all: the phone can only collect what the Pi recorded, so the
+# Pi has to be recording whether or not anyone is logged into it. Started with
+# nohup from an SSH session, the service dies with the terminal — quietly, and
+# the app then looks broken rather than the Pi looking stopped.
+
+[Unit]
+Description=Pet Tracker sensor service
+# network-online rather than network: the address is logged at startup and is
+# what gets typed into the app, so coming up before the interface has one is
+# just a confusing log line.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+
+# The event database and the snapshot directory are relative to
+# WorkingDirectory, so they stay where they were when it was run by hand.
+
+# Defaults. To change the rooms, pins or camera, put the same names in
+# @DIR@/service.env instead of editing this file — that survives a reinstall
+# and does not need root. Declared before EnvironmentFile so the file wins.
+Environment=PYTHONUNBUFFERED=1
+Environment=PETTRACKER_ROOMS=Kitchen,Living room,Hall
+Environment=PETTRACKER_PIR_PINS=17,27,22
+Environment=PETTRACKER_CAMERA=usb
+EnvironmentFile=-@DIR@/service.env
+
+# ${VAR}, not $VAR. systemd splits $VAR on whitespace, which would turn
+# --rooms "Kitchen,Living room,Hall" into three arguments and silently drop two
+# rooms. ${VAR} is substituted as a single argument.
+ExecStart=/usr/bin/python3 run.py \
+    --rooms ${PETTRACKER_ROOMS} \
+    --pir-pins ${PETTRACKER_PIR_PINS} \
+    --camera ${PETTRACKER_CAMERA}
+
+# A sensor read that kills the process should not take the house's motion log
+# with it until someone notices. Five seconds is long enough that a genuinely
+# broken configuration is visible as a restart loop in the journal rather than
+# hidden by an instant retry.
+Restart=always
+RestartSec=5
+
+# PIR warm-up is deliberately left at its default here. At boot the sensors are
+# powering up alongside the Pi, which is exactly the case the warm-up is for.
+
+[Install]
+WantedBy=multi-user.target

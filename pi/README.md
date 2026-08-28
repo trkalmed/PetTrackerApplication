@@ -36,6 +36,44 @@ Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
 While wiring the PIR sensors, `--check-motion` skips the service entirely and
 shows the pins live — see **Bringing the hardware up**.
 
+## Running it as a service
+
+Started by hand over SSH, the service dies with the terminal — and the app then
+looks broken rather than the Pi looking stopped. To have it start at boot and
+restart itself:
+
+```bash
+./install-service.sh
+```
+
+Run it from `pi/`, as the user the service should run as. It substitutes that
+user and directory into `pettracker.service`, installs the unit, and starts it.
+
+```bash
+journalctl -u pettracker -f          # what it is doing
+sudo systemctl restart pettracker    # after changing anything
+sudo systemctl status pettracker     # is it up, and since when
+```
+
+Rooms, pins and camera come from environment variables with defaults in the
+unit. Override them without editing the unit or needing root by writing
+`pi/service.env`:
+
+```
+PETTRACKER_ROOMS=Kitchen,Living room,Hall,Study
+PETTRACKER_PIR_PINS=17,27,22,23
+PETTRACKER_CAMERA=usb
+```
+
+Then restart. Note the unit uses `${VAR}` rather than `$VAR`: systemd splits the
+latter on whitespace, which would turn `Kitchen,Living room,Hall` into three
+arguments and silently drop two rooms.
+
+**A USB camera can lose a race with boot.** Snapshots are enabled at startup
+only if a camera answered, so if `/health` reports `"camera": false` after a
+reboot but true after `systemctl restart pettracker`, the webcam had not
+enumerated yet — add `ExecStartPre=/bin/sleep 10` to the unit.
+
 ## The HTTP contract
 
 The app is the client and polls; the Pi never pushes. The Pi is always on and

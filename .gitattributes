@@ -1,0 +1,5 @@
+# Shell scripts and unit files are executed on the Raspberry Pi. A carriage
+# return is part of the value to systemd and part of the interpreter path to
+# the kernel, so these must stay LF whatever the checkout platform does.
+*.sh          text eol=lf
+*.service     text eol=lf

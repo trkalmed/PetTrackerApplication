@@ -34,7 +34,13 @@ if pgrep -f "python3 run.py" > /dev/null; then
     pkill -f "python3 run.py" || true
 fi
 
-sed "s|@USER@|$SERVICE_USER|g; s|@DIR@|$DIR|g" "$DIR/pettracker.service" \
+# The carriage-return strip is not decoration. This file is edited on Windows
+# and copied here with scp, which is a byte-for-byte transfer, so CRLF line
+# endings survive the trip. systemd then reads PETTRACKER_CAMERA as "usb" with a
+# carriage return on the end, and the service exits 2 complaining about a camera
+# called usb — with the offending character invisible everywhere you would look
+# for it, systemctl status included.
+sed "s|@USER@|$SERVICE_USER|g; s|@DIR@|$DIR|g; s/\r$//" "$DIR/pettracker.service" \
     | sudo tee "$UNIT" > /dev/null
 
 sudo systemctl daemon-reload

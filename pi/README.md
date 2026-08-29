@@ -329,6 +329,17 @@ There is no driver to install. The HX711 protocol is in `pettracker/hx711.py`,
 because every HX711 package on PyPI is built on RPi.GPIO and would hit the same
 Pi 5 wall the PIR sensors did.
 
+**Stop the service first.** A GPIO pin can only be claimed once, so the running
+service and a bring-up tool cannot both have it:
+
+```bash
+sudo systemctl stop pettracker
+```
+
+Start it again when you are done. This applies to `--check-motion` too, and a
+pin that is already taken reports itself as busy — which the tools now say out
+loud, because it is indistinguishable from a wiring fault otherwise.
+
 **First, is it alive:**
 
 ```bash

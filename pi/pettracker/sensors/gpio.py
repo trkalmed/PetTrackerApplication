@@ -211,6 +211,25 @@ _BACKENDS = (_GpiozeroInput, _RpiGpioInput, _LgpioInput)
 _OUTPUT_BACKENDS = (_GpiozeroOutput, _RpiGpioOutput, _LgpioOutput)
 
 
+def held_elsewhere(errors) -> bool:
+    """Whether every backend failed because something else has the pin.
+
+    Worth separating from "no library could be loaded", because the two need
+    opposite responses: one is a missing package, the other is the service
+    already running. A pin can only be claimed once, so the bring-up tools and
+    the service cannot both have it — and the failure looks identical to a
+    wiring fault unless somebody says otherwise.
+    """
+    return bool(errors) and all("busy" in str(e).lower() for e in errors)
+
+
+def _explain_if_busy(pin: int, errors) -> None:
+    if held_elsewhere(errors):
+        log.warning("GPIO %d is held by another process. If the pettracker "
+                    "service is running, stop it first: "
+                    "sudo systemctl stop pettracker", pin)
+
+
 def open_input(pin: int) -> Optional[DigitalInput]:
     """Claims ``pin`` as an input, or returns None if no backend can.
 
@@ -229,6 +248,7 @@ def open_input(pin: int) -> Optional[DigitalInput]:
         return claimed
 
     log.warning("GPIO %d unavailable (%s)", pin, "; ".join(errors))
+    _explain_if_busy(pin, errors)
     return None
 
 
@@ -249,4 +269,5 @@ def open_output(pin: int) -> Optional[DigitalOutput]:
         return claimed
 
     log.warning("GPIO %d unavailable for output (%s)", pin, "; ".join(errors))
+    _explain_if_busy(pin, errors)
     return None

@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pettracker.bringup import check_motion
 from pettracker.sensors.fake import FakeMotionSensor
+from pettracker.sensors.gpio import held_elsewhere
 from pettracker.sensors.real import (
     GpioMotionSensor,
     build_motion_sensors,
@@ -257,3 +258,29 @@ class BringUpViewTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BusyPinTest(unittest.TestCase):
+    """Telling "someone else has this pin" apart from "no library"."""
+
+    def test_a_pin_held_by_another_process_is_recognised(self):
+        # What every backend says when the service already has the pin. The
+        # advice for this is the opposite of the advice for a missing library,
+        # and both were previously reported as "check your wiring".
+        self.assertTrue(held_elsewhere(["gpiozero: 'GPIO busy'",
+                                        "RPi.GPIO: 'GPIO busy'",
+                                        "lgpio: 'GPIO busy'"]))
+
+    def test_a_missing_library_is_not_a_busy_pin(self):
+        self.assertFalse(held_elsewhere(["gpiozero: No module named 'gpiozero'",
+                                         "RPi.GPIO: No module named 'RPi'",
+                                         "lgpio: No module named 'lgpio'"]))
+
+    def test_a_mixture_is_not_reported_as_busy(self):
+        # One backend busy and another missing means the pin might yet be free;
+        # sending someone to stop the service would be a guess.
+        self.assertFalse(held_elsewhere(["gpiozero: 'GPIO busy'",
+                                         "lgpio: No module named 'lgpio'"]))
+
+    def test_no_errors_is_not_busy(self):
+        self.assertFalse(held_elsewhere([]))

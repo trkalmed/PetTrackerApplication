@@ -150,7 +150,10 @@ def _summarise(watches: Sequence[_Watch], out) -> None:
     for watch in watches:
         if not watch.sensor.available:
             print(f"  {watch.room}: no GPIO backend could claim pin {watch.pin}. "
-                  f"On a Pi 5, RPi.GPIO cannot — install gpiozero or lgpio.", file=out)
+                  f"If the log says 'busy', the service already has it — "
+                  f"sudo systemctl stop pettracker. Otherwise, on a Pi 5 "
+                  f"RPi.GPIO cannot claim pins: install gpiozero or lgpio.",
+                  file=out)
         elif watch.triggers == 0:
             print(f"  {watch.room}: never fired. Check OUT is on GPIO {watch.pin}, "
                   f"that VCC is 5V, and that the sensitivity pot is not at minimum.",

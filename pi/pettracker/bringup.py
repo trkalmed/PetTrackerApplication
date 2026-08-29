@@ -19,6 +19,7 @@ import sys
 import time
 from typing import List, Optional, Sequence
 
+from .hx711 import POWER_DOWN_THRESHOLD_S
 from .sensors.base import MotionSensor
 
 
@@ -188,6 +189,8 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
               "you passed to --scale-pins, and that the amplifier has 5V.", file=out)
         return
 
+    _report_clock_speed(scale, out)
+
     print("\nLoad cell. Press on the bowl and watch the numbers move.", file=out)
     print("Ctrl-C to stop.\n", file=out)
     if not getattr(scale, "calibrated", True):
@@ -221,6 +224,43 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
         pass
     print(file=out)
     _explain_readings(seen, out)
+
+
+def _report_clock_speed(scale, out) -> None:
+    """Says how fast this Pi can actually clock the amplifier.
+
+    The HX711 powers itself down if the clock line stays high for more than
+    60 microseconds, and a Python GPIO library can spend that long setting a
+    pin. When it does, every reading comes back as zeros and looks exactly like
+    a disconnected sensor — so the number is worth showing before the readings
+    rather than after a long hunt for a loose wire.
+    """
+    chip = getattr(scale, "chip", None)
+    if chip is None or not hasattr(chip, "clock_high_seconds"):
+        return
+
+    try:
+        held = chip.clock_high_seconds()
+    except Exception:
+        return
+
+    micros = held * 1e6
+    limit = POWER_DOWN_THRESHOLD_S * 1e6
+    backend = getattr(getattr(scale, "backend", None), "__str__", lambda: "")()
+
+    print(file=out)
+    via = f" via {backend}" if backend else ""
+    print(f"  Clock held high for {micros:.1f} µs per pulse"
+          f" (the chip powers down past {limit:.0f} µs){via}", file=out)
+    if micros >= limit:
+        print("  That is too slow — the chip will power itself down mid-read and",
+              file=out)
+        print("  every reading will be zeros. This is a GPIO backend problem, not",
+              file=out)
+        print("  a wiring one: install lgpio (sudo apt install python3-lgpio),",
+              file=out)
+        print("  which is a thin C wrapper, rather than relying on gpiozero.",
+              file=out)
 
 
 def _explain_readings(seen, out) -> None:

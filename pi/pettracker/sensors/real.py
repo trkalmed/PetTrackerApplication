@@ -63,9 +63,12 @@ class HX711Scale(Scale):
         self._samples = samples
         self._offset = 0.0
         self._hx = None
+        self._backend = "none"
 
-        dout = open_input(dout_pin)
-        sck = open_output(sck_pin)
+        # fast=True: this chip times out if the clock is held high for 60 µs,
+        # and gpiozero can take that long to set a pin. See gpio._FAST_BACKENDS.
+        dout = open_input(dout_pin, fast=True)
+        sck = open_output(sck_pin, fast=True)
         if dout is None or sck is None:
             # One claimed and the other not would leave a pin held for nothing.
             if dout is not None:
@@ -77,6 +80,7 @@ class HX711Scale(Scale):
             return
 
         self._hx = HX711(dout, sck, gain=gain)
+        self._backend = dout.backend
         log.info("HX711 on DT=%d SCK=%d via %s", dout_pin, sck_pin, dout.backend)
 
         if calibration_factor == self.UNCALIBRATED:
@@ -120,6 +124,15 @@ class HX711Scale(Scale):
     def read_raw(self) -> Optional[int]:
         """Counts, before the offset and the factor. For calibration only."""
         return self._hx.read_median(self._samples) if self._hx else None
+
+    @property
+    def chip(self):
+        """The amplifier itself, for the bring-up tool's timing probe."""
+        return self._hx
+
+    @property
+    def backend(self) -> str:
+        return self._backend
 
     @property
     def offset(self) -> float:

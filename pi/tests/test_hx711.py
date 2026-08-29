@@ -17,7 +17,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pettracker.bringup import calibrate_scale, check_scale
-from pettracker.hx711 import GAIN_PULSES, HX711
+from pettracker.hx711 import GAIN_PULSES, POWER_DOWN_THRESHOLD_S, HX711
 
 
 def setUpModule():
@@ -106,10 +106,21 @@ class ProtocolTest(unittest.TestCase):
 
         self.assertEqual(-1, chip.read_raw())
 
-    def test_reads_zero(self):
+    def test_all_zero_bits_are_not_a_weight_of_zero(self):
         chip, _ = self.read(0x000000)
 
-        self.assertEqual(0, chip.read_raw())
+        # A real cell never sits exactly on zero; it wanders by a few counts.
+        # Twenty-four zero bits means the data line was low for the whole read —
+        # nothing driving it, or the chip powered itself down mid-read because a
+        # clock pulse was held too long. Returning 0 would put "the bowl is
+        # empty" on the dashboard on the strength of a dead wire.
+        self.assertIsNone(chip.read_raw())
+
+    def test_a_reading_of_one_count_is_still_a_reading(self):
+        # The zero check must not become "small numbers are suspicious".
+        chip, _ = self.read(0x000001)
+
+        self.assertEqual(1, chip.read_raw())
 
     def test_clocks_the_gain_pulses_after_the_data(self):
         chip, pins = self.read(0x000001)
@@ -152,6 +163,21 @@ class ProtocolTest(unittest.TestCase):
         for saturated in (0x7FFFFF, 0x800000):
             chip, _ = self.read(saturated)
             self.assertIsNone(chip.read_raw(), hex(saturated))
+
+
+class ClockSpeedTest(unittest.TestCase):
+
+    def test_measures_how_long_the_clock_is_held_high(self):
+        pins = FakeAmplifier(1000)
+        chip = HX711(pins.dout, pins.sck)
+
+        held = chip.clock_high_seconds(pulses=20)
+
+        # The number that decides whether this chip can be driven from Python
+        # at all: past 60 µs the chip powers itself down mid-read and every
+        # reading comes back as zeros.
+        self.assertGreater(held, 0.0)
+        self.assertLess(held, POWER_DOWN_THRESHOLD_S * 100)
 
 
 class MedianTest(unittest.TestCase):

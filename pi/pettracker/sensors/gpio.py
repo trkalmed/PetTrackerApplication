@@ -210,6 +210,20 @@ class _LgpioOutput(DigitalOutput):
 _BACKENDS = (_GpiozeroInput, _RpiGpioInput, _LgpioInput)
 _OUTPUT_BACKENDS = (_GpiozeroOutput, _RpiGpioOutput, _LgpioOutput)
 
+#: The same three, ordered by speed instead of by convenience.
+#:
+#: gpiozero is a pleasant abstraction over a pin factory, and every read or
+#: write goes through several Python frames to reach the hardware. For a PIR
+#: polled five times a second that is invisible. For an HX711 it is fatal: the
+#: chip powers itself down if the clock line stays high longer than 60
+#: microseconds, and gpiozero can spend that much getting there. The reading
+#: then comes back as twenty-four zero bits, which looks exactly like a
+#: disconnected sensor.
+#:
+#: lgpio and RPi.GPIO are thin wrappers over C, so they are first here.
+_FAST_BACKENDS = (_LgpioInput, _RpiGpioInput, _GpiozeroInput)
+_FAST_OUTPUT_BACKENDS = (_LgpioOutput, _RpiGpioOutput, _GpiozeroOutput)
+
 
 def held_elsewhere(errors) -> bool:
     """Whether every backend failed because something else has the pin.
@@ -230,15 +244,18 @@ def _explain_if_busy(pin: int, errors) -> None:
                     "sudo systemctl stop pettracker", pin)
 
 
-def open_input(pin: int) -> Optional[DigitalInput]:
+def open_input(pin: int, fast: bool = False) -> Optional[DigitalInput]:
     """Claims ``pin`` as an input, or returns None if no backend can.
 
     None rather than an exception: a Pi with one sensor unplugged, or a laptop
     with no GPIO at all, must still start the service. The caller reports itself
     unavailable and /health says so.
+
+    :param fast: prefer the backends with the least overhead per call, for a
+        device with timing requirements. See :data:`_FAST_BACKENDS`.
     """
     errors = []
-    for backend in _BACKENDS:
+    for backend in (_FAST_BACKENDS if fast else _BACKENDS):
         try:
             claimed = backend(pin)
         except Exception as e:                      # ImportError, or the Pi 5 setup failure
@@ -252,14 +269,17 @@ def open_input(pin: int) -> Optional[DigitalInput]:
     return None
 
 
-def open_output(pin: int) -> Optional[DigitalOutput]:
+def open_output(pin: int, fast: bool = False) -> Optional[DigitalOutput]:
     """Claims ``pin`` as an output, or returns None if no backend can.
 
     None rather than an exception, for the same reason as :func:`open_input`: a
     missing amplifier must leave the service running the sensors it does have.
+
+    :param fast: prefer the backends with the least overhead per call. A clock
+        line almost always wants this.
     """
     errors = []
-    for backend in _OUTPUT_BACKENDS:
+    for backend in (_FAST_OUTPUT_BACKENDS if fast else _OUTPUT_BACKENDS):
         try:
             claimed = backend(pin)
         except Exception as e:

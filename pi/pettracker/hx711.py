@@ -21,11 +21,19 @@ here, not a bug to be fixed. They are dealt with by reading several and taking
 the median, which is why :meth:`HX711.read_median` exists and why the caller
 should use it rather than :meth:`HX711.read_raw`.
 
-**Two saturated values mean "no cell", not "no weight".** A load cell that is
-disconnected or wired wrongly rails the amplifier, and it reports the extremes
-of the 24-bit range. Those are rejected rather than returned, because an empty
-bowl and a broken amplifier must not look the same — a silent zero would show a
-pet that ate nothing as a pet whose feeder is working perfectly.
+That is for the occasional stretched pulse. If *every* pulse is too slow the
+chip never gets a word in and every reading is zeros, which no amount of
+retrying will fix — the GPIO backend is simply too slow, and
+:meth:`HX711.clock_high_seconds` measures exactly that. It is why the amplifier
+asks for the fast backends rather than the convenient one.
+
+**Three values are not weights.** The two extremes of the 24-bit range mean a
+cell that is disconnected, miswired or crushed, because that rails the
+amplifier. And all twenty-four bits zero means the data line was low throughout
+the read — nothing driving it, or a chip that powered itself down mid-read. None
+of the three is returned, because an empty bowl and a broken amplifier must not
+look the same: a silent zero shows a pet that ate nothing as a pet whose feeder
+is working perfectly.
 
 **Readings are counts, not grams.** What the chip returns depends on the
 particular cell, the amplifier gain and how the bowl sits on it, so it means
@@ -50,6 +58,11 @@ GAIN_PULSES = {128: 1, 64: 3, 32: 2}
 #: The full-scale extremes. A cell that is disconnected, miswired or crushed
 #: rails to one of these, and neither is a weight.
 _SATURATED = (0x7FFFFF, -0x800000)
+
+#: Longest the clock line may stay high before the chip powers itself down, in
+#: seconds. From the datasheet. Python cannot guarantee anything near this, so
+#: it is used to *report* a problem rather than to prevent one.
+POWER_DOWN_THRESHOLD_S = 60e-6
 
 _SIGN_BIT = 0x800000
 _RANGE = 0x1000000
@@ -119,6 +132,15 @@ class HX711:
             log.debug("HX711 returned a saturated reading (%d) — check the cell wiring",
                       value)
             return None
+
+        if value == 0:
+            # Twenty-four zero bits is not a weight of zero. A real cell never
+            # sits exactly on zero — it wanders by a few counts — so this means
+            # the data line was low throughout, which happens when the chip has
+            # powered itself down mid-read because a clock pulse was held too
+            # long, or when nothing is driving DOUT at all.
+            log.debug("HX711 read all zeros — the data line was low throughout")
+            return None
         return value
 
     def read_median(self, samples: int = 5) -> Optional[int]:
@@ -144,6 +166,26 @@ class HX711:
                         len(readings), samples)
             return None
         return int(statistics.median(readings))
+
+    def clock_high_seconds(self, pulses: int = 200) -> float:
+        """How long this backend actually holds the clock high, per pulse.
+
+        The number that decides whether this chip can be driven from Python at
+        all. Anything approaching :data:`POWER_DOWN_THRESHOLD_S` means readings
+        will come back as zeros, and no amount of retrying will help — the fix
+        is a faster GPIO backend, not better luck.
+
+        Measured with real pulses on the real pin, because that is the only
+        thing that answers the question.
+        """
+        total = 0.0
+        with self._lock:
+            for _ in range(pulses):
+                start = time.perf_counter()
+                self._sck.write(True)
+                total += time.perf_counter() - start
+                self._sck.write(False)
+        return total / pulses
 
     def power_down(self) -> None:
         """Puts the chip to sleep — clock held high for more than 60 µs."""

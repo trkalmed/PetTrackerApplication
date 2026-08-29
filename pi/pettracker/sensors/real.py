@@ -19,6 +19,7 @@ from typing import List, Optional
 
 from ..hx711 import HX711
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
+from .camera import ReopeningCamera
 from .gpio import open_input, open_output
 
 log = logging.getLogger(__name__)
@@ -545,8 +546,15 @@ class NoCamera(Camera):
 CAMERA_KINDS = ("csi", "usb", "none")
 
 
-def build_camera(kind: str = "csi", device_index: int = 0) -> Camera:
-    """The camera named, or a stub if the rig has none.
+def build_camera(kind: str = "csi", device_index: int = 0,
+                 retry_interval_s: float = 10.0) -> Camera:
+    """The camera named, wrapped so it recovers on its own.
+
+    The wrapper is the point: a device that is not there at startup — because
+    the Pi beat USB enumeration to it, or because somebody was holding it — used
+    to stay missing until the service was restarted by hand, taking the stream
+    and every motion snapshot with it. See
+    :class:`~pettracker.sensors.camera.ReopeningCamera`.
 
     :param kind: one of :data:`CAMERA_KINDS`
     :param device_index: which /dev/videoN, for a USB camera
@@ -555,11 +563,15 @@ def build_camera(kind: str = "csi", device_index: int = 0) -> Camera:
         raise ValueError(
             f"unknown camera '{kind}' (expected one of {', '.join(CAMERA_KINDS)})")
 
-    if kind == "usb":
-        return UsbCamera(device_index=device_index)
     if kind == "none":
+        # Nothing to reopen, and nothing that could appear later.
         return NoCamera()
-    return PiCamera()
+
+    def factory() -> Camera:
+        return (UsbCamera(device_index=device_index) if kind == "usb"
+                else PiCamera())
+
+    return ReopeningCamera(factory, retry_interval_s=retry_interval_s)
 
 
 def probe_scale_pins(dout_pin: int, sck_pin: int):

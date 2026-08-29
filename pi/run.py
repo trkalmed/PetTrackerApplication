@@ -235,11 +235,13 @@ def main() -> int:
 
     store = EventStore(args.db)
 
-    # No camera means no snapshots to take, so do not create the directory for
-    # them either — an empty folder appearing on a feeder-only Pi is a small
-    # lie about what the service is doing.
+    # Configured rather than detected. Asking whether the camera is available
+    # *right now* used to decide this, which meant a Pi that started before its
+    # webcam enumerated ran the whole session with snapshots silently off —
+    # events still arriving, only the pictures missing. The camera reopens
+    # itself now, so the only question here is whether this rig has one at all.
     snapshots = None
-    if not args.no_snapshots and sensors.camera.available:
+    if not args.no_snapshots and args.camera != "none":
         snapshots = SnapshotStore(args.snapshot_dir)
         log.info("motion snapshots: %s", snapshots.directory)
 

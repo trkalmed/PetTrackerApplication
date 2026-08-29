@@ -1,0 +1,214 @@
+"""A camera that comes back on its own.
+
+Every case here has happened on the real rig: the Pi beating USB enumeration at
+boot, a device held by a process that was still exiting, and a webcam knocked
+out of its socket. All three left the service serving no stream and, worse,
+silently saving no motion snapshots — the events kept arriving, so nothing
+looked broken until somebody went looking for the pictures.
+"""
+
+import logging
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from pettracker.sensors.base import Camera
+from pettracker.sensors.camera import ReopeningCamera
+
+FRAME = b"\xff\xd8 frame \xff\xd9"
+
+
+def setUpModule():
+    logging.disable(logging.CRITICAL)
+
+
+def tearDownModule():
+    logging.disable(logging.NOTSET)
+
+
+class FakeDevice(Camera):
+    """A camera that is present, or not, as the test decides."""
+
+    def __init__(self, present=True, frame=FRAME):
+        self.present = present
+        self.frame = frame
+        self.closed = False
+        self.reads = 0
+
+    def read_jpeg(self):
+        self.reads += 1
+        return self.frame if self.present else None
+
+    @property
+    def available(self):
+        return self.present and not self.closed
+
+    def close(self):
+        self.closed = True
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class Factory:
+    """Hands out the queued devices, then repeats the last one."""
+
+    def __init__(self, *devices):
+        self.queue = list(devices)
+        self.made = []
+
+    def __call__(self):
+        device = self.queue.pop(0) if len(self.queue) > 1 else self.queue[0]
+        self.made.append(device)
+        return device
+
+
+class OpeningTest(unittest.TestCase):
+
+    def test_a_camera_that_is_there_is_used(self):
+        camera = ReopeningCamera(Factory(FakeDevice()), clock=Clock())
+
+        self.assertTrue(camera.available)
+        self.assertEqual(FRAME, camera.read_jpeg())
+
+    def test_a_camera_that_is_missing_is_not_fatal(self):
+        camera = ReopeningCamera(Factory(FakeDevice(present=False)), clock=Clock())
+
+        self.assertFalse(camera.available)
+        self.assertIsNone(camera.read_jpeg())
+
+    def test_a_camera_that_appears_later_is_picked_up(self):
+        clock = Clock()
+        factory = Factory(FakeDevice(present=False), FakeDevice())
+        camera = ReopeningCamera(factory, retry_interval_s=10.0, clock=clock)
+
+        self.assertFalse(camera.available)
+
+        # The Pi beat USB enumeration at boot. Ten seconds later the webcam is
+        # there, and nobody should have to restart the service for it.
+        clock.advance(11)
+        self.assertTrue(camera.available)
+        self.assertEqual(FRAME, camera.read_jpeg())
+
+    def test_attempts_are_rate_limited(self):
+        clock = Clock()
+        factory = Factory(FakeDevice(present=False))
+        camera = ReopeningCamera(factory, retry_interval_s=10.0, clock=clock)
+
+        for _ in range(20):
+            camera.available
+
+        # /health asks this on every poll, and opening a device that is not
+        # there costs about a second of a request thread.
+        self.assertEqual(1, len(factory.made))
+
+    def test_one_attempt_per_interval(self):
+        clock = Clock()
+        factory = Factory(FakeDevice(present=False))
+        camera = ReopeningCamera(factory, retry_interval_s=10.0, clock=clock)
+
+        for _ in range(3):
+            clock.advance(11)
+            camera.available
+
+        self.assertEqual(4, len(factory.made))     # the first, plus three retries
+
+    def test_a_failed_attempt_releases_the_device(self):
+        broken = FakeDevice(present=False)
+        ReopeningCamera(Factory(broken), clock=Clock())
+
+        # Half-open devices are how /dev/video0 ends up busy for the next try.
+        self.assertTrue(broken.closed)
+
+
+class RecoveryTest(unittest.TestCase):
+    """A camera that is still open but has stopped producing."""
+
+    def test_repeated_empty_reads_reopen_the_device(self):
+        clock = Clock()
+        wedged = FakeDevice()
+        wedged.frame = None                      # open, and returning nothing
+        replacement = FakeDevice()
+        factory = Factory(wedged, replacement)
+        camera = ReopeningCamera(factory, retry_interval_s=0.0, clock=clock)
+
+        for _ in range(ReopeningCamera.FAILURES_BEFORE_REOPEN):
+            camera.read_jpeg()
+
+        # A webcam pulled mid-run keeps its file handle, so "available" stays
+        # true and every frame is empty. Reporting that forever is useless.
+        self.assertTrue(wedged.closed)
+        self.assertEqual(FRAME, camera.read_jpeg())
+
+    def test_an_occasional_dropped_frame_is_not_a_reopen(self):
+        clock = Clock()
+        device = FakeDevice()
+        camera = ReopeningCamera(Factory(device), retry_interval_s=0.0, clock=clock)
+
+        device.frame = None
+        camera.read_jpeg()
+        device.frame = FRAME
+        camera.read_jpeg()
+        device.frame = None
+        camera.read_jpeg()
+
+        # Real cameras drop the odd frame. Tearing the device down for that
+        # would cost more frames than it saved.
+        self.assertFalse(device.closed)
+
+    def test_a_read_that_raises_is_treated_as_an_empty_frame(self):
+        class Exploding(FakeDevice):
+            def read_jpeg(self):
+                raise OSError("device disconnected")
+
+        camera = ReopeningCamera(Factory(Exploding()), retry_interval_s=0.0,
+                                 clock=Clock())
+
+        # Some drivers raise instead of returning nothing when the device goes.
+        # Either way it is not a frame, and neither should reach the caller.
+        self.assertIsNone(camera.read_jpeg())
+
+
+class ClosingTest(unittest.TestCase):
+
+    def test_close_releases_the_device(self):
+        device = FakeDevice()
+        camera = ReopeningCamera(Factory(device), clock=Clock())
+
+        camera.close()
+
+        self.assertTrue(device.closed)
+        self.assertFalse(camera.available)
+
+    def test_a_closed_camera_stays_closed(self):
+        clock = Clock()
+        factory = Factory(FakeDevice())
+        camera = ReopeningCamera(factory, retry_interval_s=0.0, clock=clock)
+
+        camera.close()
+        clock.advance(60)
+
+        # This is the service shutting down, not a camera falling out. Reopening
+        # the device on the way out would leave it held after exit.
+        self.assertFalse(camera.available)
+        self.assertIsNone(camera.read_jpeg())
+
+    def test_closing_twice_is_safe(self):
+        camera = ReopeningCamera(Factory(FakeDevice()), clock=Clock())
+
+        camera.close()
+        camera.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

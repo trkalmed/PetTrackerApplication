@@ -79,10 +79,11 @@ is quietly shorter than the one you wrote:
   then reports as "2 room(s) but 3 pin(s)", an error about the pins that is
   really about the rooms.
 
-**A USB camera can lose a race with boot.** Snapshots are enabled at startup
-only if a camera answered, so if `/health` reports `"camera": false` after a
-reboot but true after `systemctl restart pettracker`, the webcam had not
-enumerated yet — add `ExecStartPre=/bin/sleep 10` to the unit.
+**A USB camera that loses the race with boot sorts itself out.** The camera is
+reopened every ten seconds for as long as it is missing, so a Pi that starts
+before its webcam enumerates picks it up shortly afterwards without a restart —
+and the same applies to a webcam unplugged and put back while the service runs.
+`/health` will say `"camera": false` in the gap and true once it is there.
 
 ## The HTTP contract
 
@@ -433,6 +434,12 @@ With a working camera, every motion event also saves a JPEG — the difference
 between "the hall sensor fired at 03:00" and knowing which animal it was. The
 event carries the file name; `/snapshot?name=…` serves it.
 
+Snapshots are on whenever `--camera` names one, rather than only when the device
+answered at the moment the service started. That distinction cost a whole
+session once: the Pi booted before its webcam enumerated, snapshots were
+switched off for the run, and nothing said so — the motion events kept arriving
+and only the pictures were missing.
+
 They are taken on the same debounce as the event, so a cat that settles in one
 room produces one photo every 30 s rather than one every poll. Worst case is
 still around 2,800 files per room per day, which is why they expire with their
@@ -448,7 +455,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-106 tests, no hardware and no network required. They cover the meal detector
+132 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and
@@ -472,6 +479,7 @@ pettracker/
   hx711.py              the load-cell protocol, two wires and no dependencies
   sensors/
     base.py             what the service needs from hardware
+    camera.py           reopening a camera that was not there yet
     gpio.py             claiming an input pin on any Pi generation
     fake.py             simulated implementations
     real.py             Raspberry Pi implementations

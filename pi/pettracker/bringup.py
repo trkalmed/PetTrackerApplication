@@ -20,6 +20,7 @@ import time
 from typing import List, Optional, Sequence
 
 from .hx711 import POWER_DOWN_THRESHOLD_S
+from .nmea import parse_gga, valid_checksum
 from .sensors.base import MotionSensor
 
 
@@ -384,3 +385,83 @@ def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:
         print("A- are the other way round. It works exactly as well like this.\n",
               file=out)
     return factor
+
+
+def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 1.0,
+              out=None, clock=time.monotonic) -> None:
+    """Prints what the GPS is saying, sentence by sentence.
+
+    The reason this exists rather than "watch /health": a module with no fix and
+    a module with no wiring produce the same silence from read_fix(). The
+    sentences tell them apart instantly — a GPS indoors talks constantly and
+    knows nothing, which is a working GPS, and the only thing it needs is sky.
+
+    Satellite counts are worth watching for the same reason. Going from 0 to 3
+    to 7 over a few minutes is a cold start doing exactly what it should.
+    """
+    out = out or sys.stdout
+
+    if not hasattr(location, "read_sentences"):
+        print("\nNo GPS configured.", file=out)
+        return
+
+    port = getattr(location, "port", "the serial port")
+    print(f"\nGPS on {port}. Sentences appear below as they arrive.", file=out)
+    print("Ctrl-C to stop.\n", file=out)
+    print("  No fix indoors is normal — a cold start needs minutes of open sky.",
+          file=out)
+    print("  What matters here is whether anything arrives at all.\n", file=out)
+
+    started = clock()
+    seen = 0
+    best_satellites = 0
+    fix = None
+
+    try:
+        while duration_s is None or clock() - started < duration_s:
+            for sentence in location.read_sentences():
+                seen += 1
+                if valid_checksum(sentence):
+                    position = parse_gga(sentence)
+                    if position is not None:
+                        fix = position
+                        best_satellites = max(best_satellites,
+                                              position.get("satellites", 0))
+                    elif sentence.startswith(("$GPGGA", "$GNGGA")):
+                        # A GGA with no fix still carries the satellite count in
+                        # the same place, and watching it climb is the whole
+                        # story of a cold start.
+                        best_satellites = max(best_satellites,
+                                              _satellites_in(sentence))
+                # Truncated: some sentences are long and the point is the flow.
+                print(f"  {sentence[:78]}", file=out)
+            time.sleep(interval_s)
+    except KeyboardInterrupt:
+        pass
+
+    print("\nSummary:", file=out)
+    if seen == 0:
+        print("  Nothing arrived at all. In order of likelihood: the serial", file=out)
+        print("  console still owns the port (raspi-config -> Interface Options", file=out)
+        print("  -> Serial Port -> login shell no, hardware serial yes, then", file=out)
+        print("  reboot); TX and RX are not crossed — module TX goes to Pi RX;", file=out)
+        print("  or the module has no power.", file=out)
+    elif fix is not None:
+        print(f"  Fix: {fix['lat']:.5f}, {fix['lon']:.5f} "
+              f"from {fix['satellites']} satellites.", file=out)
+        print("  The module works. Remember this is where the *Pi* is.", file=out)
+    else:
+        print(f"  {seen} sentences arrived, so the module and the wiring are", file=out)
+        print(f"  fine — but no fix yet ({best_satellites} satellites seen).", file=out)
+        print("  Put it by a window, or better outside, and give it a few", file=out)
+        print("  minutes. A cold start is slow and indoors it may never finish.",
+              file=out)
+
+
+def _satellites_in(sentence: str) -> int:
+    """The satellite count from a GGA that has no fix. 0 if it cannot be read."""
+    fields = sentence.split("*")[0].split(",")
+    try:
+        return int(fields[7]) if len(fields) > 7 and fields[7] else 0
+    except ValueError:
+        return 0

@@ -16,7 +16,8 @@ from typing import Dict, Optional
 from .meals import MealDetector
 from .sensors.base import SensorSet
 from .snapshots import SnapshotStore
-from .store import KIND_FEEDING, KIND_MOTION, KIND_WEIGHT, EventStore
+from .store import (KIND_FEEDING, KIND_LOCATION, KIND_MOTION, KIND_WEIGHT,
+                    EventStore)
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class Monitor:
         poll_interval_s: float = 0.2,
         motion_debounce_s: float = 30.0,
         weight_log_interval_s: float = 60.0,
+        location_log_interval_s: float = 300.0,
         prune_interval_s: float = 3600.0,
         detector: Optional[MealDetector] = None,
         snapshots: Optional[SnapshotStore] = None,
@@ -51,6 +53,7 @@ class Monitor:
         self._poll_interval = poll_interval_s
         self._motion_debounce_s = motion_debounce_s
         self._weight_log_interval = weight_log_interval_s
+        self._location_log_interval = location_log_interval_s
         self._prune_interval = prune_interval_s
         self._detector = detector or MealDetector()
         self._snapshots = snapshots
@@ -60,6 +63,7 @@ class Monitor:
 
         self._last_motion_at: Dict[str, float] = {}
         self._last_weight_log = 0.0
+        self._last_location_log = 0.0
         self._last_prune = 0.0
         self._latest_weight: Optional[float] = None
 
@@ -103,6 +107,7 @@ class Monitor:
 
         self._poll_scale(now, now_ms)
         self._poll_motion(now, now_ms)
+        self._poll_location(now, now_ms)
 
         if now - self._last_prune >= self._prune_interval:
             self._last_prune = now
@@ -165,6 +170,32 @@ class Monitor:
             )
             log.info("motion in %s%s", sensor.room,
                      " (snapshot)" if snapshot else "")
+
+    def _poll_location(self, now: float, now_ms: int) -> None:
+        """Records where the Pi is, occasionally.
+
+        Diagnostics, like the raw weights — and worth being clear about what it
+        is: the position of the Pi, which for a feeder on a kitchen floor is a
+        constant. It is not where the pet is, and nothing on the app's pet
+        screens reads it. It earns its place by proving the module has a fix,
+        and by being there if the Pi is ever mounted on something that moves.
+        """
+        location = self._sensors.location
+        if location is None or not location.available:
+            return
+        if now - self._last_location_log < self._location_log_interval:
+            return
+        self._last_location_log = now
+
+        fix = location.read_fix()
+        if fix is None:
+            # Talking, but no fix. Normal indoors, and not worth a row: the
+            # absence of location events is the same information.
+            return
+
+        self._store.append(KIND_LOCATION, fix, timestamp_ms=now_ms, source="gps")
+        log.info("fix at %.5f, %.5f from %d satellites",
+                 fix["lat"], fix["lon"], fix.get("satellites", 0))
 
     def _capture(self, room: str, now_ms: int) -> Optional[str]:
         """One frame, if there is a camera and it is willing.

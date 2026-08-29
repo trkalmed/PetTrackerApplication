@@ -13,11 +13,13 @@ only real constraints are noted per sensor.
 """
 
 import logging
+import os
 import threading
 import time
 from typing import List, Optional
 
 from ..hx711 import HX711
+from ..nmea import parse_gga
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
 from .camera import ReopeningCamera
 from .gpio import open_input, open_output
@@ -475,49 +477,164 @@ class Neo6mLocationSensor(LocationSensor):
 
     Setup, in this order:
 
-    1. ``sudo raspi-config`` → Interface Options → Serial Port → login shell
-       **no**, hardware serial **yes**. Without this the kernel console owns the
-       port and the module's data is unreadable.
+    1. ``sudo raspi-config`` -> Interface Options -> Serial Port -> login shell
+       **no**, hardware serial **yes**, then reboot. Without this the kernel
+       console owns the port and answers your reads with its own noise.
     2. Use ``/dev/serial0``, which points at whichever UART is right for the
-       board revision. ``/dev/ttyAMA0`` is wrong on a Pi 4 by default.
-    3. Wiring is crossed: module TX to Pi RX, module RX to Pi TX. 3.3V power.
+       board revision. ``/dev/ttyAMA0`` is wrong on a Pi 4 by default, because
+       there the good UART is on Bluetooth.
+    3. Wiring is crossed: module TX to Pi RX (GPIO 15, physical pin 10), module
+       RX to Pi TX (GPIO 14, physical pin 8). 3.3V power and a shared ground.
 
-    It will not get a fix indoors. Cold start outdoors takes minutes, and the
-    module reports no fix until then — which is why read_fix returns None
-    rather than zeros.
+    **It will not get a fix indoors.** A cold start needs several minutes of
+    open sky, and the module reports no fix until then — which is why
+    :meth:`read_fix` returns None rather than zeros, and why
+    :attr:`available` asks a different question: whether the module is talking
+    at all. A GPS on a windowsill sending sentences and reporting no position is
+    working correctly, and the two states must not look the same.
 
-    Worth restating: this measures where the *Pi* is. For a feeder on a kitchen
-    floor that is a constant. It is the PIR sensors that answer "which room is
-    the cat in".
+    Read with :mod:`termios` rather than pyserial: a serial port at a fixed baud
+    rate is thirty lines of standard library, and the alternative is a package to
+    install on every rig.
+
+    Worth restating: this measures where the **Pi** is. For a feeder on a kitchen
+    floor that is a constant. The PIR sensors are what answer "which room".
     """
 
-    def __init__(self, port: str = "/dev/serial0", baudrate: int = 9600):
-        self._serial = None
-        try:
-            import serial  # type: ignore
+    #: How recently a sentence must have arrived for the module to count as
+    #: present. It sends several a second, so this is generous.
+    TALKING_FRESHNESS_S = 10.0
 
-            self._serial = serial.Serial(port, baudrate, timeout=1)
-            log.info("GPS on %s", port)
+    def __init__(self, port: str = "/dev/serial0", baudrate: int = 9600,
+                 clock=time.monotonic, opener=None):
+        """
+        :param opener: makes the file descriptor, for tests. The default opens
+            and configures the real port; a test hands over the read end of a
+            pipe, which exercises the same os.read path with no hardware.
+        """
+        self._port_path = port
+        self._fd = None
+        self._buffer = b""
+        self._clock = clock
+        self._last_sentence_at = None
+        self._last_fix = None
+
+        try:
+            self._fd = (opener or _open_serial)(port, baudrate)
+            log.info("GPS on %s at %d baud", port, baudrate)
         except Exception as e:
+            # The commonest cause by far is the serial console still owning the
+            # port, which raises here rather than misbehaving later.
             log.warning("GPS unavailable: %s", e)
 
     def read_fix(self) -> Optional[dict]:
-        if self._serial is None:
-            return None
-        raise NotImplementedError(
-            "Read NMEA lines and parse $GPGGA (or $GNGGA). Field 6 is the fix "
-            "quality: 0 means no fix, and the coordinates in that case are "
-            "zeros that must not be reported as a position off West Africa. "
-            "Field 7 is the satellite count."
-        )
+        """The most recent position, or None if the module has no fix.
+
+        None is the normal answer indoors and for the first minutes outdoors.
+        See :attr:`available` for whether the module is there at all.
+        """
+        for sentence in self.read_sentences():
+            fix = parse_gga(sentence)
+            if fix is not None:
+                self._last_fix = fix
+        return self._last_fix
+
+    def read_sentences(self):
+        """Whatever complete NMEA lines have arrived since the last call.
+
+        Also what the bring-up tool prints: seeing the raw sentences is how you
+        tell "no fix yet" from "nothing is connected", and the two look
+        identical from :meth:`read_fix`.
+        """
+        if self._fd is None:
+            return []
+
+        try:
+            chunk = os.read(self._fd, 4096)
+        except BlockingIOError:
+            chunk = b""
+        except OSError as e:
+            log.warning("GPS read failed: %s", e)
+            return []
+
+        if chunk:
+            self._buffer += chunk
+            # A module left talking to nobody would grow this without limit.
+            # One second of 9600 baud is about 1 kB.
+            if len(self._buffer) > 8192:
+                self._buffer = self._buffer[-4096:]
+
+        newline = b"\n"
+        sentences = []
+        while newline in self._buffer:
+            line, _, self._buffer = self._buffer.partition(newline)
+            text = line.decode("ascii", errors="replace").strip()
+            if text:
+                sentences.append(text)
+                self._last_sentence_at = self._clock()
+        return sentences
 
     @property
     def available(self) -> bool:
-        # False while read_fix() is a stub. Opening /dev/serial0 succeeds whether
-        # or not a GPS module is on the other end of it, so even once this is
-        # written it should mean "NMEA has arrived recently" rather than "the
-        # port opened" — the same distinction the scale now makes.
-        return False
+        """Whether the module is sending sentences, not whether it has a fix.
+
+        Those are different facts and only one of them is about the hardware. A
+        GPS indoors talks constantly and knows nothing, which is a working GPS.
+        """
+        if self._fd is None:
+            return False
+        if self._last_sentence_at is None:
+            self.read_sentences()          # nothing has read it yet
+        return (self._last_sentence_at is not None
+                and self._clock() - self._last_sentence_at
+                <= self.TALKING_FRESHNESS_S)
+
+    @property
+    def port(self) -> str:
+        return self._port_path
+
+    def close(self) -> None:
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            except OSError:
+                pass
+            self._fd = None
+
+
+def _open_serial(path: str, baudrate: int) -> int:
+    """Opens a serial port for reading, configured raw at ``baudrate``.
+
+    Non-blocking, because the service polls: a blocking read on a GPS that has
+    been unplugged would hold the monitor thread and stop the motion sensors
+    with it.
+    """
+    import termios
+
+    speeds = {4800: termios.B4800, 9600: termios.B9600,
+              19200: termios.B19200, 38400: termios.B38400,
+              57600: termios.B57600, 115200: termios.B115200}
+    if baudrate not in speeds:
+        raise ValueError(f"unsupported baud rate {baudrate}")
+
+    fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+    try:
+        attributes = termios.tcgetattr(fd)
+        # Raw: no echo, no line discipline, no character translation. The
+        # defaults are meant for a terminal, and would eat and rewrite bytes.
+        attributes[0] = 0                                    # iflag
+        attributes[1] = 0                                    # oflag
+        attributes[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
+        attributes[3] = 0                                    # lflag
+        attributes[4] = speeds[baudrate]                     # ispeed
+        attributes[5] = speeds[baudrate]                     # ospeed
+        attributes[6][termios.VMIN] = 0
+        attributes[6][termios.VTIME] = 0
+        termios.tcsetattr(fd, termios.TCSANOW, attributes)
+    except Exception:
+        os.close(fd)
+        raise
+    return fd
 
 
 #: One PIR per room, in the order --rooms lists them. BCM numbering. These three
@@ -665,7 +782,8 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           camera: str = "csi",
                           camera_device: int = 0,
                           scale_pins: Optional[List[int]] = None,
-                          scale_factor: float = HX711Scale.UNCALIBRATED) -> SensorSet:
+                          scale_factor: float = HX711Scale.UNCALIBRATED,
+                          gps_port: Optional[str] = "/dev/serial0") -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
@@ -687,5 +805,5 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=ServoFeeder(),
         camera=build_camera(camera, camera_device),
-        location=Neo6mLocationSensor(),
+        location=(Neo6mLocationSensor(port=gps_port) if gps_port else None),
     )

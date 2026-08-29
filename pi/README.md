@@ -31,7 +31,8 @@ python3 run.py
 
 Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
 `--pir-pins "17,27,22"`, `--pir-warmup`, `--camera csi|usb|none`,
-`--camera-device`, `--snapshot-dir`, `--no-snapshots`, `--fps`, `--db`, `-v`.
+`--camera-device`, `--snapshot-dir`, `--no-snapshots`, `--scale-pins`,
+`--scale-factor`, `--gps-port`, `--no-gps`, `--fps`, `--db`, `-v`.
 
 While wiring the PIR sensors, `--check-motion` skips the service entirely and
 shows the pins live — see **Bringing the hardware up**.
@@ -153,6 +154,7 @@ Event kinds:
 | `feeding` | `grams`, `type` | `EATEN` (weight left the bowl) or `DISPENSED` (weight arrived) |
 | `motion` | `room`, `snapshot` | A PIR fired, debounced to one event per room per 30 s. `snapshot` is the file name to fetch from `/snapshot`, and is absent when there is no camera |
 | `weight` | `grams` | Raw bowl weight, logged once a minute for diagnostics |
+| `location` | `lat`, `lon`, `satellites` | Where the **Pi** is, logged every five minutes when it has a fix. Diagnostics: the app ignores it, because the Pi's position is not the pet's |
 
 **Events carry no pet id.** A load cell cannot tell which cat ate; the app
 attributes readings to whichever pet is active. That is why
@@ -265,9 +267,30 @@ let the software debounce, or the two fight each other: the debounce in
 repeated pins are refused at startup rather than silently dropping a room.
 
 **GPS needs the serial console disabled** (`raspi-config` → Interface Options →
-Serial Port → login shell **no**, hardware serial **yes**), then use
-`/dev/serial0` — `/dev/ttyAMA0` is wrong on a Pi 4. TX goes to RX and vice
-versa. It will not get a fix indoors.
+Serial Port → login shell **no**, hardware serial **yes**, then reboot), then
+use `/dev/serial0` — `/dev/ttyAMA0` is wrong on a Pi 4, where the good UART is
+on Bluetooth. Wiring is crossed: module TX to Pi RX (physical pin 10), module RX
+to Pi TX (physical pin 8), 3.3V and a shared ground.
+
+**It will not get a fix indoors**, and that is not a fault. A cold start needs
+minutes of open sky. `available` therefore means the module is *talking*, not
+that it knows where it is — a GPS sending sentences and reporting no position is
+a working GPS, and `--check-gps` shows the difference:
+
+```bash
+python3 run.py --check-gps
+```
+
+Sentences scrolling past with no fix means the wiring is right and it needs sky.
+Nothing at all means the serial console still owns the port, TX and RX are not
+crossed, or there is no power. The summary says which.
+
+**Fix quality is field 6, and 0 means there is no fix.** The coordinates are
+still populated in that case, usually with zeros, which is a real position in
+the Gulf of Guinea — an unguarded parser will put your pet off the coast of
+West Africa. `nmea.py` checks it first, validates the XOR checksum on every
+sentence, and converts the degrees-and-minutes fields properly: `4807.038` is
+48.1173 degrees, not 48.07.
 
 **One camera per stream.** The CSI and USB cameras cannot share `/stream`; run a
 second instance on another port for the second camera.
@@ -295,7 +318,7 @@ watch `/health`:
 2. **HX711 + load cell.** See below — it has two tools.
 3. **Servo** — external supply first.
 4. **PIR ×3.** See below; this one has a tool.
-5. **GPS**, last.
+5. **GPS**, last, and see the note below about what it measures.
 
 ### The PIR sensors
 
@@ -468,7 +491,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-132 tests, no hardware and no network required. They cover the meal detector
+164 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and
@@ -490,6 +513,7 @@ pettracker/
   bringup.py            --check-motion, the live sensor view
   snapshots.py          the JPEGs saved when something moves
   hx711.py              the load-cell protocol, two wires and no dependencies
+  nmea.py               GPS sentences, and the ways they mislead
   sensors/
     base.py             what the service needs from hardware
     camera.py           reopening a camera that was not there yet

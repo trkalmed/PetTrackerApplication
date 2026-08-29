@@ -192,6 +192,10 @@ class FakeLocationSensor(LocationSensor):
         self._lon = lon
         self.available_flag = True
 
+    @property
+    def port(self) -> str:
+        return "fake-serial"
+
     def read_fix(self) -> Optional[dict]:
         if not self.available_flag:
             return None
@@ -200,9 +204,45 @@ class FakeLocationSensor(LocationSensor):
             return None            # cold start, no satellites yet
         return {"lat": self._lat, "lon": self._lon, "satellites": 7}
 
+    def read_sentences(self) -> List[str]:
+        """The NMEA a module actually sends, cold start and all.
+
+        Real sentences rather than a summary, because the bring-up tool prints
+        exactly these and its whole purpose is telling "talking but no fix" from
+        "nothing connected" — a distinction that only exists at this level.
+        """
+        if not self.available_flag:
+            return []
+
+        self._reads += 1
+        satellites = 0 if self._reads < self._fix_after else 7
+        if satellites == 0:
+            # Quality 0, no coordinates: what a receiver sends while it is still
+            # looking. The zeros here are why parse_gga checks quality first.
+            body = "GPGGA,120000.00,,,,,0,00,99.99,,,,,,"
+        else:
+            body = (f"GPGGA,120000.00,{_ddmm(self._lat, 2)},N,"
+                    f"{_ddmm(self._lon, 3)},E,1,{satellites:02d},0.9,545.4,M,46.9,M,,")
+        return [_nmea(body), _nmea("GPGSV,1,1,04,01,40,083,41")]
+
     @property
     def available(self) -> bool:
         return self.available_flag
+
+
+def _ddmm(degrees: float, width: int) -> str:
+    """Decimal degrees back to the degrees-and-minutes form NMEA uses."""
+    whole = int(abs(degrees))
+    minutes = (abs(degrees) - whole) * 60.0
+    return f"{whole:0{width}d}{minutes:07.4f}"
+
+
+def _nmea(body: str) -> str:
+    """Wraps a sentence body with its leading $ and trailing XOR checksum."""
+    checksum = 0
+    for character in body:
+        checksum ^= ord(character)
+    return f"${body}*{checksum:02X}"
 
 
 def build_fake_sensor_set(seed: int = 0, rooms: Optional[List[str]] = None) -> SensorSet:

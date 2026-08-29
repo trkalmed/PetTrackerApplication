@@ -31,6 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_events_id ON events (id);
 KIND_FEEDING = "feeding"
 KIND_MOTION = "motion"
 KIND_WEIGHT = "weight"
+KIND_LOCATION = "location"
 
 
 class EventStore:

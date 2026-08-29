@@ -93,8 +93,8 @@ def _suggest_swapped_pins(args, scale, log) -> None:
     pins = parse_pins(args.scale_pins) if args.scale_pins else DEFAULT_SCALE_PINS
     scale.close()          # the probe needs the pins
 
-    print("
-Trying the pins the other way round...")
+    print()
+    print("Trying the pins the other way round...")
     working = probe_scale_pins(pins[0], pins[1])
 
     if working is None:
@@ -106,6 +106,26 @@ Trying the pins the other way round...")
         print("  wires are the other way round. Either swap them, or pass")
         print(f"  --scale-pins \"{working[0]},{working[1]}\" and put")
         print(f"  PETTRACKER_SCALE_PINS={working[0]},{working[1]} in service.env.")
+
+
+def gps_mode(args, log) -> int:
+    """--check-gps: watch the sentences arrive, without starting the service."""
+    from pettracker.bringup import check_gps
+
+    if args.fake:
+        from pettracker.sensors.fake import build_fake_sensor_set
+        location = build_fake_sensor_set().location
+    else:
+        from pettracker.sensors.real import Neo6mLocationSensor
+        location = Neo6mLocationSensor(port=args.gps_port)
+
+    try:
+        check_gps(location)
+        return 0
+    finally:
+        close = getattr(location, "close", None)
+        if close:
+            close()
 
 
 def check_motion_mode(args, rooms, log) -> int:
@@ -178,6 +198,14 @@ def main() -> int:
     parser.add_argument("--calibrate-scale", action="store_true",
                         help="find the counts-per-gram factor with a known "
                              "weight, print it, and exit")
+    parser.add_argument("--gps-port", default="/dev/serial0",
+                        help="serial port the GPS is on (default /dev/serial0; "
+                             "/dev/ttyAMA0 is wrong on a Pi 4)")
+    parser.add_argument("--no-gps", action="store_true",
+                        help="do not open the serial port at all")
+    parser.add_argument("--check-gps", action="store_true",
+                        help="watch the NMEA sentences arrive and exit. Use this "
+                             "while wiring it")
     parser.add_argument("--check-motion", action="store_true",
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
@@ -197,6 +225,9 @@ def main() -> int:
 
     if args.check_scale or args.calibrate_scale:
         return scale_mode(args, log)
+
+    if args.check_gps:
+        return gps_mode(args, log)
 
     pins = None
     if not args.fake:
@@ -226,6 +257,7 @@ def main() -> int:
             sensors = build_real_sensor_set(
                 rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup,
                 camera=args.camera, camera_device=args.camera_device,
+                gps_port=(None if args.no_gps else args.gps_port),
                 scale_pins=scale_pins,
                 scale_factor=(args.scale_factor if args.scale_factor is not None
                               else HX711Scale.UNCALIBRATED))

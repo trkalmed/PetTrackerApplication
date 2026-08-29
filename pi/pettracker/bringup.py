@@ -332,7 +332,7 @@ def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:
     """
     out = out or sys.stdout
 
-    if not scale.available:
+    if not getattr(scale, "claimed", scale.available):
         print("The HX711 could not be opened — nothing to calibrate.", file=out)
         return None
 

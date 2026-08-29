@@ -57,6 +57,15 @@ class HX711Scale(Scale):
     #: What the factor is when nobody has calibrated anything.
     UNCALIBRATED = 1.0
 
+    #: How recently the amplifier must have answered to count as available. The
+    #: monitor reads it several times a second while the service runs, so this
+    #: only ever comes into play on a rig whose readings have stopped.
+    READING_FRESHNESS_S = 10.0
+
+    #: The least time between probe reads when nothing else is reading. Each one
+    #: waits for the chip, so /health must not trigger one on every poll.
+    PROBE_INTERVAL_S = 5.0
+
     def __init__(self, dout_pin: int = 5, sck_pin: int = 6,
                  calibration_factor: float = UNCALIBRATED, samples: int = 5,
                  gain: int = 128):
@@ -65,6 +74,8 @@ class HX711Scale(Scale):
         self._offset = 0.0
         self._hx = None
         self._backend = "none"
+        self._last_good_read = None
+        self._last_probe = None
 
         # fast=True: this chip times out if the clock is held high for 60 µs,
         # and gpiozero can take that long to set a pin. See gpio._FAST_BACKENDS.
@@ -96,6 +107,8 @@ class HX711Scale(Scale):
             return None
 
         raw = self._hx.read_median(self._samples)
+        if raw is not None:
+            self._last_good_read = time.monotonic()
         if raw is None:
             # None, never 0. An amplifier that has stopped answering and a bowl
             # with nothing in it are different facts, and only one of them means
@@ -122,10 +135,6 @@ class HX711Scale(Scale):
         self._offset = float(raw)
         log.info("tared at %d counts", raw)
 
-    def read_raw(self) -> Optional[int]:
-        """Counts, before the offset and the factor. For calibration only."""
-        return self._hx.read_median(self._samples) if self._hx else None
-
     @property
     def chip(self):
         """The amplifier itself, for the bring-up tool's timing probe."""
@@ -148,8 +157,50 @@ class HX711Scale(Scale):
         return self._calibration_factor != self.UNCALIBRATED
 
     @property
-    def available(self) -> bool:
+    def claimed(self) -> bool:
+        """Whether the two pins were opened.
+
+        Distinct from :attr:`available`, and the distinction is the whole point:
+        a dead amplifier claims its pins perfectly well. The bring-up tools want
+        this one — there is nothing to diagnose if the pins never opened — while
+        /health wants the other.
+        """
         return self._hx is not None
+
+    @property
+    def available(self) -> bool:
+        """Whether the amplifier is actually producing readings.
+
+        It used to mean "the two GPIO pins were claimed", which stayed true
+        through an amplifier killed by reversed power: /health reported a
+        working scale for an afternoon while every reading was twenty-four zero
+        bits. A sensor is available when it can do its job.
+        """
+        if self._hx is None:
+            return False
+
+        now = time.monotonic()
+        if (self._last_good_read is not None
+                and now - self._last_good_read <= self.READING_FRESHNESS_S):
+            return True
+
+        # Nothing has read it lately — the monitor is not running, or it has
+        # stopped answering. One read settles it, rate limited because each one
+        # waits on the chip and /health asks on every poll.
+        if (self._last_probe is not None
+                and now - self._last_probe < self.PROBE_INTERVAL_S):
+            return False
+        self._last_probe = now
+        return self.read_raw() is not None
+
+    def read_raw(self) -> Optional[int]:
+        """Counts, before the offset and the factor. For calibration only."""
+        if self._hx is None:
+            return None
+        raw = self._hx.read_median(self._samples)
+        if raw is not None:
+            self._last_good_read = time.monotonic()
+        return raw
 
     def close(self) -> None:
         if self._hx is not None:
@@ -296,6 +347,7 @@ class ServoFeeder(Feeder):
     def dispense(self, grams: int) -> None:
         if self._pwm is None:
             raise RuntimeError("feeder unavailable")
+        # Delete the available override below when this is written.
         raise NotImplementedError(
             "Open the gate, hold for grams * ms_per_gram, close it. Always "
             "close in a finally block: an exception mid-dispense must not leave "
@@ -305,7 +357,11 @@ class ServoFeeder(Feeder):
 
     @property
     def available(self) -> bool:
-        return self._pwm is not None
+        # False while dispense() is a stub, whatever the wiring says. A servo
+        # cannot be interrogated — you can only move it — so "available" here can
+        # never mean more than "this code could run it", and right now it cannot.
+        # Make this `return self._pwm is not None` once dispense() is written.
+        return False
 
 
 class PiCamera(Camera):
@@ -343,7 +399,11 @@ class PiCamera(Camera):
 
     @property
     def available(self) -> bool:
-        return self._camera is not None
+        # False while read_jpeg() is a stub. The device opens perfectly well and
+        # then produces nothing, which would show as a camera that is present
+        # and serving an empty stream.
+        # Make this `return self._camera is not None` once read_jpeg() is written.
+        return False
 
     def close(self) -> None:
         if self._camera is not None:
@@ -453,7 +513,11 @@ class Neo6mLocationSensor(LocationSensor):
 
     @property
     def available(self) -> bool:
-        return self._serial is not None
+        # False while read_fix() is a stub. Opening /dev/serial0 succeeds whether
+        # or not a GPS module is on the other end of it, so even once this is
+        # written it should mean "NMEA has arrived recently" rather than "the
+        # port opened" — the same distinction the scale now makes.
+        return False
 
 
 #: One PIR per room, in the order --rooms lists them. BCM numbering. These three
@@ -588,7 +652,7 @@ def probe_scale_pins(dout_pin: int, sck_pin: int):
     for candidate in ((dout_pin, sck_pin), (sck_pin, dout_pin)):
         scale = HX711Scale(dout_pin=candidate[0], sck_pin=candidate[1])
         try:
-            if scale.available and scale.read_raw() is not None:
+            if scale.claimed and scale.read_raw() is not None:
                 return candidate
         finally:
             scale.close()

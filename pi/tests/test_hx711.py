@@ -88,6 +88,17 @@ class FakeAmplifier:
     _current_bit = 0
 
 
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
 class ProtocolTest(unittest.TestCase):
 
     def read(self, *values, **kwargs):
@@ -411,3 +422,107 @@ class DiagnosisTest(unittest.TestCase):
         chip = HX711(pins.dout, pins.sck)
 
         self.assertIn("12345", chip.diagnose())
+
+
+class AvailabilityTest(unittest.TestCase):
+    """What /health means when it says the scale is there.
+
+    It used to mean "the two GPIO pins were claimed", which stayed true through
+    an amplifier killed by reversed power — /health reported a working scale for
+    an afternoon while every reading was twenty-four zero bits. A sensor is
+    available when it can do its job.
+    """
+
+    class Scale:
+        """HX711Scale's availability logic, without claiming pins."""
+
+        READING_FRESHNESS_S = 10.0
+        PROBE_INTERVAL_S = 5.0
+
+        def __init__(self, chip, clock):
+            self.chip, self._clock = chip, clock
+            self._last_good_read = None
+            self._last_probe = None
+
+        @property
+        def claimed(self):
+            return self.chip is not None
+
+        @property
+        def available(self):
+            if self.chip is None:
+                return False
+            now = self._clock()
+            if (self._last_good_read is not None
+                    and now - self._last_good_read <= self.READING_FRESHNESS_S):
+                return True
+            if (self._last_probe is not None
+                    and now - self._last_probe < self.PROBE_INTERVAL_S):
+                return False
+            self._last_probe = now
+            return self.read_raw() is not None
+
+        def read_raw(self):
+            raw = self.chip.read_median(1)
+            if raw is not None:
+                self._last_good_read = self._clock()
+            return raw
+
+    def scale(self, *values, clock=None):
+        pins = FakeAmplifier(*values)
+        return self.Scale(HX711(pins.dout, pins.sck), clock or Clock())
+
+    def test_an_amplifier_that_answers_is_available(self):
+        self.assertTrue(self.scale(*([1000] * 10)).available)
+
+    def test_an_amplifier_that_returns_nothing_is_not_available(self):
+        # Exactly the state a board killed by reversed power leaves behind: pins
+        # claimed, reads all zero.
+        self.assertFalse(self.scale(*([0] * 10)).available)
+
+    def test_claimed_stays_true_so_the_bring_up_tools_still_run(self):
+        scale = self.scale(*([0] * 10))
+
+        # --check-scale exists to investigate exactly this, so it must not
+        # refuse to start on the grounds that there is a problem.
+        self.assertFalse(scale.available)
+        self.assertTrue(scale.claimed)
+
+    def test_a_recent_reading_answers_without_another_read(self):
+        clock = Clock()
+        scale = self.scale(1000, clock=clock)
+
+        scale.read_raw()
+        clock.advance(5)
+
+        # The monitor reads several times a second while the service runs, so
+        # /health should not be clocking the chip itself on every poll.
+        self.assertTrue(scale.available)
+
+    def test_a_stale_reading_is_not_evidence(self):
+        clock = Clock()
+        scale = self.scale(1000, clock=clock)
+        scale.read_raw()
+
+        clock.advance(60)
+
+        # A minute-old reading describes a minute ago. With the monitor running
+        # this cannot happen; without it, the honest answer is "ask again".
+        self.assertFalse(scale.available)
+
+    def test_probes_are_rate_limited(self):
+        scale = self.scale(*([0] * 50))
+        reads = []
+        underlying = scale.read_raw
+
+        def counting():
+            reads.append(1)
+            return underlying()
+
+        scale.read_raw = counting
+
+        for _ in range(10):
+            scale.available
+
+        # Each probe waits on the chip, and /health asks on every poll.
+        self.assertEqual(1, len(reads))

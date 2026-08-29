@@ -110,6 +110,19 @@ Per-sensor availability is the point: it distinguishes a Pi with the load cell
 unplugged from one that simply has nothing to report. Bring sensors up one at a
 time and watch this.
 
+**`true` means the sensor can do its job**, not that a handle was opened. That
+distinction was learned the hard way: an HX711 killed by reversed power claims
+its two GPIO pins perfectly well, and `/health` called it a working scale for an
+afternoon while every reading it produced was twenty-four zero bits. So the
+scale is available when it has answered recently, and the three sensors whose
+drivers are still stubs — the CSI camera, the servo and the GPS — report `false`
+whatever their wiring says, because code that raises `NotImplementedError`
+cannot do its job either.
+
+The exception is the PIR sensors, where `true` really does only mean the pin was
+claimed. A passive sensor cannot be interrogated, so there is no better answer
+available; `--check-motion` is how you find out whether one is really there.
+
 ### `GET /events?since=<cursor>`
 
 ```json

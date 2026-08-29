@@ -328,6 +328,13 @@ itself go to E+, E-, A+ and A- on the amplifier; if you get a pair the wrong way
 round the readings simply run backwards, which the calibration tool notices and
 explains rather than refusing.
 
+**If the board has both `VCC` and `VDD`, connect both.** `VCC` supplies the
+analog side that excites the cell; `VDD` sets the digital logic level. With only
+`VCC` wired the chip powers up and converts but cannot drive DOUT, and the line
+sits low — which reads as a ready sample followed by twenty-four zero bits. The
+symptom is a raw reading of exactly 0 that never changes, and nothing in the log
+suggests a power problem.
+
 There is no driver to install. The HX711 protocol is in `pettracker/hx711.py`,
 because every HX711 package on PyPI is built on RPi.GPIO and would hit the same
 Pi 5 wall the PIR sensors did.
@@ -342,6 +349,17 @@ sudo systemctl stop pettracker
 Start it again when you are done. This applies to `--check-motion` too, and a
 pin that is already taken reports itself as busy — which the tools now say out
 loud, because it is indistinguishable from a wiring fault otherwise.
+
+To check the data line without involving any of this code — a powered,
+connected amplifier converts about ten times a second, so the level should
+change across these samples:
+
+```bash
+for i in $(seq 1 20); do pinctrl get 5; sleep 0.05; done
+```
+
+All `lo` means nothing is driving DT: no power, the wrong pin, or DT and SCK
+swapped.
 
 **First, is it alive:**
 

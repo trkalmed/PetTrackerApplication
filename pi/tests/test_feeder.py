@@ -314,3 +314,72 @@ class ThrottledParsingTest(unittest.TestCase):
             raise FileNotFoundError("vcgencmd")
 
         self.assertIsNone(read_throttled(runner=explode))
+
+
+class PaddleTest(unittest.TestCase):
+    """The wheel: portioning by counting pockets rather than by timing a hole."""
+
+    def setUp(self):
+        from pettracker.sensors.real import PaddleFeeder
+
+        self.servo = RecordingServo()
+        self.feeder = PaddleFeeder(park_angle=30, dump_angle=150,
+                                   grams_per_cycle=5.0, servo=self.servo,
+                                   travel_s=0.0, settle_s=0.0)
+        self.servo.angles.clear()
+
+    def test_it_parks_on_startup(self):
+        from pettracker.sensors.real import PaddleFeeder
+
+        servo = RecordingServo()
+        PaddleFeeder(park_angle=30, dump_angle=150, servo=servo,
+                     travel_s=0.0, settle_s=0.0)
+
+        # A wheel powered up at the dump position is an open hole in the
+        # bottom of the hopper.
+        self.assertEqual(30, servo.angles[0])
+
+    def test_a_request_becomes_whole_pockets(self):
+        # 12 g of a 5 g pocket is two pockets. A third of a pocket is not a
+        # thing the machine can do, and the load cell reports what actually fell.
+        self.assertEqual(2, self.feeder.cycles_for(12))
+        self.assertEqual(3, self.feeder.cycles_for(14))
+
+    def test_less_than_one_pocket_still_gives_one(self):
+        # Asking for 2 g and getting nothing at all would read as a broken
+        # feeder rather than as rounding.
+        self.assertEqual(1, self.feeder.cycles_for(2))
+
+    def test_nothing_is_nothing(self):
+        self.assertEqual(0, self.feeder.cycles_for(0))
+        self.assertEqual(0, self.feeder.cycles_for(-5))
+
+    def test_an_absurd_request_is_capped(self):
+        from pettracker.sensors.real import PaddleFeeder
+
+        # A grams_per_cycle wrong by an order of magnitude would otherwise run
+        # the wheel for minutes.
+        self.assertEqual(PaddleFeeder.MAX_CYCLES, self.feeder.cycles_for(5000))
+
+    def test_each_cycle_dumps_and_returns(self):
+        self.feeder.dispense(10)
+
+        # Two pockets: out and back, twice, then parked.
+        self.assertEqual([150, 30, 150, 30, 30, "released"], self.servo.angles)
+
+    def test_it_parks_even_when_a_turn_fails(self):
+        self.servo.raises_on_angle = 150
+
+        with self.assertRaises(OSError):
+            self.feeder.dispense(10)
+
+        self.assertEqual(30, self.servo.angles[-2])
+
+    def test_no_servo_means_a_refusal(self):
+        from pettracker.sensors.real import PaddleFeeder
+
+        feeder = PaddleFeeder(servo=None)
+
+        self.assertFalse(feeder.available)
+        with self.assertRaises(RuntimeError):
+            feeder.dispense(10)

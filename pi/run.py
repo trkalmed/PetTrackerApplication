@@ -109,8 +109,23 @@ def _suggest_swapped_pins(args, scale, log) -> None:
 
 
 def build_feeder(args):
-    """The servo on its own, with whatever angles have been measured so far."""
-    from pettracker.sensors.real import ServoFeeder
+    """The feeder this rig has, with whatever numbers have been measured so far."""
+    from pettracker.sensors.real import FEEDER_KINDS, PaddleFeeder, ServoFeeder
+
+    if args.feeder not in FEEDER_KINDS:
+        raise ValueError(
+            f"unknown feeder '{args.feeder}' (expected one of "
+            f"{', '.join(FEEDER_KINDS)})")
+
+    if args.feeder == "paddle":
+        return PaddleFeeder(
+            pin=args.servo_pin,
+            park_angle=(args.paddle_park if args.paddle_park is not None
+                        else PaddleFeeder.DEFAULT_PARK_ANGLE),
+            dump_angle=(args.paddle_dump if args.paddle_dump is not None
+                        else PaddleFeeder.DEFAULT_DUMP_ANGLE),
+            grams_per_cycle=(args.paddle_grams if args.paddle_grams is not None
+                             else PaddleFeeder.DEFAULT_GRAMS_PER_CYCLE))
 
     return ServoFeeder(
         pin=args.servo_pin,
@@ -130,7 +145,11 @@ def servo_mode(args, log) -> int:
         from pettracker.sensors.fake import build_fake_sensor_set
         feeder = build_fake_sensor_set().feeder
     else:
-        feeder = build_feeder(args)
+        try:
+            feeder = build_feeder(args)
+        except ValueError as e:
+            log.error("%s", e)
+            return 2
 
     try:
         check_servo(feeder)
@@ -248,6 +267,16 @@ def main() -> int:
     parser.add_argument("--servo-ms-per-gram", type=float, default=None,
                         help="how long the gate must be open per gram, measured "
                              "by opening it for a known time and weighing what fell")
+    parser.add_argument("--feeder", default="gate",
+                        help="how the hopper meters food: gate (open for a "
+                             "time) or paddle (turn whole pockets)")
+    parser.add_argument("--paddle-park", type=int, default=None,
+                        help="angle the paddle wheel rests at")
+    parser.add_argument("--paddle-dump", type=int, default=None,
+                        help="angle it turns to, to empty a pocket")
+    parser.add_argument("--paddle-grams", type=float, default=None,
+                        help="grams one pocket drops, measured by cycling ten "
+                             "times into a bowl and dividing")
     parser.add_argument("--check-servo", action="store_true",
                         help="move the servo to angles you type, to find the open "
                              "and closed positions for a gate")
@@ -306,10 +335,7 @@ def main() -> int:
                 rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup,
                 camera=args.camera, camera_device=args.camera_device,
                 gps_port=(None if args.no_gps else args.gps_port),
-                servo_pin=args.servo_pin,
-                servo_open=args.servo_open,
-                servo_closed=args.servo_closed,
-                servo_ms_per_gram=args.servo_ms_per_gram,
+                feeder=build_feeder(args),
                 scale_pins=scale_pins,
                 scale_factor=(args.scale_factor if args.scale_factor is not None
                               else HX711Scale.UNCALIBRATED))

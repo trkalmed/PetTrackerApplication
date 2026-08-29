@@ -33,7 +33,8 @@ Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
 `--pir-pins "17,27,22"`, `--pir-warmup`, `--camera csi|usb|none`,
 `--camera-device`, `--snapshot-dir`, `--no-snapshots`, `--scale-pins`,
 `--scale-factor`, `--gps-port`, `--no-gps`, `--servo-pin`, `--servo-open`,
-`--servo-closed`, `--servo-ms-per-gram`, `--fps`, `--db`, `-v`.
+`--servo-closed`, `--servo-ms-per-gram`, `--feeder gate|paddle`,
+`--paddle-park`, `--paddle-dump`, `--paddle-grams`, `--fps`, `--db`, `-v`.
 
 While wiring the PIR sensors, `--check-motion` skips the service entirely and
 shows the pins live — see **Bringing the hardware up**.
@@ -514,7 +515,30 @@ off and refit it one spline over rather than working around it.
 python3 run.py --servo-closed 10 --servo-open 95
 ```
 
-The third is **milliseconds per gram**: open the gate for a known time, weigh
+#### A paddle wheel instead
+
+`--feeder paddle` meters by whole pockets rather than by time, and for a
+positional servo it is the better design. A gate's flow depends on how full the
+hopper is, how the kibble is sitting and how much of it is bridging the opening;
+a pocket either passes the outlet or it does not, and what falls is the same
+either way.
+
+```bash
+python3 run.py --feeder paddle --paddle-park 30 --paddle-dump 150 --paddle-grams 4.2
+```
+
+`--paddle-grams` is measured once: cycle the wheel ten times into a bowl, weigh
+what fell, divide by ten. Requests are then rounded to whole pockets — a third
+of a pocket is not something the machine can do — and any request above zero
+turns at least once, because asking for 2 g and getting nothing reads as a
+broken feeder rather than as rounding. What actually fell is the load cell's
+answer, as always.
+
+The wheel parks on startup and after every dispense, including when a turn
+fails: a wheel abandoned at the dump position is an open hole in the bottom of
+the hopper.
+
+The third number for a gate is **milliseconds per gram**: open the gate for a known time, weigh
 what fell, divide. It only has to be close. The servo controls how long a hole
 is open, not how much comes out — the load cell measures what actually landed,
 which is why `POST /feed` deliberately does not record a feeding event and the
@@ -557,7 +581,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-193 tests, no hardware and no network required. They cover the meal detector
+201 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and

@@ -454,6 +454,135 @@ class ServoFeeder(Feeder):
             self._servo = None
 
 
+class PaddleFeeder(Feeder):
+    """A paddle wheel or pocketed drum, turned one pocket at a time.
+
+    The alternative to a timed gate, and the better one for a positional servo.
+    A gate meters food by how long a hole is open, which depends on how full the
+    hopper is, how the kibble happens to be sitting and how much of it is
+    bridging the opening. A pocket meters by volume: a pocket either passes the
+    opening or it does not, and what falls is the same whether the hopper is
+    full or nearly empty.
+
+    So portioning becomes counting rather than timing. ``grams_per_cycle`` is
+    measured once — cycle it ten times into a bowl, weigh, divide by ten — and
+    from then on a request is rounded to a whole number of pockets, because a
+    third of a pocket is not a thing this machine can do. That rounding is
+    reported honestly: the load cell measures what actually landed, and the
+    difference between what was asked for and what fell is real.
+
+    Mechanically an SG90 is enough to turn a light wheel and nothing more. If a
+    pocket ever catches a piece of kibble against the housing the servo will
+    stall rather than shear it, which is why :attr:`SETTLE_S` pauses at the dump
+    position — a moment for the pocket to empty is cheaper than a jam.
+    """
+
+    #: A wheel parks here and dumps at the other. Anything within the servo's
+    #: travel works; keeping off the end stops means a jam cannot drive it into
+    #: its own limit.
+    DEFAULT_PARK_ANGLE = 30
+    DEFAULT_DUMP_ANGLE = 150
+
+    #: Until it is measured. Deliberately small, so a wrong value under-feeds
+    #: rather than emptying the hopper.
+    DEFAULT_GRAMS_PER_CYCLE = 5.0
+
+    #: Pause at the dump position, for the pocket to actually empty. Kibble
+    #: does not fall instantly and a wheel that snaps back takes some with it.
+    SETTLE_S = 0.4
+
+    #: Most pockets one request may turn. A grams_per_cycle that is wrong by an
+    #: order of magnitude would otherwise run the wheel for several minutes.
+    MAX_CYCLES = 20
+
+    def __init__(self, pin: int = 18,
+                 park_angle: int = DEFAULT_PARK_ANGLE,
+                 dump_angle: int = DEFAULT_DUMP_ANGLE,
+                 grams_per_cycle: float = DEFAULT_GRAMS_PER_CYCLE,
+                 servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None,
+                 settle_s: Optional[float] = None):
+        self._pin = pin
+        self._park_angle = park_angle
+        self._dump_angle = dump_angle
+        self._grams_per_cycle = grams_per_cycle
+        self._travel_s = ServoFeeder.TRAVEL_S if travel_s is None else travel_s
+        self._settle_s = self.SETTLE_S if settle_s is None else settle_s
+        self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
+
+        if self._servo is not None:
+            self.move_to(park_angle)
+
+    def move_to(self, angle: float) -> None:
+        """Turns the wheel to an angle and lets go once it has arrived."""
+        if self._servo is None:
+            return
+        self._servo.set_angle(angle)
+        time.sleep(self._travel_s)
+        self._servo.release()
+
+    def cycles_for(self, grams: int) -> int:
+        """Whole pockets for a request, rounded and capped.
+
+        At least one for any positive request: asking for less than a pocket and
+        getting nothing at all would look like a broken feeder, and the load cell
+        will report what actually fell either way.
+        """
+        if grams <= 0 or self._grams_per_cycle <= 0:
+            return 0
+        cycles = int(round(grams / self._grams_per_cycle))
+        return max(1, min(cycles, self.MAX_CYCLES))
+
+    def dispense(self, grams: int) -> None:
+        """Turns the wheel enough times to drop roughly ``grams``."""
+        if self._servo is None:
+            raise RuntimeError("feeder unavailable")
+
+        cycles = self.cycles_for(grams)
+        log.info("turning the paddle %d time(s) for %d g", cycles, grams)
+
+        try:
+            for _ in range(cycles):
+                self._servo.set_angle(self._dump_angle)
+                time.sleep(self._travel_s + self._settle_s)
+                self._servo.set_angle(self._park_angle)
+                time.sleep(self._travel_s)
+        finally:
+            # Parked whatever happened. A wheel abandoned at the dump position
+            # is an open hole in the bottom of the hopper.
+            self.move_to(self._park_angle)
+
+    @property
+    def grams_per_cycle(self) -> float:
+        return self._grams_per_cycle
+
+    @property
+    def park_angle(self) -> int:
+        return self._park_angle
+
+    @property
+    def dump_angle(self) -> int:
+        return self._dump_angle
+
+    @property
+    def pin(self) -> int:
+        return self._pin
+
+    @property
+    def backend(self) -> str:
+        return self._servo.backend if self._servo is not None else "none"
+
+    @property
+    def available(self) -> bool:
+        # Claimed, not verified, for the same reason as the gate: a hobby servo
+        # has no feedback wire. What actually fell is the load cell's answer.
+        return self._servo is not None
+
+    def close(self) -> None:
+        if self._servo is not None:
+            self._servo.close()
+            self._servo = None
+
+
 class PiCamera(Camera):
     """CSI camera via picamera2.
 
@@ -822,6 +951,10 @@ class NoCamera(Camera):
         return False
 
 
+#: What --feeder accepts. A gate meters by time, a paddle by whole pockets.
+FEEDER_KINDS = ("gate", "paddle")
+
+
 #: What --camera accepts. One camera per service: the CSI and USB devices cannot
 #: share a single /stream, so this is a choice rather than a list.
 CAMERA_KINDS = ("csi", "usb", "none")
@@ -884,10 +1017,7 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           scale_pins: Optional[List[int]] = None,
                           scale_factor: float = HX711Scale.UNCALIBRATED,
                           gps_port: Optional[str] = "/dev/serial0",
-                          servo_pin: int = 18,
-                          servo_open: Optional[int] = None,
-                          servo_closed: Optional[int] = None,
-                          servo_ms_per_gram: Optional[float] = None) -> SensorSet:
+                          feeder: Optional[Feeder] = None) -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
@@ -907,14 +1037,7 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         scale=HX711Scale(dout_pin=dout, sck_pin=sck,
                          calibration_factor=scale_factor),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
-        feeder=ServoFeeder(
-            pin=servo_pin,
-            open_angle=(servo_open if servo_open is not None
-                        else ServoFeeder.DEFAULT_OPEN_ANGLE),
-            closed_angle=(servo_closed if servo_closed is not None
-                          else ServoFeeder.DEFAULT_CLOSED_ANGLE),
-            ms_per_gram=(servo_ms_per_gram if servo_ms_per_gram is not None
-                         else ServoFeeder.DEFAULT_MS_PER_GRAM)),
+        feeder=(feeder if feeder is not None else ServoFeeder()),
         camera=build_camera(camera, camera_device),
         location=(UbloxLocationSensor(port=gps_port) if gps_port else None),
     )

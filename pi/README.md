@@ -319,8 +319,11 @@ debounced to one event per room per 30 s no matter how long the sensor is held.
 
 ### The load cell
 
-Wiring: VCC to 5V, GND to GND, DT and SCK to any two free GPIOs (5 and 6 by
-default, `--scale-pins "DT,SCK"` to change them). The four wires from the cell
+Wiring: **VCC to 3.3V**, GND to GND, DT and SCK to any two free GPIOs (5 and 6
+by default, `--scale-pins "DT,SCK"` to change them). 3.3V rather than 5V because
+the module's logic follows its supply, and a 5V DOUT into a Pi input is outside
+what the pin is rated for. HX711 boards run fine at 3.3V; the cell is a bridge
+of resistors and does not care. The four wires from the cell
 itself go to E+, E-, A+ and A- on the amplifier; if you get a pair the wrong way
 round the readings simply run backwards, which the calibration tool notices and
 explains rather than refusing.

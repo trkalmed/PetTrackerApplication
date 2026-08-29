@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pettracker.bringup import calibrate_scale
+from pettracker.bringup import calibrate_scale, check_scale
 from pettracker.hx711 import GAIN_PULSES, HX711
 
 
@@ -297,3 +297,59 @@ class CalibrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadingDiagnosisTest(unittest.TestCase):
+    """What --check-scale says when the numbers are suspicious.
+
+    A load cell cannot report that it is unhappy; every fault arrives as a
+    plausible number. These three each send you somewhere different, which is
+    why the tool says which rather than printing counts and leaving it to you.
+    """
+
+    class Scale:
+        available = True
+        calibrated = False
+
+        def __init__(self, *values):
+            self.values = list(values)
+            self.index = 0
+
+        def read_raw(self):
+            value = self.values[self.index % len(self.values)]
+            self.index += 1
+            return value
+
+        def read_grams(self):
+            return float(self.read_raw())
+
+    def run_check(self, *values):
+        out = io.StringIO()
+        check_scale(self.Scale(*values), duration_s=0.15, interval_s=0.05, out=out)
+        return out.getvalue()
+
+    def test_all_zeros_points_at_the_data_line(self):
+        # An HX711 with no power leaves DT low. Low reads as ready, then as
+        # twenty-four zero bits — which is not a weight of zero, it is no
+        # amplifier at all.
+        text = self.run_check(0, 0, 0)
+
+        self.assertIn("stuck", text)
+        self.assertIn("3.3V", text)
+
+    def test_an_unchanging_reading_points_at_the_cell(self):
+        text = self.run_check(8_388_000, 8_388_000)
+
+        # The amplifier is talking; nothing is changing its input.
+        self.assertIn("not wired to E+", text.replace("\n", " "))
+
+    def test_a_tiny_spread_is_called_noise(self):
+        text = self.run_check(10_000, 10_012, 10_003, 9_998)
+
+        self.assertIn("noise, not weight", text)
+
+    def test_real_movement_is_not_second_guessed(self):
+        text = self.run_check(10_000, 45_000, 92_000)
+
+        for complaint in ("stuck", "noise, not weight", "not wired"):
+            self.assertNotIn(complaint, text)

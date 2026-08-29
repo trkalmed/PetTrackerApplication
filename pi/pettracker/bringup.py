@@ -196,10 +196,13 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
 
     started = clock()
     interactive = getattr(out, "isatty", lambda: False)()
+    seen = []
     try:
         while duration_s is None or clock() - started < duration_s:
             raw = scale.read_raw() if hasattr(scale, "read_raw") else None
             grams = scale.read_grams()
+            if raw is not None:
+                seen.append(raw)
 
             if raw is None and grams is None:
                 line = "  no reading — the amplifier is not answering"
@@ -217,6 +220,50 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
     except KeyboardInterrupt:
         pass
     print(file=out)
+    _explain_readings(seen, out)
+
+
+def _explain_readings(seen, out) -> None:
+    """Says what a suspicious set of readings usually means.
+
+    A load cell has no way of telling you it is unhappy, so every fault arrives
+    as a number. These three cover nearly all of them, and each sends you
+    somewhere different — which is the whole value of saying it rather than
+    printing the number and leaving you to it.
+    """
+    if not seen:
+        return
+
+    if all(value == 0 for value in seen):
+        # An HX711 with no power, or a DT line that is not connected, leaves the
+        # input low. Low reads as ready, and then as twenty-four zero bits. It is
+        # not a weight of zero; it is no amplifier at all.
+        print("Every reading was exactly 0, which a working amplifier does not do —",
+              file=out)
+        print("even an empty bowl wanders by a few counts. The data line is stuck",
+              file=out)
+        print("low: check DT is on the pin you passed, and that the HX711 has power",
+              file=out)
+        print("(3.3V is the right supply on a Pi — 5V drives 5V logic into a 3.3V",
+              file=out)
+        print("input).", file=out)
+        return
+
+    if len(set(seen)) == 1:
+        print(f"Every reading was exactly {seen[0]}, which means the amplifier is",
+              file=out)
+        print("talking but nothing is changing its input. Usually the cell is not",
+              file=out)
+        print("wired to E+/E-/A+/A-, or the bowl is resting on something as well as",
+              file=out)
+        print("on the cell.", file=out)
+        return
+
+    spread = max(seen) - min(seen)
+    if spread < 50:
+        print(f"Readings moved by only {spread} counts. That is noise, not weight —",
+              file=out)
+        print("press on the bowl while this runs and expect thousands.", file=out)
 
 
 def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:

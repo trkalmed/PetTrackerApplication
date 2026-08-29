@@ -339,6 +339,13 @@ There is no driver to install. The HX711 protocol is in `pettracker/hx711.py`,
 because every HX711 package on PyPI is built on RPi.GPIO and would hit the same
 Pi 5 wall the PIR sensors did.
 
+**Which pin is which.** Swapping DT and SCK is the easiest mistake to make here
+and the hardest to see: the pin being read is then wired to the amplifier's
+clock input, which nothing drives, so it floats — and a floating pin reads as
+noise with no pull, low with a pull-down, and twenty-four zero bits when clocked.
+That is indistinguishable from an amplifier with no power. `--check-scale` tries
+the other order for you when nothing reads, and says which way round works.
+
 **Stop the service first.** A GPIO pin can only be claimed once, so the running
 service and a bring-up tool cannot both have it:
 

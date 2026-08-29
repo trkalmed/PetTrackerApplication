@@ -72,11 +72,40 @@ def scale_mode(args, log) -> int:
         if args.calibrate_scale:
             return 0 if calibrate_scale(scale) is not None else 1
         check_scale(scale)
+        if not args.fake and scale.available and scale.read_raw() is None:
+            _suggest_swapped_pins(args, scale, log)
         return 0
     finally:
         close = getattr(scale, "close", None)
         if close:
             close()
+
+
+def _suggest_swapped_pins(args, scale, log) -> None:
+    """Nothing read — see whether the other pin order does.
+
+    Worth the extra ten seconds at the end of a failed check: swapping DT and
+    SCK produces exactly the same symptom as an amplifier with no power, and
+    only one of the two can be ruled out from an armchair.
+    """
+    from pettracker.sensors.real import DEFAULT_SCALE_PINS, parse_pins, probe_scale_pins
+
+    pins = parse_pins(args.scale_pins) if args.scale_pins else DEFAULT_SCALE_PINS
+    scale.close()          # the probe needs the pins
+
+    print("
+Trying the pins the other way round...")
+    working = probe_scale_pins(pins[0], pins[1])
+
+    if working is None:
+        print("  No reading either way, so this is not a swapped pair.")
+        print("  The amplifier is not driving its data line at all: check that it")
+        print("  has power, and that its GND is shared with the Pi.")
+    elif list(working) != list(pins):
+        print(f"  It reads with DT={working[0]} and SCK={working[1]} — your two")
+        print("  wires are the other way round. Either swap them, or pass")
+        print(f"  --scale-pins \"{working[0]},{working[1]}\" and put")
+        print(f"  PETTRACKER_SCALE_PINS={working[0]},{working[1]} in service.env.")
 
 
 def check_motion_mode(args, rooms, log) -> int:

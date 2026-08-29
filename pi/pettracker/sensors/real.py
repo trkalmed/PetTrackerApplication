@@ -562,6 +562,27 @@ def build_camera(kind: str = "csi", device_index: int = 0) -> Camera:
     return PiCamera()
 
 
+def probe_scale_pins(dout_pin: int, sck_pin: int):
+    """Tries the pins both ways round and returns the pair that reads.
+
+    Swapping DT and SCK is the easiest mistake to make with this module and the
+    hardest to see: the pin being read is then wired to the amplifier's clock
+    input, which nothing drives, so it floats — noise with no pull, low with a
+    pull-down, and twenty-four zero bits when read. That is indistinguishable
+    from a dead amplifier unless something actually tries the other order.
+
+    :returns: (dout, sck) that produced a reading, or None if neither did
+    """
+    for candidate in ((dout_pin, sck_pin), (sck_pin, dout_pin)):
+        scale = HX711Scale(dout_pin=candidate[0], sck_pin=candidate[1])
+        try:
+            if scale.available and scale.read_raw() is not None:
+                return candidate
+        finally:
+            scale.close()
+    return None
+
+
 def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           pir_pins: Optional[List[int]] = None,
                           pir_warmup_s: float = 60.0,

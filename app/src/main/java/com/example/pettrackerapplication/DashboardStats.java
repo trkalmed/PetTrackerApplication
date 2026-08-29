@@ -51,6 +51,18 @@ public class DashboardStats {
     /** When motion was last seen, set only while {@link #currentRoom} is null. */
     public String lastMotionTime;           // "09:12"
 
+    /**
+     * The most recent motion snapshot of the day: the Pi's file name for it,
+     * the room it was taken in, and when.
+     *
+     * The name alone, never a URL — the Pi's address is a DHCP lease and the
+     * screen rebuilds the address when it draws. Null when the rig has no
+     * camera, or when today's sightings all happened to miss.
+     */
+    public String lastSnapshotName;         // "motion-20260828-152031-812-kitchen.jpg"
+    public String lastSnapshotRoom;         // "Kitchen"
+    public String lastSnapshotTime;         // "15:20"
+
     // Pi camera
     public boolean cameraOnline;
     public int detectionsToday;

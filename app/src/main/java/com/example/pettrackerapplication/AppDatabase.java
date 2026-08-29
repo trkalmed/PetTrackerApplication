@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
  */
 @Database(
         entities = {Pet.class, FeedingEvent.class, DetectionEvent.class, RoomEvent.class},
-        version = 4,
+        version = 5,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase INSTANCE;
@@ -115,6 +115,22 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * Remembers which picture belongs to a motion sighting.
+     *
+     * The Pi now saves a frame when a sensor fires and names it in the event.
+     * Only the name is stored: the Pi's address changes with the lease, so a URL
+     * recorded today would be wrong next month, and the dashboard rebuilds it
+     * from whichever Pi is paired when it draws.
+     */
+    static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL(
+                    "ALTER TABLE `room_events` ADD COLUMN `snapshotName` TEXT");
+        }
+    };
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -123,7 +139,7 @@ public abstract class AppDatabase extends RoomDatabase {
                                     context.getApplicationContext(),
                                     AppDatabase.class,
                                     "pets_db")
-                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                             // Version 1 predates schema export, so there is no
                             // baseline to migrate it from — wiping is the only
                             // option there. Every later version must ship a real

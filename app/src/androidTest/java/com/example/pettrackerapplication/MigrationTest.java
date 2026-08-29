@@ -162,6 +162,44 @@ public class MigrationTest {
     }
 
     @Test
+    public void migrate4To5_schemaMatchesTheExportedVersion5() throws IOException {
+        helper.createDatabase(TEST_DB, 4).close();
+
+        helper.runMigrationsAndValidate(TEST_DB, 5, true, AppDatabase.MIGRATION_4_5);
+    }
+
+    @Test
+    public void migrate4To5_keepsSightingsRecordedBeforeThereWasACamera() throws IOException {
+        SupportSQLiteDatabase db = helper.createDatabase(TEST_DB, 4);
+
+        ContentValues pet = new ContentValues();
+        pet.put("id", 3L);
+        pet.put("name", "Nutmeg");
+        pet.put("ownerId", "owner-1");
+        db.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+
+        ContentValues sighting = new ContentValues();
+        sighting.put("petId", 3L);
+        sighting.put("timestampMillis", 1_752_000_000_000L);
+        sighting.put("room", "Kitchen");
+        sighting.put("source", "pir");
+        db.insert("room_events",
+                android.database.sqlite.SQLiteDatabase.CONFLICT_ABORT, sighting);
+        db.close();
+
+        SupportSQLiteDatabase migrated =
+                helper.runMigrationsAndValidate(TEST_DB, 5, true, AppDatabase.MIGRATION_4_5);
+
+        try (Cursor c = migrated.query(
+                "SELECT room, snapshotName FROM room_events WHERE petId = 3")) {
+            assertTrue("the sighting should have survived", c.moveToFirst());
+            assertEquals("Kitchen", c.getString(0));
+            assertTrue("a sighting from before the camera has no picture",
+                       c.isNull(1));
+        }
+    }
+
+    @Test
     public void migrate2To3_newTablesAreUsable() throws IOException {
         helper.createDatabase(TEST_DB, 2).close();
         SupportSQLiteDatabase db =

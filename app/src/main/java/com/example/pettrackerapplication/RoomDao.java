@@ -32,6 +32,19 @@ public interface RoomDao {
     @Query("SELECT EXISTS(SELECT 1 FROM room_events WHERE petId = :petId)")
     boolean hasAnyReading(long petId);
 
+    /**
+     * The newest sighting in the window that actually has a picture.
+     *
+     * Not simply the newest sighting: most have no snapshot — the camera was
+     * busy, or absent — and showing nothing because the last one happened to
+     * miss would waste the one that succeeded a minute earlier.
+     */
+    @Query("SELECT * FROM room_events "
+            + "WHERE petId = :petId AND snapshotName IS NOT NULL "
+            + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "
+            + "ORDER BY timestampMillis DESC LIMIT 1")
+    RoomEvent getMostRecentWithSnapshot(long petId, long fromMillis, long toMillis);
+
     @Query("DELETE FROM room_events WHERE timestampMillis < :beforeMillis")
     int deleteOlderThan(long beforeMillis);
 }

@@ -54,6 +54,16 @@ public class RoomEvent {
     /** The id this event had on the Pi, or null when it came from somewhere else. */
     private Long remoteId;
 
+    /**
+     * The Pi's file name for the frame it grabbed when this sensor fired, or
+     * null when there was no camera.
+     *
+     * Only the name is kept, never the address it came from: the Pi's IP is
+     * whatever DHCP handed out this week, and a URL stored today would rot. The
+     * dashboard rebuilds the URL from the currently paired Pi when it draws.
+     */
+    private String snapshotName;
+
     public RoomEvent(long petId, long timestampMillis, @NonNull String room, String source) {
         this.petId = petId;
         this.timestampMillis = timestampMillis;
@@ -79,4 +89,7 @@ public class RoomEvent {
 
     public Long getRemoteId() { return remoteId; }
     public void setRemoteId(Long remoteId) { this.remoteId = remoteId; }
+
+    public String getSnapshotName() { return snapshotName; }
+    public void setSnapshotName(String snapshotName) { this.snapshotName = snapshotName; }
 }

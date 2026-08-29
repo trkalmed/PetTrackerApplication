@@ -101,6 +101,31 @@ public class PiEventSyncTest {
     }
 
     @Test
+    public void aSnapshotNameTravelsWithItsSighting() {
+        try {
+            pi.page(motion(50, todayAt(2 * 60 * 1000L), "Kitchen")
+                    .put("snapshot", "motion-20260828-152031-812-kitchen.jpg"));
+        } catch (JSONException e) {
+            throw new AssertionError(e);
+        }
+
+        sync.sync(petId);
+
+        // The dashboard rebuilds the URL from whichever Pi is paired, so the
+        // name is the only part worth keeping — but it has to arrive at all.
+        assertEquals("motion-20260828-152031-812-kitchen.jpg",
+                repository.statsForToday(pet()).lastSnapshotName);
+    }
+
+    @Test
+    public void aSightingWithNoSnapshotIsStillASighting() {
+        pi.page(motion(51, todayAt(60 * 1000L), "Hall"));
+
+        assertEquals(1, sync.sync(petId).stored);
+        assertNull(repository.statsForToday(pet()).lastSnapshotName);
+    }
+
+    @Test
     public void rawWeightsAreNotStored() {
         // Logged once a minute for whoever is calibrating the load cell. The
         // bowl weighing 118 g is not something any screen has to say.

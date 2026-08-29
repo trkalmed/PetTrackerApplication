@@ -261,6 +261,44 @@ public class RoomOccupancyTest {
         assertEquals("the Pi's own id is what makes re-polling safe", -1, second);
     }
 
+    // ── The picture that came with the sighting ─────────────────────────────
+
+    @Test
+    public void theNewestPictureOfTheDayIsOffered() {
+        repository.recordMotion(petId, todayAt(3 * HOUR), "Hall", "pir", 1L, "old.jpg");
+        repository.recordMotion(petId, todayAt(2 * MINUTE), "Kitchen", "pir", 2L, "new.jpg");
+
+        DashboardStats stats = stats();
+        assertEquals("new.jpg", stats.lastSnapshotName);
+        assertEquals("Kitchen", stats.lastSnapshotRoom);
+        assertNotNull(stats.lastSnapshotTime);
+    }
+
+    @Test
+    public void aLaterSightingWithNoPictureDoesNotHideTheOneWithA() {
+        repository.recordMotion(petId, todayAt(30 * MINUTE), "Hall", "pir", 1L, "hall.jpg");
+        repository.recordMotion(petId, todayAt(2 * MINUTE), "Kitchen", "pir", 2L, null);
+
+        // Most sightings have no picture — the camera was busy, or absent — so
+        // taking simply the newest would usually show nothing.
+        assertEquals("hall.jpg", stats().lastSnapshotName);
+    }
+
+    @Test
+    public void noPictureAnywhereLeavesTheFieldEmpty() {
+        seen("Kitchen", 2 * MINUTE);
+
+        assertNull(stats().lastSnapshotName);
+    }
+
+    @Test
+    public void yesterdaysPictureIsNotTodaysNews() {
+        repository.recordMotion(petId, DayRange.today().startMillis - HOUR,
+                "Kitchen", "pir", 1L, "yesterday.jpg");
+
+        assertNull(stats().lastSnapshotName);
+    }
+
     @Test
     public void deletingAPetTakesItsSightingsWithIt() {
         seen("Kitchen", HOUR);

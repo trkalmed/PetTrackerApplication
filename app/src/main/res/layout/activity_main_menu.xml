@@ -339,6 +339,42 @@
                             android:layout_marginTop="14dp"
                             android:orientation="vertical" />
 
+                        <!-- The frame the camera grabbed when a sensor last
+                             fired. Hidden until there is one: most rigs have no
+                             camera, and most sightings miss. -->
+                        <com.google.android.material.card.MaterialCardView
+                            android:id="@+id/cardLastSeen"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
+                            android:visibility="gone"
+                            app:cardCornerRadius="20dp"
+                            app:cardElevation="0dp"
+                            tools:visibility="visible">
+
+                            <ImageView
+                                android:id="@+id/imgLastSeen"
+                                android:layout_width="match_parent"
+                                android:layout_height="170dp"
+                                android:background="@color/surface_raised"
+                                android:contentDescription="@string/last_seen_photo"
+                                android:scaleType="centerCrop" />
+
+                            <TextView
+                                android:id="@+id/tvLastSeenCaption"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="bottom"
+                                android:background="@drawable/bg_snapshot_caption"
+                                android:paddingStart="14dp"
+                                android:paddingTop="20dp"
+                                android:paddingEnd="14dp"
+                                android:paddingBottom="10dp"
+                                android:textColor="@color/white"
+                                android:textSize="13sp"
+                                tools:text="Kitchen · 15:20" />
+                        </com.google.android.material.card.MaterialCardView>
+
                         <TextView
                             android:id="@+id/tvRoomsEmpty"
                             android:layout_width="match_parent"

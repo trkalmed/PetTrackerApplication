@@ -507,6 +507,8 @@ claiming the pet is still where it was last seen.
 | USB webcam via `--camera usb` | `/health` reports it, `/stream` serves video |
 | Motion snapshots | a JPEG per motion event, served from `/snapshot?name=…` |
 | **#7, the Pi stream, in the app** | live view connects and the TFLite detector runs against the Pi feed |
+| Running as a systemd service | survives a reboot and a closed terminal, camera and sensors up with nobody logged in |
+| The HX711 | **dead board.** Reversed VCC/GND killed it; the driver, the calibration tool and the timing probe are written and tested, waiting on a replacement |
 
 That last row is the whole dwell rule working in the field: an hour-old sighting
 fills the room bar but does not claim the pet is still there.
@@ -610,12 +612,7 @@ the printed IP into the app's Pi Connection dialog.
    `POST /feed` has no button in the app to call it.
 3. **The CSI camera.** `PiCamera.read_jpeg` is a stub. The USB path works, so
    this only matters for a second camera or a neater physical build.
-4. **Snapshots in the app.** Motion events now carry a `snapshot` file name and
-   nothing displays it. `GET /snapshot?name=…` is ready; the room card is the
-   obvious place to show one.
-5. **A systemd unit** so the service survives a reboot and a closed terminal,
-   rather than depending on `nohup` each time.
-6. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
+4. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
    the pet's. Still deliberately empty.
 4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing
    when you come back to it: the local layer was built so this stays a clean

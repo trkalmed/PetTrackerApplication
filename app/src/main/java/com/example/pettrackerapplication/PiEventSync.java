@@ -211,7 +211,7 @@ public final class PiEventSync {
 
             case PiEvent.KIND_MOTION:
                 return repository.recordMotion(petId, event.timestampMillis,
-                        event.room, event.source, event.id) > 0;
+                        event.room, event.source, event.id, event.snapshot) > 0;
 
             case PiEvent.KIND_WEIGHT:
                 // Diagnostics for whoever is calibrating the load cell. The bowl

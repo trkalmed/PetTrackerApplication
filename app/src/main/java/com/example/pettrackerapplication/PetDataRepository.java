@@ -107,6 +107,17 @@ public final class PetDataRepository {
      */
     public long recordMotion(long petId, long timestampMillis, String room,
                              String source, Long remoteId) {
+        return recordMotion(petId, timestampMillis, room, source, remoteId, null);
+    }
+
+    /**
+     * Records a sighting along with the picture the Pi took of it.
+     *
+     * @param snapshotName the Pi's file name for the frame, or null if the rig
+     *                     has no camera. Only the name — see {@link RoomEvent}.
+     */
+    public long recordMotion(long petId, long timestampMillis, String room,
+                             String source, Long remoteId, String snapshotName) {
         if (room == null || room.trim().isEmpty()) {
             // A sighting with no room says only "something moved somewhere",
             // which no screen can render and no total can use.
@@ -116,6 +127,7 @@ public final class PetDataRepository {
         RoomEvent event =
                 new RoomEvent(petId, timestampMillis, room.trim(), source);
         event.setRemoteId(remoteId);
+        event.setSnapshotName(snapshotName);
         return db.roomDao().insert(event);
     }
 
@@ -229,6 +241,19 @@ public final class PetDataRepository {
             // and vanish from the chart; a minute is the smallest honest claim.
             int minutes = Math.max(1, Math.round(entry.getValue() / 60_000f));
             stats.rooms.add(new DashboardStats.RoomStay(entry.getKey(), minutes));
+        }
+
+        // The newest sighting that came with a picture, which is usually not the
+        // newest sighting: the camera misses plenty of them.
+        RoomEvent pictured = dao.getMostRecentWithSnapshot(
+                petId, today.startMillis, today.endMillis);
+        SimpleDateFormat pictureClock =
+                new SimpleDateFormat("HH:mm", Locale.getDefault());
+        if (pictured != null) {
+            stats.lastSnapshotName = pictured.getSnapshotName();
+            stats.lastSnapshotRoom = pictured.getRoom();
+            stats.lastSnapshotTime =
+                    pictureClock.format(new Date(pictured.getTimestampMillis()));
         }
 
         RoomEvent latest = events.get(events.size() - 1);

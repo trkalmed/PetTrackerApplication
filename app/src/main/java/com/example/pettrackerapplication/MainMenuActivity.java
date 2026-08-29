@@ -48,6 +48,10 @@ public class MainMenuActivity extends ThemedActivity {
     private LinearLayout roomBar, roomLegend;
     private TextView     tvRoomsEmpty;
 
+    private MaterialCardView cardLastSeen;
+    private ImageView        imgLastSeen;
+    private TextView         tvLastSeenCaption;
+
     private TextView tvCurrentRoom, tvCurrentRoomSince, tvDetectionCount, tvDetectionLast;
 
     private MaterialCardView cardFood, cardRooms;
@@ -143,6 +147,9 @@ public class MainMenuActivity extends ThemedActivity {
         roomBar            = findViewById(R.id.roomBar);
         roomLegend         = findViewById(R.id.roomLegend);
         tvRoomsEmpty       = findViewById(R.id.tvRoomsEmpty);
+        cardLastSeen       = findViewById(R.id.cardLastSeen);
+        imgLastSeen        = findViewById(R.id.imgLastSeen);
+        tvLastSeenCaption  = findViewById(R.id.tvLastSeenCaption);
         tvCurrentRoom      = findViewById(R.id.tvCurrentRoom);
         tvCurrentRoomSince = findViewById(R.id.tvCurrentRoomSince);
         tvDetectionCount   = findViewById(R.id.tvDetectionCount);
@@ -280,6 +287,7 @@ public class MainMenuActivity extends ThemedActivity {
     private void renderRooms(DashboardStats s) {
         roomBar.removeAllViews();
         roomLegend.removeAllViews();
+        renderLastSeen(s);
 
         int total = s.totalRoomMinutes();
         if (s.rooms.isEmpty() || total == 0) {
@@ -310,6 +318,38 @@ public class MainMenuActivity extends ThemedActivity {
 
             roomLegend.addView(buildLegendRow(stay, color, i > 0));
         }
+    }
+
+    /**
+     * The frame the Pi grabbed when a sensor last fired.
+     *
+     * The URL is built here rather than stored, because the only durable part of
+     * it is the file name: the Pi's address is a DHCP lease, and one saved with
+     * the event would be pointing at somebody else's toaster by next month.
+     *
+     * Hidden whenever there is nothing to show — no camera on the rig, no
+     * sighting today, or no Pi paired on this phone. An empty grey rectangle
+     * would be worse than the card simply not being there.
+     */
+    private void renderLastSeen(DashboardStats s) {
+        String base = PiConnectionManager.getBaseUrl(this);
+        if (s.lastSnapshotName == null || base == null) {
+            cardLastSeen.setVisibility(View.GONE);
+            Glide.with(this).clear(imgLastSeen);
+            return;
+        }
+
+        cardLastSeen.setVisibility(View.VISIBLE);
+        tvLastSeenCaption.setText(getString(R.string.snapshot_caption,
+                s.lastSnapshotRoom, s.lastSnapshotTime));
+
+        // Snapshots never change once written and the Pi says so in its headers,
+        // so Glide's disk cache means walking past a sensor costs one fetch
+        // rather than one per dashboard refresh.
+        Glide.with(this)
+                .load(base + "/snapshot?name=" + s.lastSnapshotName)
+                .centerCrop()
+                .into(imgLastSeen);
     }
 
     private void renderGlanceCards(DashboardStats s) {

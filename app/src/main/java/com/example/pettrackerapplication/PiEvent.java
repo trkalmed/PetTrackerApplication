@@ -48,9 +48,11 @@ public final class PiEvent {
     public final String type;
     /** Motion only. */
     public final String room;
+    /** Motion only, and only when the Pi had a camera: the saved frame's name. */
+    public final String snapshot;
 
     private PiEvent(long id, String kind, long timestampMillis, String source,
-                    Integer grams, String type, String room) {
+                    Integer grams, String type, String room, String snapshot) {
         this.id = id;
         this.kind = kind;
         this.timestampMillis = timestampMillis;
@@ -58,6 +60,7 @@ public final class PiEvent {
         this.grams = grams;
         this.type = type;
         this.room = room;
+        this.snapshot = snapshot;
     }
 
     /**
@@ -92,7 +95,8 @@ public final class PiEvent {
                 json.isNull("source") ? null : json.optString("source", null),
                 json.has("grams") ? json.optInt("grams") : null,
                 json.isNull("type") ? null : json.optString("type", null),
-                json.isNull("room") ? null : json.optString("room", null));
+                json.isNull("room") ? null : json.optString("room", null),
+                json.isNull("snapshot") ? null : json.optString("snapshot", null));
     }
 
     @Override

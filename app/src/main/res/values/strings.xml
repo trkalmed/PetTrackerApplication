@@ -201,4 +201,6 @@
     <string name="pi_connected_not_synced">Connected: %1$s · not synced yet</string>
     <string name="pi_checking">%1$s · checking…</string>
     <string name="pi_unreachable">%1$s · not reachable</string>
+    <string name="last_seen_photo">The camera\'s view when a sensor last fired</string>
+    <string name="snapshot_caption">%1$s · %2$s</string>
 </resources>

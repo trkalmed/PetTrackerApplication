@@ -328,6 +328,17 @@ itself go to E+, E-, A+ and A- on the amplifier; if you get a pair the wrong way
 round the readings simply run backwards, which the calibration tool notices and
 explains rather than refusing.
 
+**Check VCC and GND before you power it, every time.** These boards have no
+reverse-polarity protection, and 5V across them backwards kills the chip. The
+failure is quiet: the module looks untouched and the load cell still measures
+perfectly, but the data line never drives again, so every reading is twenty-four
+zero bits — which looks exactly like a wire that has fallen out. If a module
+stops responding right after a rewiring session, suspect this before anything
+else.
+
+The load cell survives it. It is four strain gauges in a bridge with no
+semiconductors, so reversed excitation only inverts the signal.
+
 **If the board has both `VCC` and `VDD`, connect both.** `VCC` supplies the
 analog side that excites the cell; `VDD` sets the digital logic level. With only
 `VCC` wired the chip powers up and converts but cannot drive DOUT, and the line

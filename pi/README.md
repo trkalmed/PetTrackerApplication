@@ -487,6 +487,17 @@ time kibble jams the gate. Off the Pi's 5 V pin that browns out the board, and a
 brown-out during an SD-card write is how a Pi loses its filesystem. It presents
 as random reboots and looks exactly like a software fault.
 
+**Testing without a separate supply**, which is where most people start: an
+unloaded servo simply moving is a far smaller draw than one stalled against a
+jammed gate, so bench-testing off the Pi is a calculated risk rather than a
+certain mistake. Take it with nothing attached to the horn, keep to the middle
+of the travel — at the extremes a particular servo may grind against its own
+stop, which is a stall — and move one angle at a time rather than sweeping.
+
+`--check-servo` reads `vcgencmd get_throttled` before and after and says if the
+Pi saw its 5 V rail dip while the servo moved. Attach nothing to the horn until
+that comes back clean.
+
 Three numbers have to be measured. Two of them before the gate is even built:
 
 ```bash
@@ -546,7 +557,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-185 tests, no hardware and no network required. They cover the meal detector
+193 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and

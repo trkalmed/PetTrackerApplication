@@ -505,7 +505,38 @@ def _satellites_in(sentence: str) -> int:
         return 0
 
 
-def check_servo(feeder, out=None, ask=input) -> None:
+#: Bits in vcgencmd's throttled word. The Pi sets the first while the 5 V rail
+#: is sagging, and latches the second for the rest of the boot so a dip that
+#: lasted a millisecond is still visible afterwards.
+UNDERVOLTAGE_NOW = 0x1
+UNDERVOLTAGE_SINCE_BOOT = 0x10000
+
+
+def read_throttled(runner=None) -> Optional[int]:
+    """The Pi's own account of its power supply, or None if it cannot be asked.
+
+    vcgencmd is Pi-only and absent on a laptop, which is not an error — it just
+    means this particular check has nothing to say.
+    """
+    import subprocess
+
+    runner = runner or (lambda: subprocess.run(
+        ["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=5))
+    try:
+        result = runner()
+    except Exception:
+        return None
+
+    text = (getattr(result, "stdout", "") or "").strip()
+    if "throttled=" not in text:
+        return None
+    try:
+        return int(text.split("throttled=")[1].strip(), 16)
+    except ValueError:
+        return None
+
+
+def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
     """Walks a servo through angles you type, so a gate can be built around it.
 
     The two numbers a hopper needs — the angle at which the gate is shut and the
@@ -539,6 +570,13 @@ def check_servo(feeder, out=None, ask=input) -> None:
     print("  Type an angle from 0 to 180 and press Enter to move there.", file=out)
     print("  'sweep' walks the whole range. Blank line or 'q' to finish.", file=out)
     print(file=out)
+
+    before = throttled()
+    if before is not None and before & UNDERVOLTAGE_SINCE_BOOT:
+        print("  Note: this Pi has already seen an under-voltage dip since it", file=out)
+        print("  booted, before any servo moved. Its supply is marginal to start", file=out)
+        print("  with, which makes everything below more likely.", file=out)
+        print(file=out)
 
     visited = []
     while True:
@@ -586,3 +624,16 @@ def check_servo(feeder, out=None, ask=input) -> None:
     print("the gate for a known time, weigh what fell, divide. It only has to",
           file=out)
     print("be close — the load cell measures what actually landed.", file=out)
+
+    after = throttled()
+    if after is not None and before is not None:
+        appeared = after & ~before & (UNDERVOLTAGE_NOW | UNDERVOLTAGE_SINCE_BOOT)
+        if appeared:
+            print(file=out)
+            print("The Pi reported an under-voltage dip while the servo moved.",
+                  file=out)
+            print("It is drawing more than the 5V pin can spare. Unloaded that is",
+                  file=out)
+            print("a warning; with a gate on it, it is how an SD card gets", file=out)
+            print("corrupted mid-write. Give the servo its own supply before", file=out)
+            print("attaching anything to the horn.", file=out)

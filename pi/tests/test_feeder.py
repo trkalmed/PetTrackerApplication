@@ -226,3 +226,82 @@ class ProberTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UndervoltageTest(unittest.TestCase):
+    """The Pi's own account of its supply, which is the honest arbiter here.
+
+    Somebody testing a servo off the 5 V pin is taking a calculated risk, and
+    the Pi already measures the thing that decides whether it was a good bet.
+    Asking it costs nothing and turns "it seemed fine" into a number.
+    """
+
+    class Result:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def prober(self, before, after):
+        import io
+        from pettracker.bringup import check_servo
+
+        feeder = ServoFeeder(servo=RecordingServo(), travel_s=0.0)
+        readings = iter([before, after])
+        out = io.StringIO()
+        check_servo(feeder, out=out, ask=lambda prompt: "",
+                    throttled=lambda: next(readings, after))
+        return out.getvalue()
+
+    def test_a_dip_during_the_session_is_reported(self):
+        text = self.prober(0x0, 0x10000)
+
+        self.assertIn("under-voltage dip while the servo moved", text)
+        self.assertIn("its own supply", text)
+
+    def test_a_steady_supply_says_nothing(self):
+        text = self.prober(0x0, 0x0)
+
+        self.assertNotIn("under-voltage", text)
+
+    def test_a_pi_that_was_already_struggling_is_flagged_up_front(self):
+        # The dip predates the servo, so blaming the servo for it afterwards
+        # would be wrong — but it is still worth knowing before you start.
+        text = self.prober(0x10000, 0x10000)
+
+        self.assertIn("already seen an under-voltage dip", text)
+        self.assertNotIn("while the servo moved", text)
+
+    def test_a_machine_with_no_vcgencmd_is_not_an_error(self):
+        text = self.prober(None, None)
+
+        self.assertNotIn("under-voltage", text)
+
+
+class ThrottledParsingTest(unittest.TestCase):
+
+    def parse(self, stdout):
+        from pettracker.bringup import read_throttled
+
+        class Result:
+            pass
+
+        result = Result()
+        result.stdout = stdout
+        return read_throttled(runner=lambda: result)
+
+    def test_reads_the_hex_word(self):
+        self.assertEqual(0x50005, self.parse("throttled=0x50005\n"))
+
+    def test_a_healthy_pi_reads_zero(self):
+        self.assertEqual(0, self.parse("throttled=0x0\n"))
+
+    def test_anything_else_is_no_answer_rather_than_a_wrong_one(self):
+        for stdout in ("", "command not found", "throttled=banana"):
+            self.assertIsNone(self.parse(stdout), stdout)
+
+    def test_a_missing_vcgencmd_is_no_answer(self):
+        from pettracker.bringup import read_throttled
+
+        def explode():
+            raise FileNotFoundError("vcgencmd")
+
+        self.assertIsNone(read_throttled(runner=explode))

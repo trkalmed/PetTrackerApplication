@@ -103,14 +103,33 @@ class HX711:
     def read_raw(self) -> Optional[int]:
         """One sample in counts, or None if the chip did not cooperate.
 
-        None covers both "no sample arrived in time" and "the value was
-        saturated". Neither is a weight, and the difference matters only to
-        whoever is holding a screwdriver — the log says which.
+        None covers a sample that never arrived, a saturated one, and one that
+        was all zeros. None of the three is a weight; :meth:`diagnose` says
+        which, in words, for whoever is holding a screwdriver.
         """
+        value, _ = self._read_once()
+        return value
+
+    def diagnose(self) -> str:
+        """One read attempt, described in the terms that identify the fault.
+
+        Every failure of this chip arrives as silence or as a number, and the
+        three causes need three different responses — power, the clock wire, the
+        data wire. Guessing between them costs an evening, so the driver says
+        what it saw instead of leaving the tool to print "no reading".
+        """
+        value, reason = self._read_once()
+        if value is not None:
+            return f"reading {value} counts"
+        return reason
+
+    def _read_once(self):
+        """(counts, reason). Exactly one of the two is meaningful."""
         with self._lock:
             if not self._wait_until_ready():
-                log.debug("HX711 did not become ready")
-                return None
+                return None, ("the data line never went low, so the chip never "
+                              "offered a sample. Usually it has no power, or its "
+                              "GND is not shared with the Pi.")
 
             value = 0
             for _ in range(24):
@@ -129,19 +148,21 @@ class HX711:
             value -= _RANGE
 
         if value in _SATURATED:
-            log.debug("HX711 returned a saturated reading (%d) — check the cell wiring",
-                      value)
-            return None
+            return None, ("the reading was full scale, which means the amplifier "
+                          "is railed. Usually the load cell is not connected to "
+                          "E+/E-/A+/A-, or one of its wires is broken.")
 
         if value == 0:
             # Twenty-four zero bits is not a weight of zero. A real cell never
             # sits exactly on zero — it wanders by a few counts — so this means
-            # the data line was low throughout, which happens when the chip has
-            # powered itself down mid-read because a clock pulse was held too
-            # long, or when nothing is driving DOUT at all.
-            log.debug("HX711 read all zeros — the data line was low throughout")
-            return None
-        return value
+            # the data line was low for the whole read. An input with nothing
+            # driving it reads low under the pull-down this code applies, which
+            # is what a DT wire on the wrong pin looks like.
+            return None, ("the data line stayed low for the whole read, so all "
+                          "24 bits came back as zero. A real cell never reads "
+                          "exactly zero. Usually DT is not on the pin you named.")
+
+        return value, "ok"
 
     def read_median(self, samples: int = 5) -> Optional[int]:
         """The median of several samples, or None if too few came back.

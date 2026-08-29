@@ -157,8 +157,8 @@ def _summarise(watches: Sequence[_Watch], out) -> None:
                   file=out)
         elif watch.triggers == 0:
             print(f"  {watch.room}: never fired. Check OUT is on GPIO {watch.pin}, "
-                  f"that VCC is 5V, and that the sensitivity pot is not at minimum.",
-                  file=out)
+                  f"that the sensor has 5V, and that the sensitivity pot is not "
+                  f"at minimum.", file=out)
         else:
             where = f"GPIO {watch.pin} via {watch.backend}" if watch.pin != "-" else watch.backend
             print(f"  {watch.room}: fired {watch.triggers}x on {where}.", file=out)
@@ -185,8 +185,13 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
     out = out or sys.stdout
 
     if not scale.available:
-        print("\nThe HX711 could not be opened. Check DT and SCK are on the pins "
-              "you passed to --scale-pins, and that the amplifier has 5V.", file=out)
+        print("\nThe HX711 could not be opened.", file=out)
+        print("  If the log above says the pins are busy, the service already has",
+              file=out)
+        print("  them: sudo systemctl stop pettracker", file=out)
+        print("  Otherwise check DT and SCK are the pins you passed to "
+              "--scale-pins,", file=out)
+        print("  and that the amplifier has power (3.3V on a Pi).", file=out)
         return
 
     _report_clock_speed(scale, out)
@@ -208,7 +213,9 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
                 seen.append(raw)
 
             if raw is None and grams is None:
-                line = "  no reading — the amplifier is not answering"
+                chip = getattr(scale, "chip", None)
+                why = chip.diagnose() if hasattr(chip, "diagnose") else "no reading"
+                line = "  no reading — " + why
             else:
                 line = (f"  raw {raw if raw is not None else '—':>10}"
                         f"   {grams:>10.1f} g" if grams is not None

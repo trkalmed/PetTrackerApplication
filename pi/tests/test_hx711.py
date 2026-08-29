@@ -379,3 +379,35 @@ class ReadingDiagnosisTest(unittest.TestCase):
 
         for complaint in ("stuck", "noise, not weight", "not wired"):
             self.assertNotIn(complaint, text)
+
+
+class DiagnosisTest(unittest.TestCase):
+    """Three failures that all look like silence, told apart in words."""
+
+    def test_a_line_that_never_goes_low_names_power_and_ground(self):
+        clock = iter([0.0, 1.0, 2.0])
+        pins = FakeAmplifier(1000, ready=False)
+        chip = HX711(pins.dout, pins.sck, ready_timeout_s=0.5,
+                     clock=lambda: next(clock, 99.0))
+
+        self.assertIn("never went low", chip.diagnose())
+
+    def test_a_line_stuck_low_names_the_data_pin(self):
+        pins = FakeAmplifier(0x000000)
+        chip = HX711(pins.dout, pins.sck)
+
+        # The commonest of the three, and the one most often mistaken for an
+        # empty bowl.
+        self.assertIn("DT is not on the pin", chip.diagnose())
+
+    def test_a_railed_amplifier_names_the_cell_wiring(self):
+        pins = FakeAmplifier(0x7FFFFF)
+        chip = HX711(pins.dout, pins.sck)
+
+        self.assertIn("E+/E-/A+/A-", chip.diagnose())
+
+    def test_a_working_chip_just_reports_the_number(self):
+        pins = FakeAmplifier(12_345)
+        chip = HX711(pins.dout, pins.sck)
+
+        self.assertIn("12345", chip.diagnose())

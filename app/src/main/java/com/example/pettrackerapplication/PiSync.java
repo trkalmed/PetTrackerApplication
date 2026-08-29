@@ -82,6 +82,7 @@ public final class PiSync {
                             .putLong(Prefs.KEY_PI_LAST_SYNC, System.currentTimeMillis())
                             .apply();
                 }
+                rememberHealth(app, result.health);
             } catch (RuntimeException e) {
                 // A database that refuses a write, most likely because the
                 // active pet was deleted between the check above and here. The
@@ -93,6 +94,18 @@ public final class PiSync {
             }
             deliver(listener, result);
         });
+    }
+
+    /**
+     * Keeps what the Pi just said about its sensors, so a screen can render it
+     * without waiting for a round trip of its own.
+     */
+    private static void rememberHealth(Context app, PiHealth health) {
+        if (health == null) return;
+        Prefs.get(app).edit()
+                .putBoolean(Prefs.KEY_PI_CAMERA_OK, health.cameraAvailable)
+                .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis())
+                .apply();
     }
 
     /** When the last successful sync finished, or 0 if there has never been one. */
@@ -132,6 +145,7 @@ public final class PiSync {
                 error = e.getMessage() == null
                         ? e.getClass().getSimpleName() : e.getMessage();
             }
+            rememberHealth(app, health);
             final PiHealth result = health;
             final String failure = error;
             new Handler(Looper.getMainLooper())

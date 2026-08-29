@@ -37,6 +37,17 @@ public final class Prefs {
     /** When the last successful sync finished, epoch millis. 0 = never. */
     public static final String KEY_PI_LAST_SYNC = "pi_last_sync_millis";
 
+    /**
+     * What the Pi last said about its own camera, and when it said it.
+     *
+     * The dashboard used to decide "camera live" from whether the phone's own
+     * detector had seen an animal recently, which is only ever true while
+     * somebody is watching the Live screen. The Pi answers the actual question
+     * on every /health, so the answer is kept here for the dashboard to read.
+     */
+    public static final String KEY_PI_CAMERA_OK = "pi_camera_available";
+    public static final String KEY_PI_HEALTH_AT = "pi_health_millis";
+
     /** Light / Dark / AMOLED. See ThemeManager. */
     public static final String KEY_THEME_MODE = "theme_mode";
 

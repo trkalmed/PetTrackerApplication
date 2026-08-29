@@ -48,6 +48,12 @@ public class PetDataRepositoryTest {
     @After
     public void tearDown() {
         db.clearAllTables();
+        // The camera flag is remembered across syncs, so it would otherwise leak
+        // from one test into the next.
+        Prefs.get(context).edit()
+                .remove(Prefs.KEY_PI_CAMERA_OK)
+                .remove(Prefs.KEY_PI_HEALTH_AT)
+                .apply();
     }
 
     private Pet pet() {
@@ -161,6 +167,42 @@ public class PetDataRepositoryTest {
 
         assertEquals(0, stats.detectionsToday);
         assertNull(stats.lastDetectionTime);
+    }
+
+    @Test
+    public void thePiSayingItHasACameraIsWhatMakesItLive() {
+        Prefs.get(context).edit()
+                .putBoolean(Prefs.KEY_PI_CAMERA_OK, true)
+                .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis())
+                .apply();
+
+        // The honest source. The old rule asked whether the phone's own detector
+        // had seen an animal lately, which is only true while somebody is
+        // watching the Live screen — so a working Pi camera read as "offline"
+        // for all the time nobody was looking at it.
+        assertTrue(repository.statsForToday(pet()).cameraOnline);
+    }
+
+    @Test
+    public void aPiThatHasNotBeenHeardFromLatelyIsNotEvidence() {
+        Prefs.get(context).edit()
+                .putBoolean(Prefs.KEY_PI_CAMERA_OK, true)
+                .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis() - HOUR)
+                .apply();
+
+        // An hour-old answer describes an hour ago. The poller runs every 15 s
+        // while a screen is open, so this means the app is not talking to the Pi.
+        assertFalse(repository.statsForToday(pet()).cameraOnline);
+    }
+
+    @Test
+    public void aPiWithNoCameraIsNotLiveEitherWay() {
+        Prefs.get(context).edit()
+                .putBoolean(Prefs.KEY_PI_CAMERA_OK, false)
+                .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis())
+                .apply();
+
+        assertFalse(repository.statsForToday(pet()).cameraOnline);
     }
 
     @Test

@@ -45,10 +45,21 @@ public final class PetDataRepository {
      */
     private static final long MAX_DWELL_MS = 15 * 60 * 1000L;
 
+    /**
+     * How stale the Pi's own account of itself can be before it stops counting.
+     *
+     * The poller runs every 15 s while a screen is open, so anything older than
+     * this means the app has not spoken to the Pi recently — in which case the
+     * camera's state is a guess, and a guess should not be presented as "live".
+     */
+    private static final long HEALTH_FRESHNESS_MS = 2 * 60 * 1000L;
+
     private final AppDatabase db;
+    private final Context context;
 
     public PetDataRepository(Context context) {
-        this.db = AppDatabase.getInstance(context.getApplicationContext());
+        this.context = context.getApplicationContext();
+        this.db = AppDatabase.getInstance(this.context);
     }
 
     // ── Ingestion — called by the Pi/feeder integration when it exists ───────
@@ -204,6 +215,32 @@ public final class PetDataRepository {
      * add up on their own, and a long silence stops the clock instead of
      * crediting a room the pet may have left hours ago.
      */
+    /**
+     * Whether the Pi says it has a camera, recently enough to believe.
+     *
+     * This is the honest answer to "is the camera live", and it comes free with
+     * every poll. The detector-based guess below remains as a fallback for a
+     * phone with no Pi paired, where the only evidence available is that the
+     * phone's own camera was recently producing sightings.
+     */
+    private boolean piCameraLive() {
+        android.content.SharedPreferences prefs = Prefs.get(context);
+        if (!prefs.getBoolean(Prefs.KEY_PI_CAMERA_OK, false)) return false;
+
+        long at = prefs.getLong(Prefs.KEY_PI_HEALTH_AT, 0L);
+        return at > 0 && System.currentTimeMillis() - at <= HEALTH_FRESHNESS_MS;
+    }
+
+    /**
+     * The old rule, kept for a phone with no Pi: a sighting in the last few
+     * minutes means something was demonstrably working recently.
+     */
+    private boolean recentlyDetectedSomething(DetectionDao dao, long petId) {
+        Long newest = dao.getMostRecentTimestamp(petId);
+        return newest != null
+                && System.currentTimeMillis() - newest <= CAMERA_LIVENESS_WINDOW_MS;
+    }
+
     private void readRooms(DashboardStats stats, long petId, DayRange today) {
         RoomDao dao = db.roomDao();
 
@@ -303,11 +340,6 @@ public final class PetDataRepository {
                     .format(new Date(latestToday.getTimestampMillis()));
         }
 
-        // "Online" is really "was demonstrably working recently". Without a
-        // heartbeat from the Pi this is the best claim the data supports, so it
-        // is what the flag means — see CAMERA_LIVENESS_WINDOW_MS.
-        Long newest = dao.getMostRecentTimestamp(petId);
-        stats.cameraOnline = newest != null
-                && System.currentTimeMillis() - newest <= CAMERA_LIVENESS_WINDOW_MS;
+        stats.cameraOnline = piCameraLive() || recentlyDetectedSomething(dao, petId);
     }
 }

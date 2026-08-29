@@ -205,6 +205,7 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
     started = clock()
     interactive = getattr(out, "isatty", lambda: False)()
     seen = []
+    explained = None
     try:
         while duration_s is None or clock() - started < duration_s:
             raw = scale.read_raw() if hasattr(scale, "read_raw") else None
@@ -215,7 +216,14 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
             if raw is None and grams is None:
                 chip = getattr(scale, "chip", None)
                 why = chip.diagnose() if hasattr(chip, "diagnose") else "no reading"
-                line = "  no reading — " + why
+                # Said once, not twice a second. It is a paragraph, and the
+                # in-place repaint smears anything wider than the terminal.
+                if why != explained:
+                    explained = why
+                    if interactive:
+                        out.write("\r\033[K")
+                    print("  no reading — " + why, file=out)
+                line = "  no reading"
             else:
                 line = (f"  raw {raw if raw is not None else '—':>10}"
                         f"   {grams:>10.1f} g" if grams is not None

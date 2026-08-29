@@ -327,8 +327,9 @@ watch `/health`:
    * **`--camera usb`** works today. Needs `sudo apt install python3-opencv`
      (apt, not pip — pip builds OpenCV from source and takes hours on a Pi). Use
      `--camera-device N` if the webcam is not `/dev/video0`.
-   * **`--camera csi`** is the ribbon camera, and `PiCamera.read_jpeg` is still
-     a stub. Filling it in with picamera2 is the remaining work there.
+   * **`--camera csi`** is the ribbon camera, via picamera2 — a system package,
+     so `sudo apt install python3-picamera2` rather than pip. A Pi 4 has one CSI
+     connector, so one of these per Pi.
    * **`--camera none`** for a rig that has neither.
 2. **HX711 + load cell.** See below — it has two tools.
 3. **Servo** — external supply first, and see below.
@@ -554,6 +555,33 @@ The servo is released rather than held once it arrives. A servo holding an angle
 against a stiff hinge buzzes, warms up, and draws current all day for a gate that
 is not moving.
 
+### Proving a camera
+
+`/health` says the device opened, which is a weaker claim than it sounds: a
+camera can open, hold the device so nothing else may have it, and return nothing
+at all.
+
+```bash
+python3 run.py --check-camera --camera usb
+```
+
+It grabs frames and reports how many arrived, how big they are, how fast, and
+whether they are actually JPEGs — the app decodes with a strict parser, so
+frames that are not show up there as a broken stream and get blamed on the
+network. It also writes the last frame to `last-frame.jpg`.
+
+**Look at that file.** A camera can work perfectly and be pointing at the
+ceiling, and nothing else in the output would tell you.
+
+### One CSI and one USB camera
+
+A Pi 4 has a single CSI connector, so two ribbon cameras need a multiplexer that
+switches between them rather than running both. One CSI plus one USB is the
+better pairing anyway: they are on entirely separate buses, so together they
+cost nothing in bandwidth, while two USB cameras compete for it — MJPEG at
+640x480 is only enough for two or three webcams on a Pi 4, and raw YUYV fails at
+two.
+
 ### Motion snapshots
 
 With a working camera, every motion event also saves a JPEG — the difference
@@ -581,7 +609,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-201 tests, no hardware and no network required. They cover the meal detector
+207 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and

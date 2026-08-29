@@ -212,3 +212,92 @@ class ClosingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckCameraTest(unittest.TestCase):
+    """The bring-up view, which asks the questions /health cannot.
+
+    /health says the device opened. A camera can open, hold the device so
+    nothing else can have it, and return nothing — or return frames that are not
+    JPEGs, which the app's strict parser shows as a broken stream rather than a
+    broken camera.
+    """
+
+    class Fixed(Camera):
+        def __init__(self, *frames, present=True):
+            self.frames = list(frames)
+            self.index = 0
+            self.present = present
+
+        def read_jpeg(self):
+            if not self.frames:
+                return None
+            frame = self.frames[self.index % len(self.frames)]
+            self.index += 1
+            return frame
+
+        @property
+        def available(self):
+            return self.present
+
+        def close(self):
+            pass
+
+    def run_check(self, camera, **kwargs):
+        import io as stdio
+        from pettracker.bringup import check_camera
+
+        out = stdio.StringIO()
+        check_camera(camera, frames=6, out=out, **kwargs)
+        return out.getvalue()
+
+    def jpeg(self, size):
+        return b"\xff\xd8" + b"x" * size + b"\xff\xd9"
+
+    def test_a_camera_that_did_not_open_says_what_to_check(self):
+        text = self.run_check(self.Fixed(present=False))
+
+        self.assertIn("ribbon", text)
+        self.assertIn("/dev/video", text)
+
+    def test_frames_are_counted_and_measured(self):
+        text = self.run_check(self.Fixed(self.jpeg(20000), self.jpeg(21000)))
+
+        self.assertIn("6 of 6 frames arrived", text)
+
+    def test_an_open_camera_returning_nothing_is_called_out(self):
+        text = self.run_check(self.Fixed())
+
+        # The state a USB camera lands in when another process holds it.
+        self.assertIn("returned no frames at all", text)
+
+    def test_frames_that_are_not_jpegs_are_flagged(self):
+        text = self.run_check(self.Fixed(b"not a jpeg at all"))
+
+        # The app decodes with a strict parser, so this shows up there as a
+        # broken stream and gets blamed on the network.
+        self.assertIn("not valid JPEGs", text)
+
+    def test_identical_frame_sizes_suggest_a_test_pattern(self):
+        text = self.run_check(self.Fixed(self.jpeg(20000)))
+
+        # A real scene never produces byte-identical frames; sensor noise alone
+        # changes the compressed size.
+        self.assertIn("test pattern", text)
+
+    def test_the_last_frame_can_be_saved_for_looking_at(self):
+        import tempfile
+
+        handle, path = tempfile.mkstemp(suffix=".jpg")
+        os.close(handle)
+        try:
+            frame = self.jpeg(1000)
+            text = self.run_check(self.Fixed(frame, self.jpeg(1100)),
+                                  save_to=path)
+
+            with open(path, "rb") as saved:
+                self.assertTrue(saved.read().startswith(b"\xff\xd8"))
+            # Because a camera can work perfectly and point at the ceiling.
+            self.assertIn("pointing at", text)
+        finally:
+            os.unlink(path)

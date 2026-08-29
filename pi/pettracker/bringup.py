@@ -649,3 +649,93 @@ def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
             print("a warning; with a gate on it, it is how an SD card gets", file=out)
             print("corrupted mid-write. Give the servo its own supply before", file=out)
             print("attaching anything to the horn.", file=out)
+
+
+#: The two markers every JPEG starts and ends with. A camera that returns
+#: something which is not a JPEG produces a stream the app cannot decode, and
+#: the app's failure looks like a network problem rather than a camera one.
+JPEG_START = b"\xff\xd8"
+JPEG_END = b"\xff\xd9"
+
+
+def check_camera(camera, frames: int = 20, out=None, save_to=None,
+                 clock=time.monotonic) -> None:
+    """Grabs frames and reports what actually came back.
+
+    /health says whether the device opened. That is a weaker claim than it
+    sounds: a camera can open, hold the device so nothing else can have it, and
+    return nothing at all. This asks for real frames and reports the three
+    things that decide whether the app will be able to show them — that they
+    arrive, that they are JPEGs, and how fast.
+
+    :param save_to: writes the last frame here, so it can be looked at. Seeing
+        the picture is the only way to catch a camera that works perfectly and
+        is pointing at the ceiling.
+    """
+    out = out or sys.stdout
+
+    if not camera.available:
+        print("\nThe camera did not open.", file=out)
+        print("  A CSI camera: check the ribbon is seated at both ends, blue", file=out)
+        print("  side towards the ethernet port on the Pi, and that no other", file=out)
+        print("  copy of this service is running — only one process may hold", file=out)
+        print("  it.", file=out)
+        print("  A USB camera: check it appears in ls /dev/video*, and try", file=out)
+        print("  --camera-device 1 if it is not video0.", file=out)
+        return
+
+    print(f"\nGrabbing {frames} frames.\n", file=out)
+
+    sizes = []
+    malformed = 0
+    last = None
+    started = clock()
+
+    for _ in range(frames):
+        frame = camera.read_jpeg()
+        if frame is None:
+            continue
+        last = frame
+        sizes.append(len(frame))
+        if not (frame.startswith(JPEG_START) and frame.endswith(JPEG_END)):
+            malformed += 1
+
+    elapsed = clock() - started
+
+    print("Summary:", file=out)
+    if not sizes:
+        print("  The camera is open and returned no frames at all. For a USB", file=out)
+        print("  camera that usually means another process has it; for a CSI", file=out)
+        print("  one, a ribbon that is seated enough to detect and not enough", file=out)
+        print("  to read.", file=out)
+        return
+
+    average = sum(sizes) // len(sizes)
+    rate = len(sizes) / elapsed if elapsed > 0 else 0.0
+    print(f"  {len(sizes)} of {frames} frames arrived, {average // 1024} KB "
+          f"on average, {rate:.1f} per second.", file=out)
+
+    if malformed:
+        print(f"  {malformed} were not valid JPEGs. The app decodes these with", file=out)
+        print("  a strict parser and will show a broken stream.", file=out)
+
+    if rate < 5:
+        print("  Under five frames a second the live view will look like a", file=out)
+        print("  slideshow. Lower the resolution if that matters; snapshots on", file=out)
+        print("  motion do not care.", file=out)
+
+    if len(set(sizes)) == 1:
+        # Every JPEG the same length means a fixed test pattern, not a scene.
+        print("  Every frame was exactly the same size, which a real scene does", file=out)
+        print("  not do. The camera may be returning a test pattern — check the", file=out)
+        print("  lens cap and the ribbon.", file=out)
+
+    if save_to and last:
+        try:
+            with open(save_to, "wb") as image:
+                image.write(last)
+            print(f"\n  Last frame written to {save_to}", file=out)
+            print("  Look at it. A camera can work perfectly and be pointing at", file=out)
+            print("  the ceiling, and nothing above would tell you.", file=out)
+        except OSError as e:
+            print(f"  Could not write {save_to}: {e}", file=out)

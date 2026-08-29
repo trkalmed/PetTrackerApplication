@@ -160,6 +160,29 @@ def servo_mode(args, log) -> int:
             close()
 
 
+def camera_mode(args, log) -> int:
+    """--check-camera: prove the camera before anything depends on it."""
+    from pettracker.bringup import check_camera
+
+    if args.fake:
+        from pettracker.sensors.fake import build_fake_sensor_set
+        camera = build_fake_sensor_set().camera
+    else:
+        from pettracker.sensors.real import build_camera
+
+        try:
+            camera = build_camera(args.camera, args.camera_device)
+        except ValueError as e:
+            log.error("%s", e)
+            return 2
+
+    try:
+        check_camera(camera, save_to="last-frame.jpg")
+        return 0
+    finally:
+        camera.close()
+
+
 def gps_mode(args, log) -> int:
     """--check-gps: watch the sentences arrive, without starting the service."""
     from pettracker.bringup import check_gps
@@ -280,6 +303,9 @@ def main() -> int:
     parser.add_argument("--check-servo", action="store_true",
                         help="move the servo to angles you type, to find the open "
                              "and closed positions for a gate")
+    parser.add_argument("--check-camera", action="store_true",
+                        help="grab frames from the camera and report what came "
+                             "back, then exit. Use this while aiming it")
     parser.add_argument("--check-motion", action="store_true",
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
@@ -305,6 +331,9 @@ def main() -> int:
 
     if args.check_servo:
         return servo_mode(args, log)
+
+    if args.check_camera:
+        return camera_mode(args, log)
 
     pins = None
     if not args.fake:

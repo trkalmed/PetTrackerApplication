@@ -12,6 +12,7 @@ GPIO pins below are BCM numbering and are suggestions, not requirements — the
 only real constraints are noted per sensor.
 """
 
+import io
 import logging
 import os
 import threading
@@ -584,17 +585,24 @@ class PaddleFeeder(Feeder):
 
 
 class PiCamera(Camera):
-    """CSI camera via picamera2.
+    """CSI ribbon camera via picamera2.
 
-    Raspberry Pi OS ships picamera2; it is not on PyPI in a usable form, so use
-    the system package rather than pip.
+    Raspberry Pi OS ships picamera2 as a system package; it is not usefully
+    installable from pip, so use apt and do not create the service's virtualenv
+    with --no-system-site-packages if you ever make one.
 
-    Only one process can hold the camera. If the stream is served by this
-    service, nothing else may open it at the same time.
+    Only one process may hold the camera. If this service is serving /stream,
+    nothing else can open it — including a second copy of this service, which is
+    the usual cause of a camera that worked yesterday.
+
+    A Pi 4 has one CSI connector, so one of these per Pi. It sits on an entirely
+    separate bus from USB, which is why a CSI camera and a USB webcam together
+    cost nothing in bandwidth while two webcams compete for it.
     """
 
     def __init__(self, width: int = 640, height: int = 480):
         self._camera = None
+        self._lock = threading.Lock()
         try:
             from picamera2 import Picamera2  # type: ignore
 
@@ -608,29 +616,45 @@ class PiCamera(Camera):
             log.warning("Pi camera unavailable: %s", e)
 
     def read_jpeg(self) -> Optional[bytes]:
+        """One frame, JPEG-encoded by picamera2 itself.
+
+        capture_file into a BytesIO rather than capturing an array and encoding
+        it here: the array route needs PIL or OpenCV, costs a full-frame copy
+        through Python, and would make this the slowest thing in the service.
+
+        Serialised, like the USB camera, because the monitor thread takes
+        snapshots while an HTTP thread may be serving the stream.
+        """
         if self._camera is None:
             return None
-        raise NotImplementedError(
-            "Capture a frame and encode it as JPEG. picamera2's JpegEncoder "
-            "with a FileOutput into a BytesIO is the usual route; capturing an "
-            "array and encoding with PIL works but is much slower."
-        )
+
+        buffer = io.BytesIO()
+        try:
+            with self._lock:
+                if self._camera is None:            # closed while we waited
+                    return None
+                self._camera.capture_file(buffer, format="jpeg")
+        except Exception as e:
+            # A ribbon cable that has worked loose raises from deep inside
+            # libcamera rather than returning nothing.
+            log.warning("Pi camera read failed: %s", e)
+            return None
+
+        frame = buffer.getvalue()
+        return frame if frame else None
 
     @property
     def available(self) -> bool:
-        # False while read_jpeg() is a stub. The device opens perfectly well and
-        # then produces nothing, which would show as a camera that is present
-        # and serving an empty stream.
-        # Make this `return self._camera is not None` once read_jpeg() is written.
-        return False
+        return self._camera is not None
 
     def close(self) -> None:
-        if self._camera is not None:
-            try:
-                self._camera.stop()
-            except Exception:
-                pass
-            self._camera = None
+        with self._lock:
+            if self._camera is not None:
+                try:
+                    self._camera.stop()
+                except Exception:
+                    pass
+                self._camera = None
 
 
 class UsbCamera(Camera):

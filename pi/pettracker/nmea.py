@@ -1,6 +1,7 @@
 """Reading NMEA sentences, the format every GPS module speaks.
 
-A NEO-6M sends lines of text at 9600 baud whether or not it can see the sky:
+A u-blox module sends lines of text at 9600 baud whether or not it can see the
+sky:
 
     $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
 
@@ -33,8 +34,10 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 #: Talker prefixes for the fix sentence. GP is GPS alone; GN is a receiver using
-#: more than one constellation, which most modern modules do. Both carry the
+#: more than one constellation, which every M8N does by default. Both carry the
 #: same fields, and a module can switch between them as satellites come and go.
+#: There is no GL variant of GGA — GLONASS satellites appear in $GLGSV and are
+#: folded into the $GN fix.
 _GGA_SENTENCES = ("$GPGGA", "$GNGGA")
 
 

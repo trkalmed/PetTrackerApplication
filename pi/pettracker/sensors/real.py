@@ -472,8 +472,20 @@ class UsbCamera(Camera):
                 self._capture = None
 
 
-class Neo6mLocationSensor(LocationSensor):
-    """NEO-6M GPS over the Pi's serial port.
+class UbloxLocationSensor(LocationSensor):
+    """A u-blox GNSS module over the Pi's serial port.
+
+    Written against a NEO-6M and tested on a NEO-M8N; the two speak the same
+    NMEA at the same default 9600 baud, so nothing here distinguishes them. The
+    visible difference is that an M8N tracks several constellations at once and
+    therefore talks in ``$GN`` sentences rather than ``$GP`` ones, with ``$GL``
+    for the GLONASS satellites it can see. Both are parsed.
+
+    One consequence worth knowing: an M8N at 9600 baud with every constellation
+    enabled produces a great deal of traffic — GGA, GSA, GSV, GLL, RMC and VTG
+    for each system, once a second — and 9600 baud is not far off the limit. If
+    sentences ever start arriving truncated, that is the reason, and the fix is
+    a higher baud rate rather than a faster Pi.
 
     Setup, in this order:
 
@@ -805,5 +817,5 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=ServoFeeder(),
         camera=build_camera(camera, camera_device),
-        location=(Neo6mLocationSensor(port=gps_port) if gps_port else None),
+        location=(UbloxLocationSensor(port=gps_port) if gps_port else None),
     )

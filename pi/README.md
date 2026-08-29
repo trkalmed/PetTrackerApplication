@@ -266,6 +266,13 @@ let the software debounce, or the two fight each other: the debounce in
 `--pir-pins "17,27"` puts the kitchen on GPIO 17. Mismatched lengths and
 repeated pins are refused at startup rather than silently dropping a room.
 
+**The antenna has to be a GPS antenna.** Obvious once said, and easy to get
+wrong: a 2.4 GHz Wi-Fi whip screws onto the same SMA connector and receives
+essentially nothing at 1575 MHz. GPS also arrives right-hand circularly
+polarised, so a linear whip gives away more again. The symptom is a module that
+talks perfectly and reports zero satellites in view forever, indoors and out.
+Use an active 1575.42 MHz patch — the board supplies bias voltage for its LNA.
+
 **GPS needs the serial console disabled** (`raspi-config` → Interface Options →
 Serial Port → login shell **no**, hardware serial **yes**, then reboot), then
 use `/dev/serial0` — `/dev/ttyAMA0` is wrong on a Pi 4, where the good UART is

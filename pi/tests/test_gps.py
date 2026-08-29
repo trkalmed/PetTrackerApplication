@@ -19,7 +19,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pettracker.nmea import parse_gga, valid_checksum
-from pettracker.sensors.real import Neo6mLocationSensor
+from pettracker.sensors.real import UbloxLocationSensor
 
 #: A real sentence, from the NEO-6M datasheet's own example.
 FIX = "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
@@ -139,7 +139,7 @@ class SerialPortTest(unittest.TestCase):
         handle, self.path = tempfile.mkstemp(suffix=".nmea")
         os.close(handle)
         self.read_fd = os.open(self.path, os.O_RDONLY)
-        self.gps = Neo6mLocationSensor(
+        self.gps = UbloxLocationSensor(
             port=self.path, opener=lambda path, baud: self.read_fd)
 
     def tearDown(self):
@@ -200,7 +200,7 @@ class SerialPortTest(unittest.TestCase):
 
     def test_a_module_that_stops_talking_stops_being_available(self):
         clock = _Clock()
-        gps = Neo6mLocationSensor(port=self.path, clock=clock,
+        gps = UbloxLocationSensor(port=self.path, clock=clock,
                                   opener=lambda path, baud: self.read_fd)
         self.send(NO_FIX)
         gps.read_sentences()
@@ -225,7 +225,7 @@ class NoPortTest(unittest.TestCase):
         def refuse(path, baud):
             raise OSError("No such file or directory")
 
-        gps = Neo6mLocationSensor(port="/dev/nope", opener=refuse)
+        gps = UbloxLocationSensor(port="/dev/nope", opener=refuse)
 
         # The serial console still owning /dev/serial0 is the usual cause, and
         # it must not stop the motion sensors from running.

@@ -116,8 +116,8 @@ def gps_mode(args, log) -> int:
         from pettracker.sensors.fake import build_fake_sensor_set
         location = build_fake_sensor_set().location
     else:
-        from pettracker.sensors.real import Neo6mLocationSensor
-        location = Neo6mLocationSensor(port=args.gps_port)
+        from pettracker.sensors.real import UbloxLocationSensor
+        location = UbloxLocationSensor(port=args.gps_port)
 
     try:
         check_gps(location)

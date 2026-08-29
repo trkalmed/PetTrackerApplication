@@ -299,6 +299,53 @@ public class RoomOccupancyTest {
         assertNull(stats().lastSnapshotName);
     }
 
+    // ── The history list ────────────────────────────────────────────────────
+
+    @Test
+    public void theHistoryReadsNewestFirst() {
+        seen("Hall", 3 * HOUR);
+        seen("Kitchen", 2 * HOUR);
+        seen("Study", 1 * HOUR);
+
+        java.util.List<PetDataRepository.Sighting> history =
+                repository.sightingsForToday(pet());
+
+        // The opposite order to the dwell maths, which needs oldest first —
+        // getting the two confused silently inverts every duration.
+        assertEquals(3, history.size());
+        assertEquals("Study", history.get(0).room);
+        assertEquals("Hall", history.get(2).room);
+    }
+
+    @Test
+    public void aHistoryEntryKnowsWhetherItHasAPicture() {
+        repository.recordMotion(petId, todayAt(HOUR), "Kitchen", "pir", 1L, "k.jpg");
+        repository.recordMotion(petId, todayAt(2 * HOUR), "Hall", "pir", 2L, null);
+
+        java.util.List<PetDataRepository.Sighting> history =
+                repository.sightingsForToday(pet());
+
+        assertTrue(history.get(0).hasPicture());
+        assertEquals("k.jpg", history.get(0).snapshotName);
+        assertFalse("most sightings have none, and the row says so",
+                history.get(1).hasPicture());
+    }
+
+    @Test
+    public void theHistoryIsTodayOnly() {
+        repository.recordMotion(petId, DayRange.today().startMillis - HOUR,
+                "Kitchen", "pir", 1L, "yesterday.jpg");
+        seen("Hall", HOUR);
+
+        assertEquals(1, repository.sightingsForToday(pet()).size());
+    }
+
+    @Test
+    public void aPetWithNothingCollectedHasAnEmptyHistory() {
+        assertTrue(repository.sightingsForToday(pet()).isEmpty());
+        assertTrue(repository.sightingsForToday(null).isEmpty());
+    }
+
     @Test
     public void deletingAPetTakesItsSightingsWithIt() {
         seen("Kitchen", HOUR);

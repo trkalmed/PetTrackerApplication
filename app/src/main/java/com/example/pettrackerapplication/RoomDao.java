@@ -45,6 +45,19 @@ public interface RoomDao {
             + "ORDER BY timestampMillis DESC LIMIT 1")
     RoomEvent getMostRecentWithSnapshot(long petId, long fromMillis, long toMillis);
 
+    /**
+     * Sightings in a window, newest first — the order a history list reads in.
+     *
+     * The dwell maths wants the opposite order, which is why both exist rather
+     * than one being reversed at the call site: getting that backwards silently
+     * inverts every duration on the dashboard.
+     */
+    @Query("SELECT * FROM room_events "
+            + "WHERE petId = :petId "
+            + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "
+            + "ORDER BY timestampMillis DESC")
+    List<RoomEvent> getInRangeNewestFirst(long petId, long fromMillis, long toMillis);
+
     @Query("DELETE FROM room_events WHERE timestampMillis < :beforeMillis")
     int deleteOlderThan(long beforeMillis);
 }

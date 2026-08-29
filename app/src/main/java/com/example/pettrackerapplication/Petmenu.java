@@ -112,7 +112,7 @@ public class Petmenu extends ThemedActivity {
 
         MaterialButton btnHistory = findViewById(R.id.btnHistory);
         btnHistory.setOnClickListener(v ->
-                Toast.makeText(this, getString(R.string.activity_history_coming_soon), Toast.LENGTH_SHORT).show());
+                startActivity(new Intent(this, SightingHistoryActivity.class)));
 
         // ── Load pet from database ──────────────────────────────────────────
         petId = getIntent().getLongExtra("pet_id", -1);

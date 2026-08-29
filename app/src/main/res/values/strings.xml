@@ -102,7 +102,6 @@
 
     <!-- Extracted from Java. -->
     <string name="account_created_you_can_log_in">Account created. You can log in now.</string>
-    <string name="activity_history_coming_soon">Activity history — coming soon</string>
     <string name="camera_permission_required">Camera permission required</string>
     <string name="connecting_to_pi_camera">Connecting to Pi camera…</string>
     <string name="connection_failed">⚠ Connection failed</string>
@@ -203,4 +202,13 @@
     <string name="pi_unreachable">%1$s · not reachable</string>
     <string name="last_seen_photo">The camera\'s view when a sensor last fired</string>
     <string name="snapshot_caption">%1$s · %2$s</string>
+    <string name="today_s_sightings">Today\'s sightings</string>
+    <string name="no_sightings_collected_today">Nothing collected yet today. Sightings arrive while the app is open.</string>
+    <string name="collected_since_the_app_was_open">What this phone has collected today</string>
+    <string name="no_picture_for_this_one">No picture for this one</string>
+    <string name="photo_needs_the_pi">Photo is on the Pi — connect to see it</string>
+    <plurals name="sighting_summary">
+        <item quantity="one">%1$d sighting, %2$d with a photo</item>
+        <item quantity="other">%1$d sightings, %2$d with a photo</item>
+    </plurals>
 </resources>

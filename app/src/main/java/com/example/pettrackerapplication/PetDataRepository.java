@@ -216,6 +216,60 @@ public final class PetDataRepository {
      * crediting a room the pet may have left hours ago.
      */
     /**
+     * One motion sighting, as a history list wants it.
+     *
+     * A rendered view of a {@link RoomEvent} rather than the row itself: the
+     * clock formatting belongs next to the other clock formatting in this class,
+     * and a screen has no business knowing the storage shape.
+     */
+    public static final class Sighting {
+        public final String room;
+        public final String time;            // "15:20"
+        /** The Pi's file name for the frame, or null if none was taken. */
+        public final String snapshotName;
+        public final long timestampMillis;
+
+        Sighting(String room, String time, String snapshotName, long timestampMillis) {
+            this.room = room;
+            this.time = time;
+            this.snapshotName = snapshotName;
+            this.timestampMillis = timestampMillis;
+        }
+
+        public boolean hasPicture() {
+            return snapshotName != null && !snapshotName.isEmpty();
+        }
+    }
+
+    /**
+     * Today's sightings, newest first.
+     *
+     * Only what this phone has collected. The Pi keeps thirty days; the app
+     * holds whatever it synced while it was open, so a day with the app closed
+     * is a gap here and not on the Pi. Fetching the difference on demand is a
+     * later job — see pi/README.md for the endpoint that would do it.
+     *
+     * Hits the database. Call from a background thread.
+     */
+    public List<Sighting> sightingsForToday(Pet pet) {
+        List<Sighting> sightings = new ArrayList<>();
+        if (pet == null) return sightings;
+
+        DayRange today = DayRange.today();
+        SimpleDateFormat clock = new SimpleDateFormat("HH:mm", Locale.getDefault());
+
+        for (RoomEvent event : db.roomDao().getInRangeNewestFirst(
+                pet.getId(), today.startMillis, today.endMillis)) {
+            sightings.add(new Sighting(
+                    event.getRoom(),
+                    clock.format(new Date(event.getTimestampMillis())),
+                    event.getSnapshotName(),
+                    event.getTimestampMillis()));
+        }
+        return sightings;
+    }
+
+    /**
      * Whether the Pi says it has a camera, recently enough to believe.
      *
      * This is the honest answer to "is the camera live", and it comes free with

@@ -105,6 +105,10 @@ public class MainMenuActivity extends ThemedActivity {
         findViewById(R.id.rowPetHeader).setOnClickListener(v -> openPetDetail());
 
         piPoller = new PiSync.Poller(this, this::onSynced);
+
+        // The room card shows today's shape; tapping it shows today's sequence.
+        cardRooms.setOnClickListener(v ->
+                startActivity(new Intent(this, SightingHistoryActivity.class)));
     }
 
     @Override

@@ -107,6 +107,8 @@ class FeederTest(unittest.TestCase):
         self.assertAlmostEqual(0.42, feeder.open_seconds(10))
 
     def test_no_servo_means_a_refusal_rather_than_silence(self):
+        # None, explicitly: on a Pi, omitting it would claim the real pin and
+        # move a real servo in the middle of a test run.
         feeder = ServoFeeder(servo=None)
 
         self.assertFalse(feeder.available)

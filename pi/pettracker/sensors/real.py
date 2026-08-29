@@ -353,13 +353,23 @@ class ServoFeeder(Feeder):
                  open_angle: int = DEFAULT_OPEN_ANGLE,
                  closed_angle: int = DEFAULT_CLOSED_ANGLE,
                  ms_per_gram: float = DEFAULT_MS_PER_GRAM,
-                 servo=None, travel_s: Optional[float] = None):
+                 servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None):
+        """
+        :param servo: omit it to claim ``pin`` for real. Pass an object with
+            ``set_angle``/``release``/``close`` to drive the logic from a test,
+            or None for a rig with no servo at all — which is what open_servo
+            returns when it cannot claim the pin.
+        """
         self._pin = pin
         self._travel_s = self.TRAVEL_S if travel_s is None else travel_s
         self._open_angle = open_angle
         self._closed_angle = closed_angle
         self._ms_per_gram = ms_per_gram
-        self._servo = servo if servo is not None else open_servo(pin)
+        # The same sentinel the PIR sensor uses, and for the same reason: None
+        # is what open_servo returns when nothing could be claimed, so None has
+        # to mean "no servo". Conflating the two made a test that believed it
+        # was checking an absent servo claim GPIO 18 on the real Pi and move it.
+        self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
 
         if self._servo is not None:
             # Start from a known position. A servo powered up mid-travel holds

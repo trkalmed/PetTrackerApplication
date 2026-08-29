@@ -108,6 +108,39 @@ def _suggest_swapped_pins(args, scale, log) -> None:
         print(f"  PETTRACKER_SCALE_PINS={working[0]},{working[1]} in service.env.")
 
 
+def build_feeder(args):
+    """The servo on its own, with whatever angles have been measured so far."""
+    from pettracker.sensors.real import ServoFeeder
+
+    return ServoFeeder(
+        pin=args.servo_pin,
+        open_angle=(args.servo_open if args.servo_open is not None
+                    else ServoFeeder.DEFAULT_OPEN_ANGLE),
+        closed_angle=(args.servo_closed if args.servo_closed is not None
+                      else ServoFeeder.DEFAULT_CLOSED_ANGLE),
+        ms_per_gram=(args.servo_ms_per_gram if args.servo_ms_per_gram is not None
+                     else ServoFeeder.DEFAULT_MS_PER_GRAM))
+
+
+def servo_mode(args, log) -> int:
+    """--check-servo: move the servo by hand, without starting the service."""
+    from pettracker.bringup import check_servo
+
+    if args.fake:
+        from pettracker.sensors.fake import build_fake_sensor_set
+        feeder = build_fake_sensor_set().feeder
+    else:
+        feeder = build_feeder(args)
+
+    try:
+        check_servo(feeder)
+        return 0
+    finally:
+        close = getattr(feeder, "close", None)
+        if close:
+            close()
+
+
 def gps_mode(args, log) -> int:
     """--check-gps: watch the sentences arrive, without starting the service."""
     from pettracker.bringup import check_gps
@@ -206,6 +239,18 @@ def main() -> int:
     parser.add_argument("--check-gps", action="store_true",
                         help="watch the NMEA sentences arrive and exit. Use this "
                              "while wiring it")
+    parser.add_argument("--servo-pin", type=int, default=18,
+                        help="GPIO the servo signal wire is on (default 18)")
+    parser.add_argument("--servo-open", type=int, default=None,
+                        help="angle at which the hopper gate is open")
+    parser.add_argument("--servo-closed", type=int, default=None,
+                        help="angle at which it is shut")
+    parser.add_argument("--servo-ms-per-gram", type=float, default=None,
+                        help="how long the gate must be open per gram, measured "
+                             "by opening it for a known time and weighing what fell")
+    parser.add_argument("--check-servo", action="store_true",
+                        help="move the servo to angles you type, to find the open "
+                             "and closed positions for a gate")
     parser.add_argument("--check-motion", action="store_true",
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
@@ -228,6 +273,9 @@ def main() -> int:
 
     if args.check_gps:
         return gps_mode(args, log)
+
+    if args.check_servo:
+        return servo_mode(args, log)
 
     pins = None
     if not args.fake:
@@ -258,6 +306,10 @@ def main() -> int:
                 rooms=rooms, pir_pins=pins, pir_warmup_s=args.pir_warmup,
                 camera=args.camera, camera_device=args.camera_device,
                 gps_port=(None if args.no_gps else args.gps_port),
+                servo_pin=args.servo_pin,
+                servo_open=args.servo_open,
+                servo_closed=args.servo_closed,
+                servo_ms_per_gram=args.servo_ms_per_gram,
                 scale_pins=scale_pins,
                 scale_factor=(args.scale_factor if args.scale_factor is not None
                               else HX711Scale.UNCALIBRATED))

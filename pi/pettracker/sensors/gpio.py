@@ -291,3 +291,145 @@ def open_output(pin: int, fast: bool = False) -> Optional[DigitalOutput]:
     log.warning("GPIO %d unavailable for output (%s)", pin, "; ".join(errors))
     _explain_if_busy(pin, errors)
     return None
+
+
+class ServoOutput:
+    """One hobby servo, positioned by pulse width.
+
+    A servo is told where to go by the width of a pulse repeated at 50 Hz:
+    roughly 500 µs at one end of its travel, 2400 µs at the other. The number
+    that matters is therefore microseconds, not degrees — degrees are a
+    convenience this class provides on top, and the mapping is approximate on
+    a cheap servo.
+
+    ``release()`` is not an afterthought. A servo held at an angle keeps
+    correcting itself against whatever is pushing back, which on a hopper gate
+    means buzzing, heat, and current drawn all day for a gate that is not
+    moving. Stop the pulses and it goes limp and quiet.
+    """
+
+    backend = "none"
+
+    #: Pulse widths at the ends of travel. The datasheet for an SG90 says
+    #: 1000-2000, and almost every real one does 500-2400; going past what a
+    #: particular servo can reach makes it grind against its own stop.
+    MIN_PULSE_US = 500
+    MAX_PULSE_US = 2400
+
+    def set_pulse_us(self, microseconds: int) -> None:
+        raise NotImplementedError
+
+    def set_angle(self, degrees: float) -> None:
+        """Positions by angle, 0 to 180, mapped linearly onto the pulse range."""
+        degrees = max(0.0, min(180.0, float(degrees)))
+        span = self.MAX_PULSE_US - self.MIN_PULSE_US
+        self.set_pulse_us(int(self.MIN_PULSE_US + span * degrees / 180.0))
+
+    def release(self) -> None:
+        """Stops the pulses, so the servo stops holding position."""
+        self.set_pulse_us(0)
+
+    def close(self) -> None:
+        """Releases the pin. Safe to call more than once."""
+
+
+class _LgpioServo(ServoOutput):
+    backend = "lgpio"
+
+    def __init__(self, pin: int):
+        import lgpio  # type: ignore
+
+        self._lgpio = lgpio
+        self._handle = lgpio.gpiochip_open(_lgpio_chip())
+        lgpio.gpio_claim_output(self._handle, pin, 0)
+        self._pin = pin
+
+    def set_pulse_us(self, microseconds: int) -> None:
+        # tx_servo is timed in the library rather than by Python, so the pulse
+        # does not jitter when the interpreter is busy. Software PWM does, and
+        # a jittering pulse is what makes cheap servos buzz and creep.
+        self._lgpio.tx_servo(self._handle, self._pin, int(microseconds))
+
+    def close(self) -> None:
+        try:
+            self.release()
+            self._lgpio.gpio_free(self._handle, self._pin)
+            self._lgpio.gpiochip_close(self._handle)
+        except Exception:
+            pass
+
+
+class _GpiozeroServo(ServoOutput):
+    backend = "gpiozero"
+
+    def __init__(self, pin: int):
+        from gpiozero import Servo  # type: ignore
+
+        self._servo = Servo(
+            pin,
+            min_pulse_width=self.MIN_PULSE_US / 1_000_000,
+            max_pulse_width=self.MAX_PULSE_US / 1_000_000)
+
+    def set_pulse_us(self, microseconds: int) -> None:
+        if not microseconds:
+            self._servo.detach()
+            return
+        span = self.MAX_PULSE_US - self.MIN_PULSE_US
+        fraction = (microseconds - self.MIN_PULSE_US) / span
+        self._servo.value = max(-1.0, min(1.0, fraction * 2 - 1))
+
+    def close(self) -> None:
+        try:
+            self._servo.close()
+        except Exception:
+            pass
+
+
+class _RpiGpioServo(ServoOutput):
+    backend = "RPi.GPIO"
+
+    def __init__(self, pin: int):
+        import RPi.GPIO as GPIO  # type: ignore
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(pin, GPIO.OUT)
+        self._gpio = GPIO
+        self._pin = pin
+        self._pwm = GPIO.PWM(pin, 50)          # 50 Hz, standard for hobby servos
+        self._pwm.start(0)
+
+    def set_pulse_us(self, microseconds: int) -> None:
+        # Duty cycle as a percentage of the 20 ms frame.
+        self._pwm.ChangeDutyCycle(microseconds / 20_000.0 * 100.0 if microseconds
+                                  else 0)
+
+    def close(self) -> None:
+        try:
+            self._pwm.stop()
+            self._gpio.cleanup(self._pin)
+        except Exception:
+            pass
+
+
+#: lgpio first: its pulses are timed by the library rather than by Python, and
+#: a jittering pulse is the difference between a gate that moves and one that
+#: buzzes at the angle it was already at.
+_SERVO_BACKENDS = (_LgpioServo, _GpiozeroServo, _RpiGpioServo)
+
+
+def open_servo(pin: int) -> Optional[ServoOutput]:
+    """Claims ``pin`` for a servo, or returns None if no backend can."""
+    errors = []
+    for backend in _SERVO_BACKENDS:
+        try:
+            claimed = backend(pin)
+        except Exception as e:
+            errors.append(f"{backend.backend}: {e}")
+            continue
+        log.info("servo on GPIO %d via %s", pin, claimed.backend)
+        return claimed
+
+    log.warning("servo on GPIO %d unavailable (%s)", pin, "; ".join(errors))
+    _explain_if_busy(pin, errors)
+    return None

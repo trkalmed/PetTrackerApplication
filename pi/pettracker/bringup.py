@@ -503,3 +503,86 @@ def _satellites_in(sentence: str) -> int:
         return int(fields[7]) if len(fields) > 7 and fields[7] else 0
     except ValueError:
         return 0
+
+
+def check_servo(feeder, out=None, ask=input) -> None:
+    """Walks a servo through angles you type, so a gate can be built around it.
+
+    The two numbers a hopper needs — the angle at which the gate is shut and the
+    angle at which it is open — are properties of how the horn happened to mount
+    and where the gate fouls. They cannot be derived, only found by moving the
+    servo and looking at it, which is what this does.
+
+    Worth knowing while you watch: a servo horn only fits at roughly 20-degree
+    increments, so if the useful travel lands awkwardly, pulling the horn off
+    and refitting it one spline over is usually easier than living with it.
+    """
+    out = out or sys.stdout
+
+    if not feeder.available:
+        print("\nNo servo. Check the signal wire is on the pin you passed to",
+              file=out)
+        print("--servo-pin, and that the servo has power.", file=out)
+        return
+
+    pin = getattr(feeder, "pin", "?")
+    backend = getattr(feeder, "backend", "?")
+    print(f"\nServo on GPIO {pin} via {backend}.", file=out)
+    print(file=out)
+    print("  Power it from its own 5V supply, not the Pi. An SG90 stalled",
+          file=out)
+    print("  against jammed kibble draws close to an amp, and a brown-out",
+          file=out)
+    print("  during an SD-card write is how a Raspberry Pi loses its", file=out)
+    print("  filesystem. Grounds tied together, signal to the GPIO.", file=out)
+    print(file=out)
+    print("  Type an angle from 0 to 180 and press Enter to move there.", file=out)
+    print("  'sweep' walks the whole range. Blank line or 'q' to finish.", file=out)
+    print(file=out)
+
+    visited = []
+    while True:
+        try:
+            answer = ask("  angle> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            break
+
+        if answer in ("", "q", "quit", "exit"):
+            break
+
+        if answer == "sweep":
+            for angle in (0, 45, 90, 135, 180, 90, 0):
+                print(f"    {angle}", file=out)
+                feeder.move_to(angle)
+            continue
+
+        try:
+            angle = float(answer)
+        except ValueError:
+            print("    A number from 0 to 180, or 'sweep', or blank to finish.",
+                  file=out)
+            continue
+
+        if not 0 <= angle <= 180:
+            # Past the ends of travel the servo grinds against its own stop,
+            # which sounds like a servo working hard and is not.
+            print("    Outside 0-180. The servo would push against its own stop.",
+                  file=out)
+            continue
+
+        feeder.move_to(angle)
+        visited.append(angle)
+
+    print(file=out)
+    if visited:
+        print("Angles tried: " + ", ".join(str(a) for a in visited), file=out)
+    print("Once the gate is built, pass the two that matter:", file=out)
+    print("  --servo-closed <angle> --servo-open <angle>", file=out)
+    print("and put them in service.env as PETTRACKER_SERVO_CLOSED and", file=out)
+    print("PETTRACKER_SERVO_OPEN so they survive a restart.", file=out)
+    print(file=out)
+    print("The third number, milliseconds per gram, comes from the bowl: open",
+          file=out)
+    print("the gate for a known time, weigh what fell, divide. It only has to",
+          file=out)
+    print("be close — the load cell measures what actually landed.", file=out)

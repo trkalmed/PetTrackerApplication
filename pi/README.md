@@ -32,7 +32,8 @@ python3 run.py
 Useful flags: `--port` (default 8080), `--rooms "Kitchen,Hall,Bedroom"`,
 `--pir-pins "17,27,22"`, `--pir-warmup`, `--camera csi|usb|none`,
 `--camera-device`, `--snapshot-dir`, `--no-snapshots`, `--scale-pins`,
-`--scale-factor`, `--gps-port`, `--no-gps`, `--fps`, `--db`, `-v`.
+`--scale-factor`, `--gps-port`, `--no-gps`, `--servo-pin`, `--servo-open`,
+`--servo-closed`, `--servo-ms-per-gram`, `--fps`, `--db`, `-v`.
 
 While wiring the PIR sensors, `--check-motion` skips the service entirely and
 shows the pins live — see **Bringing the hardware up**.
@@ -329,7 +330,7 @@ watch `/health`:
      a stub. Filling it in with picamera2 is the remaining work there.
    * **`--camera none`** for a rig that has neither.
 2. **HX711 + load cell.** See below — it has two tools.
-3. **Servo** — external supply first.
+3. **Servo** — external supply first, and see below.
 4. **PIR ×3.** See below; this one has a tool.
 5. **GPS**, last, and see the note below about what it measures.
 
@@ -477,6 +478,47 @@ plausible wrong number rather than an error:
   and a bowl with nothing in it are different facts, and only one of them means
   the pet has eaten everything.
 
+### The servo and the hopper gate
+
+Wiring: signal to a GPIO (18 by default, `--servo-pin`), ground shared with the
+Pi, and **power from its own 5 V supply**. An SG90 draws a few hundred
+milliamps moving and close to an amp stalled, which is what happens the first
+time kibble jams the gate. Off the Pi's 5 V pin that browns out the board, and a
+brown-out during an SD-card write is how a Pi loses its filesystem. It presents
+as random reboots and looks exactly like a software fault.
+
+Three numbers have to be measured. Two of them before the gate is even built:
+
+```bash
+python3 run.py --check-servo
+```
+
+Type angles and watch where the horn goes; `sweep` walks the range. The angle at
+which the gate is shut and the angle at which it is open depend entirely on how
+the horn mounted and where the gate fouls, and a servo horn only fits at roughly
+20-degree increments — so if the useful travel lands awkwardly, pull the horn
+off and refit it one spline over rather than working around it.
+
+```bash
+python3 run.py --servo-closed 10 --servo-open 95
+```
+
+The third is **milliseconds per gram**: open the gate for a known time, weigh
+what fell, divide. It only has to be close. The servo controls how long a hole
+is open, not how much comes out — the load cell measures what actually landed,
+which is why `POST /feed` deliberately does not record a feeding event and the
+`DISPENSED` reading that follows will differ from what was asked for.
+
+Two safeguards in the code, both about the same failure. The gate is closed in a
+`finally`, so an exception mid-dispense cannot leave the hopper pouring; and one
+dispense is capped at `MAX_OPEN_S` regardless of the arithmetic, because a flow
+rate measured wrongly by a factor of a hundred is an easy mistake and the floor
+is where the hopper ends up.
+
+The servo is released rather than held once it arrives. A servo holding an angle
+against a stiff hinge buzzes, warms up, and draws current all day for a gate that
+is not moving.
+
 ### Motion snapshots
 
 With a working camera, every motion event also saves a JPEG — the difference
@@ -504,7 +546,7 @@ hand back a half-decoded frame.
 python3 -m unittest discover -s tests
 ```
 
-164 tests, no hardware and no network required. They cover the meal detector
+185 tests, no hardware and no network required. They cover the meal detector
 against realistic weight traces, the event store and its cursor (including a
 clock that jumps backwards), the PIR path (warm-up, pin configuration, a sensor
 with no backend, and the debounce that turns a held sensor into one event), and

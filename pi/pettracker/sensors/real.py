@@ -22,7 +22,7 @@ from ..hx711 import HX711
 from ..nmea import parse_gga
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
 from .camera import ReopeningCamera
-from .gpio import open_input, open_output
+from .gpio import open_input, open_output, open_servo
 
 log = logging.getLogger(__name__)
 
@@ -312,58 +312,136 @@ class GpioMotionSensor(MotionSensor):
 
 
 class ServoFeeder(Feeder):
-    """SG90 or MG90S driving the hopper gate.
+    """An SG90 or MG90S driving the hopper gate.
 
-    **Power the servo from its own 5V supply, never from the Pi's 5V pin.**
-    Stall and start-up current spikes brown out the Pi, and a brown-out during
-    an SD-card write corrupts the filesystem. Tie the grounds together; signal
-    goes to a GPIO. This is the single most likely cause of a Pi that "randomly
-    reboots" in this build.
+    **Power the servo from its own 5 V supply, never from the Pi's 5 V pin.**
+    An SG90 draws a few hundred milliamps moving and closer to a full amp
+    stalled, which is exactly what happens when kibble jams the gate. That
+    browns out the Pi, and a brown-out during an SD-card write corrupts the
+    filesystem. Tie the grounds together, signal to a GPIO.
 
-    Software PWM from RPi.GPIO jitters, which makes cheap servos buzz and creep.
-    pigpio's hardware-timed PWM is steadier and worth the extra daemon.
+    **The three numbers here have to be measured, not guessed.** The open and
+    closed angles depend on how the horn is mounted — servos only mount at 
+    roughly 20-degree increments, so the useful angles are whatever the geometry
+    gave you rather than a tidy 0 and 90. And the flow rate depends on the
+    kibble: bigger pieces bridge the opening and fall in bursts.
+    ``run.py --check-servo`` walks a servo through angles interactively so the
+    first two can be read off the real gate; the third comes from opening it for
+    a known time and weighing what fell.
 
-    Open angle, closed angle and the milliseconds-per-gram rate all have to be
-    measured with the real hopper and the real food — kibble size changes the
-    flow rate.
+    Approximate by nature, and that is fine. The servo controls how long the
+    gate is open, not how much comes out — the load cell measures what actually
+    landed, which is why the two are separate readings in the event log.
     """
 
-    def __init__(self, pin: int = 18, open_angle: int = 90, closed_angle: int = 0,
-                 ms_per_gram: float = 50.0):
+    #: Sensible until measured: a quarter turn, and a flow rate that is more
+    #: likely to under-dispense than to empty the hopper onto the floor.
+    DEFAULT_OPEN_ANGLE = 90
+    DEFAULT_CLOSED_ANGLE = 0
+    DEFAULT_MS_PER_GRAM = 50.0
+
+    #: Time for the gate itself to swing, at each end of a dispense. An SG90
+    #: crosses 90 degrees in roughly 0.3 s unloaded and slower against kibble.
+    TRAVEL_S = 0.5
+
+    #: Refuse to hold the gate open longer than this in one go. A wrong
+    #: milliseconds-per-gram is the likeliest mistake here, and the failure mode
+    #: is the whole hopper on the floor.
+    MAX_OPEN_S = 20.0
+
+    def __init__(self, pin: int = 18,
+                 open_angle: int = DEFAULT_OPEN_ANGLE,
+                 closed_angle: int = DEFAULT_CLOSED_ANGLE,
+                 ms_per_gram: float = DEFAULT_MS_PER_GRAM,
+                 servo=None, travel_s: Optional[float] = None):
         self._pin = pin
+        self._travel_s = self.TRAVEL_S if travel_s is None else travel_s
         self._open_angle = open_angle
         self._closed_angle = closed_angle
         self._ms_per_gram = ms_per_gram
-        self._pwm = None
-        try:
-            import RPi.GPIO as GPIO  # type: ignore
+        self._servo = servo if servo is not None else open_servo(pin)
 
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(pin, GPIO.OUT)
-            self._pwm = GPIO.PWM(pin, 50)      # 50 Hz, standard for hobby servos
-            self._pwm.start(0)
-            log.info("servo on GPIO %d", pin)
-        except Exception as e:
-            log.warning("servo unavailable: %s", e)
+        if self._servo is not None:
+            # Start from a known position. A servo powered up mid-travel holds
+            # wherever it happened to be, which for a hopper gate may be open.
+            self.move_to(closed_angle)
+
+    def move_to(self, angle: float) -> None:
+        """Sends the gate to an angle and lets go once it has arrived.
+
+        Public because the bring-up tool drives it directly: finding the two
+        angles is a matter of watching the real gate move to each one.
+        """
+        if self._servo is None:
+            return
+        self._servo.set_angle(angle)
+        time.sleep(self._travel_s)
+        # Released rather than held: a servo holding position against a spring
+        # or a stiff hinge buzzes, warms up, and draws current all day.
+        self._servo.release()
 
     def dispense(self, grams: int) -> None:
-        if self._pwm is None:
+        """Opens the gate for as long as ``grams`` should take to fall.
+
+        How much actually comes out is the load cell's business. This only
+        opens a hole for a while, and the difference between the two is real
+        rather than an error to be corrected.
+        """
+        if self._servo is None:
             raise RuntimeError("feeder unavailable")
-        # Delete the available override below when this is written.
-        raise NotImplementedError(
-            "Open the gate, hold for grams * ms_per_gram, close it. Always "
-            "close in a finally block: an exception mid-dispense must not leave "
-            "the hopper open. Detach the PWM signal when idle so the servo is "
-            "not held under load, which is what makes them buzz and overheat."
-        )
+
+        seconds = self.open_seconds(grams)
+        log.info("opening the gate for %.1f s for %d g", seconds, grams)
+
+        try:
+            self._servo.set_angle(self._open_angle)
+            time.sleep(self._travel_s + seconds)
+        finally:
+            # Always. An exception mid-dispense must not leave the hopper open,
+            # which would empty it onto the floor and is the one failure here
+            # with a cost beyond a missed meal.
+            self.move_to(self._closed_angle)
+
+    def open_seconds(self, grams: int) -> float:
+        """How long the gate is held open for a request of ``grams``.
+
+        Separate from :meth:`dispense` so the cap can be reasoned about — and
+        tested — without anybody waiting twenty seconds for it.
+        """
+        return min(max(0, grams) * self._ms_per_gram / 1000.0, self.MAX_OPEN_S)
+
+    @property
+    def open_angle(self) -> int:
+        return self._open_angle
+
+    @property
+    def closed_angle(self) -> int:
+        return self._closed_angle
+
+    @property
+    def ms_per_gram(self) -> float:
+        return self._ms_per_gram
+
+    @property
+    def pin(self) -> int:
+        return self._pin
+
+    @property
+    def backend(self) -> str:
+        return self._servo.backend if self._servo is not None else "none"
 
     @property
     def available(self) -> bool:
-        # False while dispense() is a stub, whatever the wiring says. A servo
-        # cannot be interrogated — you can only move it — so "available" here can
-        # never mean more than "this code could run it", and right now it cannot.
-        # Make this `return self._pwm is not None` once dispense() is written.
-        return False
+        # Claimed, not verified. A servo has no feedback wire: it cannot be
+        # asked where it is or whether it moved, so unlike the scale there is no
+        # better answer to give. Whether the gate actually opened shows up as a
+        # DISPENSED reading from the load cell, or as its absence.
+        return self._servo is not None
+
+    def close(self) -> None:
+        if self._servo is not None:
+            self._servo.close()
+            self._servo = None
 
 
 class PiCamera(Camera):
@@ -795,7 +873,11 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           camera_device: int = 0,
                           scale_pins: Optional[List[int]] = None,
                           scale_factor: float = HX711Scale.UNCALIBRATED,
-                          gps_port: Optional[str] = "/dev/serial0") -> SensorSet:
+                          gps_port: Optional[str] = "/dev/serial0",
+                          servo_pin: int = 18,
+                          servo_open: Optional[int] = None,
+                          servo_closed: Optional[int] = None,
+                          servo_ms_per_gram: Optional[float] = None) -> SensorSet:
     """Wires up the real rig.
 
     Every sensor reports itself unavailable rather than raising if its hardware
@@ -815,7 +897,14 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         scale=HX711Scale(dout_pin=dout, sck_pin=sck,
                          calibration_factor=scale_factor),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
-        feeder=ServoFeeder(),
+        feeder=ServoFeeder(
+            pin=servo_pin,
+            open_angle=(servo_open if servo_open is not None
+                        else ServoFeeder.DEFAULT_OPEN_ANGLE),
+            closed_angle=(servo_closed if servo_closed is not None
+                          else ServoFeeder.DEFAULT_CLOSED_ANGLE),
+            ms_per_gram=(servo_ms_per_gram if servo_ms_per_gram is not None
+                         else ServoFeeder.DEFAULT_MS_PER_GRAM)),
         camera=build_camera(camera, camera_device),
         location=(UbloxLocationSensor(port=gps_port) if gps_port else None),
     )

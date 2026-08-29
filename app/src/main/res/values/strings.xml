@@ -151,6 +151,14 @@
     <string name="of_grams_target">of %1$d g</string>
     <string name="room_since">since %1$s</string>
     <string name="detections_today_count">%1$d today</string>
+    <!-- The qualifier matters. Detections are produced by the phone's own
+         detector, which only runs while the Live screen is open, so the count
+         is "what was seen while watching" and not the day's total. Saying
+         otherwise would be the app claiming coverage it does not have. -->
+    <string name="detections_last_seen">last %1$s · live view only</string>
+    <string name="detections_none_while_watching">none yet · live view only</string>
+    <string name="detections_camera_not_connected">camera not connected</string>
+    <string name="no_gps_fix_yet">No GPS fix yet</string>
     <string name="detection_last">last %1$s</string>
     <string name="gps_status">GPS %1$s</string>
     <string name="food_today_grams">Food today: %1$d g</string>

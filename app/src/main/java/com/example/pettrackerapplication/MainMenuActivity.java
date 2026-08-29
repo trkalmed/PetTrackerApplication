@@ -260,7 +260,8 @@ public class MainMenuActivity extends ThemedActivity {
         setDotColor(dotDeviceStatus, s.cameraOnline
                 ? R.color.accent_2 : R.color.text_disabled);
         tvGpsStatus.setText(s.lastGpsFixAgo == null
-                ? "No GPS fix yet" : "GPS " + s.lastGpsFixAgo);
+                ? getString(R.string.no_gps_fix_yet)
+                : getString(R.string.gps_status, s.lastGpsFixAgo));
     }
 
     private void renderFood(DashboardStats s) {
@@ -372,9 +373,19 @@ public class MainMenuActivity extends ThemedActivity {
 
         tvDetectionCount.setText(getString(
                 R.string.detections_today_count, s.detectionsToday));
-        tvDetectionLast.setText(s.lastDetectionTime == null
-                ? (s.cameraOnline ? "none yet today" : "camera not connected")
-                : "last " + s.lastDetectionTime);
+        // "N today" on its own overstates what this is. Sightings come from the
+        // phone's own detector, which runs only while the Live screen is open —
+        // so the number is what was seen while somebody was watching, and the
+        // card has to say so rather than implying a day's coverage it does not
+        // have. The Pi has the camera all day; it does not run a detector.
+        if (s.lastDetectionTime != null) {
+            tvDetectionLast.setText(
+                    getString(R.string.detections_last_seen, s.lastDetectionTime));
+        } else if (s.cameraOnline) {
+            tvDetectionLast.setText(R.string.detections_none_while_watching);
+        } else {
+            tvDetectionLast.setText(R.string.detections_camera_not_connected);
+        }
     }
 
     // ── Small view builders ─────────────────────────────────────────────────

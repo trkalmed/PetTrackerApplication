@@ -604,6 +604,76 @@ the printed IP into the app's Pi Connection dialog.
 
 ---
 
+## Next session — 2026-08-30
+
+The rig moves to **the hall, next to the kitchen**, which is where the feeder
+and the load cell will be wired. Signal should be fine there: a router in the
+living room, and an amplifier in the bedroom whose door onto the hall stays
+open. Motion sensor placements to be decided on the day.
+
+### 1. The load cell, with the replacement HX711
+
+The last amplifier died from reversed VCC/GND — no protection on these boards,
+and the failure is silent: the module looks fine, the cell is unharmed, and the
+data line simply never drives again. **Check the polarity twice before applying
+power.** VCC to 3.3V.
+
+```bash
+sudo systemctl stop pettracker
+python3 run.py --check-scale          # clock speed, then moving counts
+python3 run.py --calibrate-scale      # known weight -> factor
+sudo systemctl start pettracker
+```
+
+`--check-scale` now leads with how long this Pi holds the clock high (must be
+under 60 µs; lgpio gave 3.7), tells the three silences apart in words, and tries
+the pins the other way round if nothing reads.
+
+Put the factor in `~/pettracker/service.env` as `PETTRACKER_SCALE_FACTOR` and
+**send me the number** — its magnitude says whether the meal detector's
+thresholds suit this cell: 5 g minimum change, 4 s to settle, 30 s before the
+baseline follows drift.
+
+### 2. The paddle wheel
+
+Servo proven working on GPIO 18 via lgpio. Still no separate 5V supply, so keep
+nothing attached to the horn until there is one — a USB charger or power bank
+with a cut cable is enough, ground tied to a Pi ground.
+
+```bash
+python3 run.py --check-servo                       # park and dump angles
+python3 run.py --feeder paddle --paddle-park 30 --paddle-dump 150 --paddle-grams 4.2
+```
+
+`--paddle-grams` is measured by cycling ten times into a bowl and dividing.
+
+**A gap to close first:** the systemd unit knows nothing about `--feeder` or the
+paddle settings, so the service would run the gate design regardless of what is
+passed on the command line. Needs `PETTRACKER_FEEDER`, `PETTRACKER_PADDLE_PARK`,
+`PETTRACKER_PADDLE_DUMP` and `PETTRACKER_PADDLE_GRAMS` adding to
+`pettracker.service` and its ExecStart. Ten minutes, and worth doing before
+anything is measured.
+
+### 3. Once the sensors are placed
+
+Room names flow straight through to the app's chart, so they want to be the real
+ones. In `service.env`:
+
+```
+PETTRACKER_ROOMS=<real names>
+PETTRACKER_PIR_PINS=<pins in the same order>
+```
+
+Then `sudo systemctl restart pettracker`, and check the Wi-Fi signal where it
+ends up — `iw dev wlan0 link | grep -i signal`. Past -75 dBm the MJPEG stream
+starts to stutter; the events and snapshots are small enough not to care.
+
+### 4. If the GNSS antenna arrives
+
+`--check-gps` on the balcony. The module and wiring are already proven; it needs
+an active 1575.42 MHz antenna, SMA or IPEX. Watch the green PPS LED — it blinks
+once a second on a fix.
+
 ## What is left
 
 1. **The load cell (HX711).** The last empty card on the dashboard, and the

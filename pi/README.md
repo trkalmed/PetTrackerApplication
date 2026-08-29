@@ -281,6 +281,12 @@ a working GPS, and `--check-gps` shows the difference:
 python3 run.py --check-gps
 ```
 
+If the module reports `More than 100 frame errors, UART RX was disabled`, that
+is its *receive* side, and it does not matter here: the port is opened read-only
+and nothing is ever sent to the module. It happens when the Pi TX line carries
+console output at another baud rate. Three wires are enough — VCC, GND, and
+module TX to Pi RX — and leaving Pi TX disconnected silences it for good.
+
 Sentences scrolling past with no fix means the wiring is right and it needs sky.
 Nothing at all means the serial console still owns the port, TX and RX are not
 crossed, or there is no power. The summary says which.

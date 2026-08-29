@@ -416,11 +416,14 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
     seen = 0
     best_satellites = 0
     fix = None
+    frame_errors = False
 
     try:
         while duration_s is None or clock() - started < duration_s:
             for sentence in location.read_sentences():
                 seen += 1
+                if "frame errors" in sentence:
+                    frame_errors = True
                 if valid_checksum(sentence):
                     position = parse_gga(sentence)
                     if position is not None:
@@ -440,6 +443,23 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
         pass
 
     print("\nSummary:", file=out)
+    if frame_errors:
+        # The module saying its own receiver is unhappy, which reads like a
+        # fault and is not one for this service.
+        print("  The module reported frame errors and disabled its RX line.",
+              file=out)
+        print("  That is its *receive* side, which matters only for sending it",
+              file=out)
+        print("  configuration commands — this service opens the port read-only",
+              file=out)
+        print("  and never writes. Usually the Pi TX line is carrying console",
+              file=out)
+        print("  output at another baud rate. To silence it, disconnect Pi TX",
+              file=out)
+        print("  from the module RX: three wires are enough — VCC, GND, and",
+              file=out)
+        print("  module TX to Pi RX.", file=out)
+        print(file=out)
     if seen == 0:
         print("  Nothing arrived at all. In order of likelihood: the serial", file=out)
         print("  console still owns the port (raspi-config -> Interface Options", file=out)

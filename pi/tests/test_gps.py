@@ -248,3 +248,41 @@ class _Clock:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FrameErrorNoticeTest(unittest.TestCase):
+    """A module complaining about its own receiver is not a fault here."""
+
+    class Talking:
+        port = "test"
+
+        def __init__(self, *sentences):
+            self.sentences = list(sentences)
+
+        def read_sentences(self):
+            out, self.sentences = self.sentences, []
+            return out
+
+    def test_a_frame_error_notice_is_explained(self):
+        import io
+        from pettracker.bringup import check_gps
+
+        out = io.StringIO()
+        check_gps(self.Talking(
+            "$GNTXT,01,01,01,More than 100 frame errors, UART RX was disabled*70",
+            NO_FIX), duration_s=0.05, interval_s=0.01, out=out)
+
+        text = out.getvalue()
+        # It reads like a failure and is not one: the RX side matters only for
+        # configuring the module, and this service never writes to it.
+        self.assertIn("disabled its RX line", text)
+        self.assertIn("read-only", text)
+
+    def test_a_quiet_module_is_not_accused_of_frame_errors(self):
+        import io
+        from pettracker.bringup import check_gps
+
+        out = io.StringIO()
+        check_gps(self.Talking(NO_FIX), duration_s=0.05, interval_s=0.01, out=out)
+
+        self.assertNotIn("frame errors", out.getvalue())

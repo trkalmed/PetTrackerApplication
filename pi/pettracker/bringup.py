@@ -626,8 +626,20 @@ def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
     print("be close — the load cell measures what actually landed.", file=out)
 
     after = throttled()
-    if after is not None and before is not None:
+    print(file=out)
+    if after is None or before is None:
+        # Saying nothing would read as "the supply was fine", which is a
+        # different claim from "nobody checked".
+        print("Could not ask this machine about its supply — vcgencmd is a", file=out)
+        print("Raspberry Pi tool and is not answering here, so nothing above", file=out)
+        print("says anything about the 5V rail.", file=out)
+    else:
         appeared = after & ~before & (UNDERVOLTAGE_NOW | UNDERVOLTAGE_SINCE_BOOT)
+        if not appeared:
+            print("The Pi reported no dip in its 5V rail while the servo moved.",
+                  file=out)
+            print("That holds for a servo with nothing attached to it; a gate to", file=out)
+            print("push against changes the arithmetic.", file=out)
         if appeared:
             print(file=out)
             print("The Pi reported an under-voltage dip while the servo moved.",

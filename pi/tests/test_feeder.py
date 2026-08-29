@@ -259,10 +259,13 @@ class UndervoltageTest(unittest.TestCase):
         self.assertIn("under-voltage dip while the servo moved", text)
         self.assertIn("its own supply", text)
 
-    def test_a_steady_supply_says_nothing(self):
+    def test_a_steady_supply_is_stated_rather_than_implied(self):
         text = self.prober(0x0, 0x0)
 
-        self.assertNotIn("under-voltage", text)
+        # Silence would read as "fine", which is a different claim from
+        # "nobody checked" — and the two used to look identical.
+        self.assertIn("no dip in its 5V rail", text)
+        self.assertIn("nothing attached", text)
 
     def test_a_pi_that_was_already_struggling_is_flagged_up_front(self):
         # The dip predates the servo, so blaming the servo for it afterwards
@@ -270,12 +273,16 @@ class UndervoltageTest(unittest.TestCase):
         text = self.prober(0x10000, 0x10000)
 
         self.assertIn("already seen an under-voltage dip", text)
-        self.assertNotIn("while the servo moved", text)
+        # A dip that predates the servo must not be blamed on the servo. The
+        # phrase to look for is the accusation, not the word "moved" — the
+        # all-clear mentions the servo moving too.
+        self.assertNotIn("more than the 5V pin can spare", text)
 
-    def test_a_machine_with_no_vcgencmd_is_not_an_error(self):
+    def test_a_machine_with_no_vcgencmd_says_it_could_not_check(self):
         text = self.prober(None, None)
 
-        self.assertNotIn("under-voltage", text)
+        self.assertIn("Could not ask this machine", text)
+        self.assertNotIn("no dip in its 5V rail", text)
 
 
 class ThrottledParsingTest(unittest.TestCase):

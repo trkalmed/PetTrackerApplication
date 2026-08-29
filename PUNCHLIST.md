@@ -507,6 +507,8 @@ claiming the pet is still where it was last seen.
 | USB webcam via `--camera usb` | `/health` reports it, `/stream` serves video |
 | Motion snapshots | a JPEG per motion event, served from `/snapshot?name=…` |
 | **#7, the Pi stream, in the app** | live view connects and the TFLite detector runs against the Pi feed |
+| Motion snapshots in the app | the frame the camera grabbed appears on the room card, captioned |
+| "Camera live" from `/health` | correct while nobody is on the Live screen, which the old detector-based rule never was |
 | Running as a systemd service | survives a reboot and a closed terminal, camera and sensors up with nobody logged in |
 | The HX711 | **dead board.** Reversed VCC/GND killed it; the driver, the calibration tool and the timing probe are written and tested, waiting on a replacement |
 

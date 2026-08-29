@@ -286,3 +286,46 @@ class FrameErrorNoticeTest(unittest.TestCase):
         check_gps(self.Talking(NO_FIX), duration_s=0.05, interval_s=0.01, out=out)
 
         self.assertNotIn("frame errors", out.getvalue())
+
+
+class NoSatellitesTest(unittest.TestCase):
+    """Telling a bad sky from a wrong antenna.
+
+    Both produce no fix, and the advice for them is opposite: one is patience,
+    the other is a different part. The number of sentences separates them — a
+    working antenna under a roof still shows satellites weakly, so a flat zero
+    across thousands of sentences is not about the view.
+    """
+
+    class Talking:
+        port = "test"
+
+        def __init__(self, sentence, times):
+            self.remaining = [sentence] * times
+
+        def read_sentences(self):
+            batch, self.remaining = self.remaining[:200], self.remaining[200:]
+            return batch
+
+    def run_check(self, sentence, times):
+        import io
+        from pettracker.bringup import check_gps
+
+        out = io.StringIO()
+        check_gps(self.Talking(sentence, times), duration_s=0.3, interval_s=0.01,
+                  out=out)
+        return out.getvalue()
+
+    def test_thousands_of_sentences_and_no_satellites_blames_the_antenna(self):
+        text = self.run_check(NO_FIX, 2000)
+
+        self.assertIn("Suspect the antenna", text)
+        self.assertIn("1575.42 MHz", text)
+        self.assertNotIn("Put it by a window", text)
+
+    def test_a_brief_look_still_suggests_patience(self):
+        # Twenty seconds on a windowsill is not evidence of anything.
+        text = self.run_check(NO_FIX, 20)
+
+        self.assertIn("Put it by a window", text)
+        self.assertNotIn("Suspect the antenna", text)

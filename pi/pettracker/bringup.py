@@ -80,6 +80,10 @@ class _Watch:
         return f"{self._clock() - self.last_trigger_at:.0f}s ago"
 
 
+#: Enough sentences that "no satellites yet" stops being about patience. At
+#: roughly six a second, this is a couple of minutes of listening.
+MANY_SENTENCES = 500
+
 _HEADER = f"  {'room':<16}{'pin':>4}  {'backend':<10}{'state':^7}{'fired':>6}   last"
 
 
@@ -473,9 +477,23 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
     else:
         print(f"  {seen} sentences arrived, so the module and the wiring are", file=out)
         print(f"  fine — but no fix yet ({best_satellites} satellites seen).", file=out)
-        print("  Put it by a window, or better outside, and give it a few", file=out)
-        print("  minutes. A cold start is slow and indoors it may never finish.",
-              file=out)
+
+        if seen >= MANY_SENTENCES and best_satellites == 0:
+            # Not a sky problem. A working antenna under a roof still shows
+            # satellites at low signal; a flat zero across thousands of
+            # sentences means nothing is reaching the receiver at all.
+            print("  Zero satellites across that many sentences is not a poor", file=out)
+            print("  view of the sky — a bad view still shows satellites weakly.",
+                  file=out)
+            print("  Suspect the antenna. It must be a GNSS antenna for", file=out)
+            print("  1575.42 MHz: a 2.4 GHz Wi-Fi whip screws onto the same SMA", file=out)
+            print("  and hears nothing. Check it is seated, and that you are", file=out)
+            print("  using the connector it is plugged into — a board with both", file=out)
+            print("  SMA and IPEX uses one or the other.", file=out)
+        else:
+            print("  Put it by a window, or better outside, and give it a few", file=out)
+            print("  minutes. A cold start is slow and indoors it may never finish.",
+                  file=out)
 
 
 def _satellites_in(sentence: str) -> int:

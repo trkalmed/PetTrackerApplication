@@ -229,10 +229,9 @@ public class PetDataRepositoryTest {
 
         DashboardStats stats = repository.statsForToday(pet());
 
-        // Guards the honest empty state. A collar tag is the only thing that
-        // could fill this: the Pi's own position is the kitchen floor, and the
-        // phone's is the owner's pocket.
-        assertNull(stats.lastGpsFixAgo);
+        // Feeding readings say nothing about where the tracker is. The fix has
+        // its own table and its own test below.
+        assertNull(stats.trackerFixTime);
 
         // Feeder readings say nothing about rooms. See RoomOccupancyTest for
         // what motion sightings do.
@@ -253,6 +252,105 @@ public class PetDataRepositoryTest {
                 petId, FeedingEvent.TYPE_EATEN, today.startMillis, today.endMillis));
         assertEquals(0, db.detectionDao().countInRange(
                 petId, today.startMillis, today.endMillis));
+    }
+
+    // ── The tracker's own position ──────────────────────────────────────────
+    //
+    // Not the pet's, anywhere in here. The Pi is a box in the hall, and the
+    // naming is the guardrail — see TrackerFix.
+
+    @Test
+    public void aFixIsStoredAndReadBackOntoTheDashboard() {
+        assertTrue(repository.recordTrackerFix(
+                petId, todayAt(HOUR), 32.00964, 35.76567, 12, "gps", 421L) > 0);
+
+        DashboardStats stats = repository.statsForToday(pet());
+
+        assertNotNull(stats.trackerFixTime);
+        assertEquals(32.00964, stats.trackerLatitude, 0.000005);
+        assertEquals(35.76567, stats.trackerLongitude, 0.000005);
+        assertEquals(12, stats.trackerSatellites);
+    }
+
+    @Test
+    public void theNewestFixWins() {
+        // Absolute times inside today rather than offsets from now: todayAt()
+        // clamps to the start of the day, so two calls in the small hours can
+        // land on the same millisecond and make "newest" ambiguous.
+        long midnight = DayRange.today().startMillis;
+        repository.recordTrackerFix(petId, midnight + HOUR, 32.0, 35.0, 4, "gps", 1L);
+        repository.recordTrackerFix(petId, midnight + 2 * HOUR, 31.5, 35.5, 11, "gps", 2L);
+
+        DashboardStats stats = repository.statsForToday(pet());
+
+        assertEquals(31.5, stats.trackerLatitude, 0.000005);
+        assertEquals(11, stats.trackerSatellites);
+    }
+
+    /**
+     * A fix from before today still shows, unlike every other figure here.
+     *
+     * A GNSS module indoors can go a long time between fixes. "Located
+     * yesterday" is true and useful; a blank would read as "no GPS at all",
+     * which is a different and wrong statement about the hardware.
+     */
+    @Test
+    public void aFixFromYesterdayIsStillReported() {
+        repository.recordTrackerFix(petId, DayRange.today().startMillis - 6 * HOUR,
+                32.00964, 35.76567, 9, "gps", 400L);
+
+        DashboardStats stats = repository.statsForToday(pet());
+
+        assertNotNull(stats.trackerFixTime);
+        // Dated, so a stale fix cannot pass for a fresh one at a glance.
+        assertTrue(stats.trackerFixTime, stats.trackerFixTime.length() > "19:42".length());
+    }
+
+    /**
+     * 0,0 is a real point in the Gulf of Guinea and the classic shape of a fix
+     * built from empty NMEA fields. Storing it would put a working-looking
+     * tracker two thousand kilometres out to sea.
+     */
+    @Test
+    public void nullIslandIsRejected() {
+        assertEquals(-1, repository.recordTrackerFix(
+                petId, todayAt(HOUR), 0.0, 0.0, 0, "gps", 500L));
+
+        assertNull(repository.statsForToday(pet()).trackerFixTime);
+    }
+
+    @Test
+    public void impossibleAndUnparseableCoordinatesAreRejected() {
+        assertEquals(-1, repository.recordTrackerFix(
+                petId, todayAt(HOUR), 91.0, 35.0, 8, "gps", 501L));
+        assertEquals(-1, repository.recordTrackerFix(
+                petId, todayAt(HOUR), 32.0, 181.0, 8, "gps", 502L));
+        assertEquals(-1, repository.recordTrackerFix(
+                petId, todayAt(HOUR), Double.NaN, 35.0, 8, "gps", 503L));
+
+        assertNull(repository.statsForToday(pet()).trackerFixTime);
+    }
+
+    /**
+     * Re-polling the Pi after a cursor reset must not store the same fix twice.
+     * Same guarantee as every other Pi-fed table, and it comes from the unique
+     * index over (petId, source, remoteId).
+     */
+    @Test
+    public void redeliveringAFixIsANoOp() {
+        assertTrue(repository.recordTrackerFix(
+                petId, todayAt(HOUR), 32.00964, 35.76567, 12, "gps", 421L) > 0);
+        assertEquals(-1, repository.recordTrackerFix(
+                petId, todayAt(HOUR), 32.00964, 35.76567, 12, "gps", 421L));
+    }
+
+    @Test
+    public void fixesDoNotOutliveTheirPet() {
+        repository.recordTrackerFix(petId, todayAt(HOUR), 32.0, 35.0, 7, "gps", 600L);
+
+        db.petDao().deleteById(petId, "owner-1");
+
+        assertFalse(db.trackerFixDao().hasAnyFix(petId));
     }
 
     @Test

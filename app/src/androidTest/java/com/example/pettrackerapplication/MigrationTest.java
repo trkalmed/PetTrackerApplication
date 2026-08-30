@@ -200,6 +200,48 @@ public class MigrationTest {
     }
 
     @Test
+    public void migrate5To6_schemaMatchesTheExportedVersion6() throws IOException {
+        helper.createDatabase(TEST_DB, 5).close();
+
+        helper.runMigrationsAndValidate(TEST_DB, 6, true, AppDatabase.MIGRATION_5_6);
+    }
+
+    @Test
+    public void migrate5To6_keepsEverythingRecordedBeforeThereWasAGps() throws IOException {
+        SupportSQLiteDatabase db = helper.createDatabase(TEST_DB, 5);
+
+        ContentValues pet = new ContentValues();
+        pet.put("id", 4L);
+        pet.put("name", "Nutmeg");
+        pet.put("ownerId", "owner-1");
+        db.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+
+        ContentValues sighting = new ContentValues();
+        sighting.put("petId", 4L);
+        sighting.put("timestampMillis", 1_752_000_000_000L);
+        sighting.put("room", "Hall");
+        sighting.put("source", "pir");
+        db.insert("room_events",
+                android.database.sqlite.SQLiteDatabase.CONFLICT_ABORT, sighting);
+        db.close();
+
+        SupportSQLiteDatabase migrated =
+                helper.runMigrationsAndValidate(TEST_DB, 6, true, AppDatabase.MIGRATION_5_6);
+
+        try (Cursor c = migrated.query(
+                "SELECT room FROM room_events WHERE petId = 4")) {
+            assertTrue("the sighting should have survived", c.moveToFirst());
+            assertEquals("Hall", c.getString(0));
+        }
+        // The new table exists and starts empty, rather than the migration
+        // having quietly invented a fix for a rig that had no GPS.
+        try (Cursor c = migrated.query("SELECT COUNT(*) FROM tracker_fixes")) {
+            assertTrue(c.moveToFirst());
+            assertEquals(0, c.getInt(0));
+        }
+    }
+
+    @Test
     public void migrate2To3_newTablesAreUsable() throws IOException {
         helper.createDatabase(TEST_DB, 2).close();
         SupportSQLiteDatabase db =

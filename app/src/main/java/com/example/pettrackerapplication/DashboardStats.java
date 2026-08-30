@@ -68,8 +68,19 @@ public class DashboardStats {
     public int detectionsToday;
     public String lastDetectionTime;        // "15:02"
 
-    // GPS
-    public String lastGpsFixAgo;            // "2 min ago", null = no fix yet
+    /*
+     * GPS — the tracker's position, never the pet's.
+     *
+     * The Raspberry Pi is a box in the hall. Its coordinates locate the
+     * installation, and the pet's position inside that installation is what
+     * {@link #rooms} holds, from the PIR sensors. These fields are named for
+     * the tracker so that nothing downstream can quietly start presenting them
+     * as an animal's whereabouts; see {@link TrackerFix}.
+     */
+    public String trackerFixTime;           // "19:42", or "29 Aug 18:04" if older
+    public Double trackerLatitude;          // null together with the others
+    public Double trackerLongitude;
+    public int trackerSatellites;
 
     public int totalRoomMinutes() {
         int total = 0;
@@ -80,12 +91,15 @@ public class DashboardStats {
     /**
      * Today's numbers for one pet, read from the local database.
      *
-     * Feeder grams, room occupancy and camera detections all come from real
-     * stored readings now — the first two arrive from the Pi through
-     * {@link PiEventSync}. GPS still has no source: the Pi's own position is not
-     * the pet's, and a collar tag is hardware nobody has built yet. That field
-     * stays empty and its card keeps showing a setup prompt, which is the honest
-     * thing to render.
+     * Feeder grams, room occupancy, camera detections and the tracker's GPS fix
+     * all come from real stored readings, and all but the detections arrive from
+     * the Pi through {@link PiEventSync}.
+     *
+     * The GPS fields deliberately answer a smaller question than they look like
+     * they do. They say where the Raspberry Pi is, because that is what the
+     * module on it can measure. Where the <em>pet</em> is comes from the motion
+     * sensors, and would only come from GPS if someone built a collar tag. The
+     * screen labels the difference rather than blurring it.
      *
      * Hits the database, so call it from a background thread.
      */

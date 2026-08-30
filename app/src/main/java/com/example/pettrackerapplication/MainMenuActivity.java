@@ -18,6 +18,7 @@ import com.bumptech.glide.Glide;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -259,9 +260,37 @@ public class MainMenuActivity extends ThemedActivity {
                 ? R.string.camera_live : R.string.camera_offline_status);
         setDotColor(dotDeviceStatus, s.cameraOnline
                 ? R.color.accent_2 : R.color.text_disabled);
-        tvGpsStatus.setText(s.lastGpsFixAgo == null
+        renderTrackerFix(s);
+    }
+
+    /**
+     * The Pi's own GPS fix, sitting in the device-status row where it belongs.
+     *
+     * "Pi located", not "GPS" on its own: this row is next to the camera status
+     * and describes the hardware, and a bare "GPS 19:42" under a dashboard about
+     * an animal reads as the animal's position. It is the tracker's. Tapping
+     * shows the coordinates and says so in as many words.
+     */
+    private void renderTrackerFix(DashboardStats s) {
+        tvGpsStatus.setText(s.trackerFixTime == null
                 ? getString(R.string.no_gps_fix_yet)
-                : getString(R.string.gps_status, s.lastGpsFixAgo));
+                : getString(R.string.tracker_located, s.trackerFixTime));
+
+        tvGpsStatus.setOnClickListener(v -> {
+            String body;
+            if (s.trackerLatitude == null || s.trackerLongitude == null) {
+                body = getString(R.string.tracker_fix_none);
+            } else {
+                body = getString(R.string.tracker_fix_body,
+                        s.trackerLatitude, s.trackerLongitude,
+                        s.trackerSatellites, s.trackerFixTime);
+            }
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.tracker_fix_title)
+                    .setMessage(body)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+        });
     }
 
     private void renderFood(DashboardStats s) {

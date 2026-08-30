@@ -158,9 +158,19 @@
     <string name="detections_last_seen">last %1$s · live view only</string>
     <string name="detections_none_while_watching">none yet · live view only</string>
     <string name="detections_camera_not_connected">camera not connected</string>
-    <string name="no_gps_fix_yet">No GPS fix yet</string>
+    <!--
+      The tracker's location, and the wording works hard not to be read as the
+      pet's. The Raspberry Pi is a box in the hall; its GNSS module locates the
+      house. Where the animal is comes from the motion sensors, and this row
+      sits beside the camera status precisely because it is device state.
+    -->
+    <string name="no_gps_fix_yet">Pi has no GPS fix</string>
+    <string name="tracker_located">Pi located · %1$s</string>
+    <string name="tracker_fix_title">Where the Pi is</string>
+    <string name="tracker_fix_body">%1$.5f, %2$.5f\n\nFrom %3$d satellites, at %4$s.\n\nThis is the tracker\'s own position — the Raspberry Pi in your home, not your pet. Where your pet has been comes from the motion sensors.</string>
+    <string name="tracker_fix_none">The Pi has not reported a GPS fix yet. It needs a clear view of the sky, and a cold start can take several minutes.</string>
     <string name="detection_last">last %1$s</string>
-    <string name="gps_status">GPS %1$s</string>
+
     <string name="food_today_grams">Food today: %1$d g</string>
     <string name="rooms_visited_count">Rooms visited today: %1$d</string>
     <string name="pi_connected_to">Connected: %1$s</string>

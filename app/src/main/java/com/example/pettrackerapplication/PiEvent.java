@@ -25,6 +25,14 @@ public final class PiEvent {
     public static final String KIND_MOTION = "motion";
     /** Raw bowl weight, logged for diagnostics. The app has no use for it. */
     public static final String KIND_WEIGHT = "weight";
+    /**
+     * Where the Pi is. Carries {@link #latitude}, {@link #longitude} and
+     * {@link #satellites}.
+     *
+     * The Pi's position, and never the pet's — it is a box in the hall with a
+     * GNSS module wired to it. Everything downstream is labelled accordingly.
+     */
+    public static final String KIND_LOCATION = "location";
 
     /**
      * Timestamps before this are not believed.
@@ -50,9 +58,21 @@ public final class PiEvent {
     public final String room;
     /** Motion only, and only when the Pi had a camera: the saved frame's name. */
     public final String snapshot;
+    /** Location only, decimal degrees, north positive. */
+    public final Double latitude;
+    /** Location only, decimal degrees, east positive. */
+    public final Double longitude;
+    /**
+     * Location only: how many satellites the fix was computed from.
+     *
+     * Kept because it is the one number that says how much to trust the
+     * position. Three is a fix that wanders by tens of metres; twelve is not.
+     */
+    public final Integer satellites;
 
     private PiEvent(long id, String kind, long timestampMillis, String source,
-                    Integer grams, String type, String room, String snapshot) {
+                    Integer grams, String type, String room, String snapshot,
+                    Double latitude, Double longitude, Integer satellites) {
         this.id = id;
         this.kind = kind;
         this.timestampMillis = timestampMillis;
@@ -61,6 +81,9 @@ public final class PiEvent {
         this.type = type;
         this.room = room;
         this.snapshot = snapshot;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.satellites = satellites;
     }
 
     /**
@@ -96,13 +119,17 @@ public final class PiEvent {
                 json.has("grams") ? json.optInt("grams") : null,
                 json.isNull("type") ? null : json.optString("type", null),
                 json.isNull("room") ? null : json.optString("room", null),
-                json.isNull("snapshot") ? null : json.optString("snapshot", null));
+                json.isNull("snapshot") ? null : json.optString("snapshot", null),
+                json.has("lat") && !json.isNull("lat") ? json.optDouble("lat") : null,
+                json.has("lon") && !json.isNull("lon") ? json.optDouble("lon") : null,
+                json.has("satellites") ? json.optInt("satellites") : null);
     }
 
     @Override
     public String toString() {
         return "PiEvent{" + id + " " + kind + " @" + timestampMillis
                 + (grams != null ? " " + grams + "g " + type : "")
-                + (room != null ? " " + room : "") + "}";
+                + (room != null ? " " + room : "")
+                + (latitude != null ? " " + latitude + "," + longitude : "") + "}";
     }
 }

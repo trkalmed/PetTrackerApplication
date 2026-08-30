@@ -213,6 +213,16 @@ public final class PiEventSync {
                 return repository.recordMotion(petId, event.timestampMillis,
                         event.room, event.source, event.id, event.snapshot) > 0;
 
+            case PiEvent.KIND_LOCATION:
+                if (event.latitude == null || event.longitude == null) {
+                    Log.w(TAG, "Location event " + event.id + " has no coordinates");
+                    return false;
+                }
+                return repository.recordTrackerFix(petId, event.timestampMillis,
+                        event.latitude, event.longitude,
+                        event.satellites == null ? 0 : event.satellites,
+                        event.source, event.id) > 0;
+
             case PiEvent.KIND_WEIGHT:
                 // Diagnostics for whoever is calibrating the load cell. The bowl
                 // weighing 118 g is not something the app has anything to say

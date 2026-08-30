@@ -142,6 +142,47 @@ public final class PetDataRepository {
         return db.roomDao().insert(event);
     }
 
+    /**
+     * Records where the <em>Raspberry Pi</em> was, which is not where the pet was.
+     *
+     * See {@link TrackerFix} for why that distinction is kept all the way down
+     * to the table name. Nothing here feeds any screen that answers "where is
+     * the cat".
+     *
+     * The coordinates are validated rather than trusted. A GGA sentence with a
+     * fix quality of 0 still carries lat and lon fields, usually zeroed, and the
+     * Pi already drops those — but NaN survives a JSON parse, and 0,0 is a real
+     * point in the Gulf of Guinea that no Pi has ever been at. Both would look
+     * like a working tracker in the wrong place, which is worse than no fix.
+     *
+     * @return the new row id, or -1 if the reading was rejected or already held
+     */
+    public long recordTrackerFix(long petId, long timestampMillis, double latitude,
+                                 double longitude, int satellites, String source,
+                                 Long remoteId) {
+        if (Double.isNaN(latitude) || Double.isNaN(longitude)
+                || Double.isInfinite(latitude) || Double.isInfinite(longitude)) {
+            Log.w(TAG, "Ignoring fix with unparseable coordinates");
+            return -1;
+        }
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            Log.w(TAG, "Ignoring fix outside the possible range: "
+                    + latitude + ", " + longitude);
+            return -1;
+        }
+        if (latitude == 0 && longitude == 0) {
+            // Null Island. Reachable by boat, not by a Pi in a hallway, and the
+            // classic shape of a fix built from empty NMEA fields.
+            Log.w(TAG, "Ignoring a 0,0 fix");
+            return -1;
+        }
+
+        TrackerFix fix = new TrackerFix(petId, timestampMillis, latitude, longitude,
+                Math.max(0, satellites), source);
+        fix.setRemoteId(remoteId);
+        return db.trackerFixDao().insert(fix);
+    }
+
     /** Convenience for the common case: the load cell saw food leave the bowl. */
     public long recordMealEaten(long petId, int grams, String source) {
         return recordFeeding(petId, System.currentTimeMillis(), grams,
@@ -174,9 +215,7 @@ public final class PetDataRepository {
         readDetections(stats, petId, today);
         readRooms(stats, petId, today);
 
-        // GPS still has no source: no collar tag, no location provider, and the
-        // Pi's own position is not the pet's. Leaving it empty keeps that setup
-        // prompt honest instead of inventing a number.
+        readTrackerFix(stats, petId);
 
         return stats;
     }
@@ -395,5 +434,30 @@ public final class PetDataRepository {
         }
 
         stats.cameraOnline = piCameraLive() || recentlyDetectedSomething(dao, petId);
+    }
+
+    /**
+     * The tracker's last known position — the Pi's, not the pet's.
+     *
+     * Not limited to today, unlike everything else on this screen. A GNSS module
+     * indoors can go a long time between fixes, and "located yesterday at 18:04"
+     * is both more useful and more truthful than a blank that reads as "no GPS".
+     * The date is included once the fix is not from today, so a stale one cannot
+     * be mistaken for a fresh one at a glance.
+     */
+    private void readTrackerFix(DashboardStats stats, long petId) {
+        TrackerFix fix = db.trackerFixDao().getMostRecent(petId);
+        if (fix == null) return;
+
+        DayRange today = DayRange.today();
+        boolean fromToday = fix.getTimestampMillis() >= today.startMillis
+                && fix.getTimestampMillis() < today.endMillis;
+
+        stats.trackerFixTime = new SimpleDateFormat(
+                fromToday ? "HH:mm" : "d MMM HH:mm", Locale.getDefault())
+                .format(new Date(fix.getTimestampMillis()));
+        stats.trackerLatitude = fix.getLatitude();
+        stats.trackerLongitude = fix.getLongitude();
+        stats.trackerSatellites = fix.getSatellites();
     }
 }

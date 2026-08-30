@@ -20,7 +20,9 @@ public class DashboardStatsTest {
         // null means "no feeder paired", which is not the same as "ate 0 g".
         assertNull(stats.gramsEaten);
         assertNull(stats.currentRoom);
-        assertNull(stats.lastGpsFixAgo);
+        assertNull(stats.trackerFixTime);
+        assertNull(stats.trackerLatitude);
+        assertNull(stats.trackerLongitude);
         assertNull(stats.lastDetectionTime);
     }
 

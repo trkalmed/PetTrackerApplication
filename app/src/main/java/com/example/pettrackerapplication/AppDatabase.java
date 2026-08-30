@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
  * refuse to build until a Migration exists — which is the point.
  */
 @Database(
-        entities = {Pet.class, FeedingEvent.class, DetectionEvent.class, RoomEvent.class},
-        version = 5,
+        entities = {Pet.class, FeedingEvent.class, DetectionEvent.class, RoomEvent.class,
+                TrackerFix.class},
+        version = 6,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase INSTANCE;
@@ -25,6 +26,7 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract FeedingDao feedingDao();
     public abstract DetectionDao detectionDao();
     public abstract RoomDao roomDao();
+    public abstract TrackerFixDao trackerFixDao();
 
     /**
      * Adds the sensor-reading tables. Nothing about the pets table changes, so
@@ -131,6 +133,47 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * Somewhere to keep the Pi's own GPS fixes.
+     *
+     * The table is named for the tracker, not the pet, and that is load-bearing
+     * rather than pedantry — see {@link TrackerFix}. The Pi is a box in the
+     * hall; its coordinates are the house's, and the pet's position inside the
+     * house is what { room_events} holds.
+     *
+     * Same shape as the other Pi-fed tables: a nullable remoteId with a unique
+     * index over (petId, source, remoteId), so re-polling after a cursor reset
+     * collides and is dropped instead of storing the same fix twice.
+     *
+     * app/schemas/.../6.json is the reference; MigrationTest fails if these
+     * statements drift from it.
+     */
+    static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tracker_fixes` ("
+                            + "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "
+                            + "`petId` INTEGER NOT NULL, "
+                            + "`timestampMillis` INTEGER NOT NULL, "
+                            + "`latitude` REAL NOT NULL, "
+                            + "`longitude` REAL NOT NULL, "
+                            + "`satellites` INTEGER NOT NULL, "
+                            + "`source` TEXT, "
+                            + "`remoteId` INTEGER, "
+                            + "FOREIGN KEY(`petId`) REFERENCES `pets`(`id`) "
+                            + "ON UPDATE NO ACTION ON DELETE CASCADE )");
+            database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS "
+                            + "`index_tracker_fixes_petId_timestampMillis` "
+                            + "ON `tracker_fixes` (`petId`, `timestampMillis`)");
+            database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            + "`index_tracker_fixes_petId_source_remoteId` "
+                            + "ON `tracker_fixes` (`petId`, `source`, `remoteId`)");
+        }
+    };
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -139,7 +182,8 @@ public abstract class AppDatabase extends RoomDatabase {
                                     context.getApplicationContext(),
                                     AppDatabase.class,
                                     "pets_db")
-                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                                    MIGRATION_5_6)
                             // Version 1 predates schema export, so there is no
                             // baseline to migrate it from — wiping is the only
                             // option there. Every later version must ship a real

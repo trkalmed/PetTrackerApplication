@@ -125,6 +125,38 @@ public class PiEventSyncTest {
         assertNull(repository.statsForToday(pet()).lastSnapshotName);
     }
 
+    /**
+     * A fix from the Pi reaches the dashboard — as the <em>tracker's</em>
+     * position, which is the only thing it ever describes.
+     */
+    @Test
+    public void aFixFromThePiReachesTheDashboard() {
+        pi.page(location(52, todayAt(HOUR), 32.00964, 35.76567, 12));
+
+        assertEquals(1, sync.sync(petId).stored);
+
+        DashboardStats stats = repository.statsForToday(pet());
+        assertEquals(32.00964, stats.trackerLatitude, 0.000005);
+        assertEquals(12, stats.trackerSatellites);
+    }
+
+    /**
+     * A location event with no coordinates is skipped, not fatal.
+     *
+     * The Pi does not send these — it drops a fix it could not parse — but the
+     * sync must survive one page of five hundred containing a malformed row.
+     */
+    @Test
+    public void aFixWithNoCoordinatesIsSkipped() {
+        pi.page(event(53, PiEvent.KIND_LOCATION, todayAt(HOUR)));
+
+        PiEventSync.Result result = sync.sync(petId);
+
+        assertEquals(0, result.stored);
+        assertEquals(1, result.ignored);
+        assertNull(repository.statsForToday(pet()).trackerFixTime);
+    }
+
     @Test
     public void rawWeightsAreNotStored() {
         // Logged once a minute for whoever is calibrating the load cell. The
@@ -318,6 +350,16 @@ public class PiEventSyncTest {
     private static JSONObject motion(long id, long timestamp, String room) {
         try {
             return event(id, PiEvent.KIND_MOTION, timestamp).put("room", room);
+        } catch (JSONException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static JSONObject location(long id, long timestamp, double lat,
+                                       double lon, int satellites) {
+        try {
+            return event(id, PiEvent.KIND_LOCATION, timestamp)
+                    .put("lat", lat).put("lon", lon).put("satellites", satellites);
         } catch (JSONException e) {
             throw new AssertionError(e);
         }

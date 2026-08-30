@@ -45,6 +45,57 @@ public class PiEventTest {
         assertNull(event.room);
     }
 
+    /**
+     * The real reply from the Pi in the hall, on the evening the antenna
+     * arrived. Copied from the fix that pettracker.bringup printed, so if the
+     * NMEA parser's output ever changes shape this test carries the old one.
+     */
+    @Test
+    public void parsesALocationEvent() {
+        PiEvent event = PiEvent.fromJson(json("{"
+                + "'id': 421, 'kind': 'location', 'timestamp_ms': " + JULY_2025 + ","
+                + "'source': 'gps', 'lat': 32.00964, 'lon': 35.76567,"
+                + "'satellites': 12}"));
+
+        assertNotNull(event);
+        assertEquals(PiEvent.KIND_LOCATION, event.kind);
+        assertEquals(32.00964, event.latitude, 0.000005);
+        assertEquals(35.76567, event.longitude, 0.000005);
+        assertEquals(Integer.valueOf(12), event.satellites);
+        assertNull(event.room);
+        assertNull(event.grams);
+    }
+
+    /**
+     * Satellite count is optional on the wire; coordinates are not.
+     *
+     * A fix with no count is still a position worth storing — the count only
+     * says how much to trust it — so its absence must not cost the event.
+     */
+    @Test
+    public void parsesALocationEventWithNoSatelliteCount() {
+        PiEvent event = PiEvent.fromJson(json("{"
+                + "'id': 422, 'kind': 'location', 'timestamp_ms': " + JULY_2025 + ","
+                + "'source': 'gps', 'lat': 32.00964, 'lon': 35.76567}"));
+
+        assertNotNull(event);
+        assertNull(event.satellites);
+        assertEquals(32.00964, event.latitude, 0.000005);
+    }
+
+    /** Every other kind leaves the location fields alone. */
+    @Test
+    public void nonLocationEventsHaveNoCoordinates() {
+        PiEvent event = PiEvent.fromJson(json("{"
+                + "'id': 45, 'kind': 'motion', 'timestamp_ms': " + JULY_2025 + ","
+                + "'room': 'Hall'}"));
+
+        assertNotNull(event);
+        assertNull(event.latitude);
+        assertNull(event.longitude);
+        assertNull(event.satellites);
+    }
+
     @Test
     public void parsesAMotionEvent() {
         PiEvent event = PiEvent.fromJson(json("{"

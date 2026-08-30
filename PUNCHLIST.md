@@ -2,10 +2,15 @@
 
 State: P0-P3 done. Sensor data layer built. Detector upgraded. Green theme applied.
 The two halves are joined: the app polls the Pi, and motion sightings become rooms.
-On real hardware: three PIRs, a USB camera, a CSI camera, motion snapshots, the
-live detector against the Pi stream, **GPS fixing on 12 satellites**, and **the
-load cell calibrated at 379.09 counts/g**. Open: the paddle wheel (being built),
-the app's use of the GPS fix, #11 cloud sync (held), #20, #26. 2026-08-30.
+**Every sensor is working on real hardware and every one of them reaches the
+phone.** Three PIRs, a USB camera, a CSI camera, motion snapshots, the live
+detector against the Pi stream, GPS fixing on 12 satellites, the load cell
+calibrated at 385.66 counts/g, and a paddle-wheel feeder the app can run from
+the Food tab. Confirmed end to end on a TECNO CI7n against the rig on
+2026-08-30: GPS, load cell and feeder all behaving as intended from the app.
+
+Open: `PETTRACKER_PADDLE_GRAMS` still needs measuring with a full hopper, #11
+cloud sync (held), #20, #26. 2026-08-30.
 
 ---
 
@@ -732,21 +737,26 @@ coming from the PIRs, where it actually comes from. Offered, not yet taken up.
 
 ## What is left
 
-1. ~~The load cell (HX711).~~ Done: calibrated at 379.09 counts/g and reporting
+1. ~~The load cell (HX711).~~ Done: calibrated at 385.66 counts/g and reporting
    grams through `/health`. The food ring, the meal chips and the Food tab have
    a real source now.
-2. **The paddle wheel.** The servo is proven on GPIO 18 via lgpio and
-   `PaddleFeeder` is written and tested; what is left is physical — the wheel
-   itself, a separate 5 V supply with its ground tied to a Pi ground, and
-   measuring `--paddle-grams` by cycling ten times into a bowl. `POST /feed`
-   still has no button in the app to call it.
+2. **The paddle wheel** — built, and dispensing from the phone. It turns on
+   GPIO 18 off an LM2596 set to 5.0 V with its ground tied to a Pi ground, and
+   the Food tab's "Feed now" button drives it through `POST /feed`.
+   One thing left, and it is a measurement rather than a build:
+   `PETTRACKER_PADDLE_GRAMS` still holds the placeholder 5.0. The design is one
+   pocket per portion — load the normal portion and ask for exactly that — which
+   needs the variable set to the portion size, or a request for 40 g turns the
+   wheel eight times.
 3. ~~The CSI camera.~~ Done: `PiCamera.read_jpeg` captures through picamera2,
    verified at 20/20 frames and 18.4 fps. Two cameras, two rooms — the USB one
    over the feeder in the kitchen, the CSI one over the hall — is the plan; a
    camera per room is deferred, not designed.
-4. **The GPS fix in the app** → `lastGpsFixAgo`. The hardware is done; what is
-   open is the honest framing, described in "Next session" §4. It is the
-   tracker's location, never the pet's, unless a collar tag arrives.
+4. ~~The GPS fix in the app.~~ Done: stored in `tracker_fixes`, shown in the
+   dashboard's device row as "Pi located", with the coordinates and satellite
+   count behind a tap. Named for the tracker at every level so nothing can
+   quietly start presenting it as the pet's whereabouts — that would need a
+   collar tag, and it would land in its own table beside this one.
 4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing
    when you come back to it: the local layer was built so this stays a clean
    addition. Readings are append-only rows with their own timestamps, an explicit
@@ -762,9 +772,11 @@ coming from the PIRs, where it actually comes from. Offered, not yet taken up.
    build-time verified. `PiClient`, `PiEvent` and `RoomEvent` are ordinary
    classes with no reflection, so no new keep rules were needed — but that is an
    argument, not a test.
-8. **`POST /feed` has no button.** The Pi will dispense on request and nothing in
-   the app asks it to. A "Feed now" control on the Food tab is the obvious next
-   feature, and the client method is ~15 lines.
+8. ~~`POST /feed` has no button.~~ Done: "Feed now" on the Food tab, disabled
+   until `/health` reports a feeder so it cannot offer what the hardware cannot
+   do. A refusal shows the Pi's own sentence rather than a status code, and a
+   dispense records nothing — the request says what was asked for, and the meal
+   arrives on the next poll having been weighed.
 
 ### Housekeeping worth doing eventually
 `feeding_events` and `detection_events` grow without bound. `deleteOlderThan(...)` exists on

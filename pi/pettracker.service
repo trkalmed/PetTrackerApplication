@@ -40,6 +40,23 @@ Environment="PETTRACKER_SCALE_PINS=5,6"
 # 1.0 means uncalibrated, and every weight is then raw counts wearing a gram
 # label. Run --calibrate-scale and put the real number in service.env.
 Environment="PETTRACKER_SCALE_FACTOR=1.0"
+Environment="PETTRACKER_GPS_PORT=/dev/serial0"
+# How the hopper meters food: "gate" holds a flap open for a time, "paddle"
+# turns whole pockets. The paddle numbers are ignored by the gate and the gate
+# numbers by the paddle, so switching designs is this one variable and nothing
+# else. The defaults below are the same numbers the code falls back to, and
+# tests/test_service_unit.py fails if the two ever drift apart.
+Environment="PETTRACKER_FEEDER=gate"
+Environment="PETTRACKER_SERVO_PIN=18"
+Environment="PETTRACKER_SERVO_OPEN=90"
+Environment="PETTRACKER_SERVO_CLOSED=0"
+Environment="PETTRACKER_SERVO_MS_PER_GRAM=50.0"
+Environment="PETTRACKER_PADDLE_PARK=30"
+Environment="PETTRACKER_PADDLE_DUMP=150"
+# 5 g a pocket is a guess, and a guess here is the difference between a fed cat
+# and an overfed one. Measure it — ten cycles into a bowl, weighed, divided by
+# ten — and put the real number in service.env.
+Environment="PETTRACKER_PADDLE_GRAMS=5.0"
 EnvironmentFile=-@DIR@/service.env
 
 # ${VAR}, not $VAR. systemd splits $VAR on whitespace, which would turn
@@ -50,7 +67,16 @@ ExecStart=/usr/bin/python3 run.py \
     --pir-pins ${PETTRACKER_PIR_PINS} \
     --camera ${PETTRACKER_CAMERA} \
     --scale-pins ${PETTRACKER_SCALE_PINS} \
-    --scale-factor ${PETTRACKER_SCALE_FACTOR}
+    --scale-factor ${PETTRACKER_SCALE_FACTOR} \
+    --gps-port ${PETTRACKER_GPS_PORT} \
+    --feeder ${PETTRACKER_FEEDER} \
+    --servo-pin ${PETTRACKER_SERVO_PIN} \
+    --servo-open ${PETTRACKER_SERVO_OPEN} \
+    --servo-closed ${PETTRACKER_SERVO_CLOSED} \
+    --servo-ms-per-gram ${PETTRACKER_SERVO_MS_PER_GRAM} \
+    --paddle-park ${PETTRACKER_PADDLE_PARK} \
+    --paddle-dump ${PETTRACKER_PADDLE_DUMP} \
+    --paddle-grams ${PETTRACKER_PADDLE_GRAMS}
 
 # A sensor read that kills the process should not take the house's motion log
 # with it until someone notices. Five seconds is long enough that a genuinely

@@ -51,5 +51,19 @@ sudo systemctl status pettracker --no-pager --lines=5 || true
 echo
 echo "Logs   : journalctl -u pettracker -f"
 echo "Restart: sudo systemctl restart pettracker"
-echo "Options: put PETTRACKER_ROOMS / PETTRACKER_PIR_PINS / PETTRACKER_CAMERA"
-echo "         in $DIR/service.env, then restart"
+echo "Options: put any of these in $DIR/service.env, then restart."
+echo "         The unit lists them with their defaults and why they matter."
+echo
+echo "         rooms and sensors  PETTRACKER_ROOMS PETTRACKER_PIR_PINS"
+echo "                            PETTRACKER_CAMERA PETTRACKER_GPS_PORT"
+echo "         load cell          PETTRACKER_SCALE_PINS PETTRACKER_SCALE_FACTOR"
+echo "         feeder             PETTRACKER_FEEDER (gate or paddle)"
+echo "                            PETTRACKER_SERVO_PIN"
+echo "           gate             PETTRACKER_SERVO_OPEN PETTRACKER_SERVO_CLOSED"
+echo "                            PETTRACKER_SERVO_MS_PER_GRAM"
+echo "           paddle           PETTRACKER_PADDLE_PARK PETTRACKER_PADDLE_DUMP"
+echo "                            PETTRACKER_PADDLE_GRAMS"
+echo
+echo "         The two worth measuring rather than guessing are"
+echo "         PETTRACKER_SCALE_FACTOR (--calibrate-scale) and, for a paddle,"
+echo "         PETTRACKER_PADDLE_GRAMS (ten cycles into a bowl, divided by ten)."

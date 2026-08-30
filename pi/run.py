@@ -234,7 +234,14 @@ def check_motion_mode(args, rooms, log) -> int:
     return 0
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Every flag the service takes, in one place the tests can reach.
+
+    Split out of main() so test_service_unit.py can feed the systemd unit's own
+    ExecStart line to the real parser. A unit that passes a flag this parser
+    does not have is a service that exits 2 at boot, and the only place that
+    used to show up was the journal on the Pi.
+    """
     parser = argparse.ArgumentParser(description="Pet Tracker Pi service")
     parser.add_argument("--fake", action="store_true",
                         help="use simulated sensors instead of real hardware")
@@ -310,7 +317,11 @@ def main() -> int:
                         help="watch the PIR sensors live and exit, instead of "
                              "running the service. Use this while wiring them")
     parser.add_argument("-v", "--verbose", action="store_true")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

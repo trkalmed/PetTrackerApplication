@@ -2,9 +2,10 @@
 
 State: P0-P3 done. Sensor data layer built. Detector upgraded. Green theme applied.
 The two halves are joined: the app polls the Pi, and motion sightings become rooms.
-On real hardware: three PIRs, a USB camera, motion snapshots, and the live
-detector running against the Pi stream. Open: the load cell, the servo, the CSI
-camera stub, GPS, #11 cloud sync (held), #20, #26. 2026-08-28.
+On real hardware: three PIRs, a USB camera, a CSI camera, motion snapshots, the
+live detector against the Pi stream, **GPS fixing on 12 satellites**, and **the
+load cell calibrated at 379.09 counts/g**. Open: the paddle wheel (being built),
+the app's use of the GPS fix, #11 cloud sync (held), #20, #26. 2026-08-30.
 
 ---
 
@@ -611,7 +612,23 @@ and the load cell will be wired. Signal should be fine there: a router in the
 living room, and an amplifier in the bedroom whose door onto the hall stays
 open. Motion sensor placements to be decided on the day.
 
-### 1. The load cell, with the replacement HX711
+### 1. ✅ The load cell, with the replacement HX711 — done 2026-08-30
+
+**Factor: 379.09 counts per gram**, positive, from a 204 g weight moving the
+reading by 77,335 counts. Zero sits at ~379,880. In `service.env` as
+`PETTRACKER_SCALE_FACTOR=379.09`.
+
+The magnitude suits the meal detector as it stands: at 379 counts/g the 5 g
+minimum change is ~1,900 counts, far above the noise floor, and a full 5 kg
+lands near 1.9 M counts — well inside the HX711's ±8.4 M range, so nothing
+saturates at the top of the cell's span. No threshold changes needed.
+
+Powered from **3.3 V**, deliberately: at 5 V the board drives 5 V logic on DT
+into a 3.3 V-only GPIO, which is out of spec and would make the Pi the next
+thing to die. The lost resolution is irrelevant at this factor.
+
+The original note follows, since the failure it describes is the one to avoid
+again on any rebuild.
 
 The last amplifier died from reversed VCC/GND — no protection on these boards,
 and the failure is silent: the module looks fine, the cell is unharmed, and the
@@ -647,12 +664,30 @@ python3 run.py --feeder paddle --paddle-park 30 --paddle-dump 150 --paddle-grams
 
 `--paddle-grams` is measured by cycling ten times into a bowl and dividing.
 
-**A gap to close first:** the systemd unit knows nothing about `--feeder` or the
-paddle settings, so the service would run the gate design regardless of what is
-passed on the command line. Needs `PETTRACKER_FEEDER`, `PETTRACKER_PADDLE_PARK`,
-`PETTRACKER_PADDLE_DUMP` and `PETTRACKER_PADDLE_GRAMS` adding to
-`pettracker.service` and its ExecStart. Ten minutes, and worth doing before
-anything is measured.
+**✅ The gap is closed (2026-08-30).** The unit now declares `PETTRACKER_FEEDER`,
+`PETTRACKER_SERVO_PIN`, the three gate settings, the three paddle settings and
+`PETTRACKER_GPS_PORT`, and passes all of them on ExecStart. Switching designs is
+one line in `service.env`:
+
+```
+PETTRACKER_FEEDER=paddle
+PETTRACKER_PADDLE_GRAMS=<measured>
+```
+
+Run `./install-service.sh` on the Pi to pick the new unit up — it rewrites and
+restarts. Its closing output now lists every variable, grouped, with the two
+worth measuring rather than guessing called out.
+
+`tests/test_service_unit.py` (11 tests) keeps it honest. It does what systemd
+does — reads the `Environment=` defaults, splits ExecStart into words, expands
+`${VAR}` per word — and feeds the result to the *real* parser, now extracted as
+`run.build_parser()`. So a unit that passes a flag the program does not have
+fails on a laptop in a second instead of exiting 2 into the journal on the Pi at
+boot. It also asserts the unit's defaults equal the code's, which is what makes
+the deliberate duplication safe: the unit is meant to be readable on its own,
+and a unit saying 30° while the code means 45° is a paddle parking in the wrong
+place with nothing anywhere disagreeing. Verified to fail as well as pass —
+changing one default produced exactly one failure naming it.
 
 ### 3. Once the sensors are placed
 
@@ -668,24 +703,50 @@ Then `sudo systemctl restart pettracker`, and check the Wi-Fi signal where it
 ends up — `iw dev wlan0 link | grep -i signal`. Past -75 dBm the MJPEG stream
 starts to stutter; the events and snapshots are small enough not to care.
 
-### 4. If the GNSS antenna arrives
+### 4. ✅ GPS — done 2026-08-30
 
-`--check-gps` on the balcony. The module and wiring are already proven; it needs
-an active 1575.42 MHz antenna, SMA or IPEX. Watch the green PPS LED — it blinks
-once a second on a fix.
+**Fix at 32.00964, 35.76567 from 12 satellites.** The diagnosis held exactly:
+the module and wiring were always fine and the antenna was the wrong band. With
+a 1575.42 MHz active antenna it fixes indoors-adjacent without drama.
+
+Three wires only — VCC to 3.3 V, GND, module TX to Pi RX (GPIO 15). Pi TX stays
+disconnected: the service opens the port read-only and never writes, and
+connecting it is what produced the "frame errors" line last time.
+
+The service needs no flag change — `--gps-port` defaults to `/dev/serial0` — and
+the unit now states it explicitly so `--check-gps` and the service can never
+prove different ports.
+
+**Still open, and it is a design question rather than a bug:** the fix reaches
+the app and is discarded. `PiEventSync` has no case for the `location` kind, so
+it falls into the unknown-kind branch, and `statsForToday` never sets
+`lastGpsFixAgo` — deliberately, per the comment there. The Pi sits in the hall;
+its position is the house, not the cat. Wiring it into the dashboard's `GPS %1$s`
+line, which sits under "Where they were", would have the app claiming to track
+the pet's position while reporting a stationary box.
+
+The honest version, ~40 lines and worth having in the thesis: store the location
+events, and label the reading as the **tracker's** location — evidence the
+location subsystem works end to end, with the pet's in-house position still
+coming from the PIRs, where it actually comes from. Offered, not yet taken up.
 
 ## What is left
 
-1. **The load cell (HX711).** The last empty card on the dashboard, and the
-   app's headline feature: the food ring, the meal chips and the whole Food tab
-   have nothing to draw. `HX711Scale.read_grams` and `tare` are stubs, and the
-   calibration factor can only be found with a known weight on the real bowl.
-2. **The servo**, on its own 5 V supply. `ServoFeeder.dispense` is a stub, and
-   `POST /feed` has no button in the app to call it.
-3. **The CSI camera.** `PiCamera.read_jpeg` is a stub. The USB path works, so
-   this only matters for a second camera or a neater physical build.
-4. **GPS** → `lastGpsFixAgo`. Needs a collar or tag; the Pi's own location is not
-   the pet's. Still deliberately empty.
+1. ~~The load cell (HX711).~~ Done: calibrated at 379.09 counts/g and reporting
+   grams through `/health`. The food ring, the meal chips and the Food tab have
+   a real source now.
+2. **The paddle wheel.** The servo is proven on GPIO 18 via lgpio and
+   `PaddleFeeder` is written and tested; what is left is physical — the wheel
+   itself, a separate 5 V supply with its ground tied to a Pi ground, and
+   measuring `--paddle-grams` by cycling ten times into a bowl. `POST /feed`
+   still has no button in the app to call it.
+3. ~~The CSI camera.~~ Done: `PiCamera.read_jpeg` captures through picamera2,
+   verified at 20/20 frames and 18.4 fps. Two cameras, two rooms — the USB one
+   over the feeder in the kitchen, the CSI one over the hall — is the plan; a
+   camera per room is deferred, not designed.
+4. **The GPS fix in the app** → `lastGpsFixAgo`. The hardware is done; what is
+   open is the honest framing, described in "Next session" §4. It is the
+   tracker's location, never the pet's, unless a collar tag arrives.
 4. **#11 — cloud sync. Held for you to evaluate**, not rejected. Worth knowing
    when you come back to it: the local layer was built so this stays a clean
    addition. Readings are append-only rows with their own timestamps, an explicit

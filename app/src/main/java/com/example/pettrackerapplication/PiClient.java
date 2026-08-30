@@ -34,6 +34,17 @@ public final class PiClient implements PiEventSource {
     private static final int READ_TIMEOUT_MS    = 8_000;
 
     /**
+     * Longer, because a dispense blocks until the food has actually moved.
+     *
+     * A paddle wheel takes roughly a second per pocket and the Pi allows twenty
+     * pockets in one request, so a legitimate reply can be twenty seconds away.
+     * Timing out early would leave the phone reporting a failure while the
+     * hopper is still turning, which is the one wrong answer here: the user
+     * would press it again.
+     */
+    private static final int FEED_TIMEOUT_MS    = 30_000;
+
+    /**
      * Refuse to buffer more than this from one reply.
      *
      * The Pi caps a page at 500 events, so a legitimate reply is tens of
@@ -65,6 +76,89 @@ public final class PiClient implements PiEventSource {
     @Override
     public PiEventPage events(long since) throws IOException {
         return PiEventPage.fromJson(get("/events?since=" + Math.max(0, since)), since);
+    }
+
+    /**
+     * Asks the feeder to dispense, and waits for it to finish.
+     *
+     * The reply says what was <em>requested</em>, never what fell. A servo
+     * controls how long a hopper is open or how many pockets turn, not how much
+     * kibble comes out of either — the load cell measures that, the Pi's meal
+     * detector turns it into a feeding event, and the app hears about it on the
+     * next poll. So this returns nothing: treating the request as a meal would
+     * put a number on the dashboard that nothing weighed.
+     *
+     * Blocks for the whole dispense, which for a paddle wheel is about a second
+     * per pocket. The read timeout allows for that; a request for ten pockets
+     * is close to it, which is why the Pi caps a single request at 500 g.
+     *
+     * @throws IOException with the Pi's own words when it refuses — an
+     *         unavailable feeder and an unreachable Pi are different problems
+     *         and the person holding the phone can act on the difference.
+     */
+    public void feed(int grams) throws IOException {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("grams", grams);
+        } catch (JSONException e) {
+            throw new IOException("could not build the feed request", e);
+        }
+        post("/feed", body);
+    }
+
+    /** Zeroes the scale, so "empty bowl" reads as 0 g rather than the bowl. */
+    public void tare() throws IOException {
+        post("/tare", new JSONObject());
+    }
+
+    private JSONObject post(String path, JSONObject body) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path)
+                .openConnection();
+        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(FEED_TIMEOUT_MS);
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Connection", "close");
+
+        try {
+            byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(payload.length);
+            connection.getOutputStream().write(payload);
+
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new IOException(errorFrom(connection, status, path));
+            }
+            try {
+                return new JSONObject(readBody(connection.getInputStream()));
+            } catch (JSONException e) {
+                throw new IOException("Pi sent something that is not JSON for " + path, e);
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /**
+     * The Pi's explanation, if it gave one.
+     *
+     * It answers a refusal with {@code {"error": "feeder unavailable"}}, which
+     * is worth surfacing verbatim: "503" tells the user nothing, and "the feeder
+     * is not connected" tells them exactly which cable to look at.
+     */
+    private String errorFrom(HttpURLConnection connection, int status, String path) {
+        InputStream errors = connection.getErrorStream();
+        if (errors != null) {
+            try {
+                String message = new JSONObject(readBody(errors)).optString("error", "");
+                if (!message.isEmpty()) return message;
+            } catch (IOException | JSONException ignored) {
+                // No usable explanation. The status code below is all there is.
+            }
+        }
+        return "Pi answered " + status + " for " + path;
     }
 
     private JSONObject get(String path) throws IOException {

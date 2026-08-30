@@ -165,6 +165,24 @@
       sits beside the camera status precisely because it is device state.
     -->
     <string name="no_gps_fix_yet">Pi has no GPS fix</string>
+
+    <!--
+      Feeding on demand. The wording never claims the pet was fed — the feeder
+      moves food, and only the load cell knows how much arrived, which comes
+      back later as a meal. "Dispensing" and "sent" say what actually happened.
+    -->
+    <string name="feed_now">Feed now</string>
+    <string name="feeder_checking">Checking the feeder…</string>
+    <string name="feeder_ready">Ready · the load cell reports what actually lands</string>
+    <string name="feeder_unavailable">The Pi has no feeder connected</string>
+    <string name="feeder_no_pi">No Pi paired. Add one in Settings.</string>
+    <string name="feed_dialog_title">How much?</string>
+    <string name="feed_dialog_message">Grams to dispense. A paddle feeder turns whole pockets, so it rounds to the nearest one — and what actually falls is whatever the load cell weighs.</string>
+    <string name="feed_action">Dispense</string>
+    <string name="feed_dispensing">Dispensing…</string>
+    <string name="feed_sent">Feeder ran. Watching the bowl for what landed.</string>
+    <string name="feed_failed">Could not feed: %1$s</string>
+    <string name="feed_grams_invalid">Enter a number of grams between 1 and 500.</string>
     <string name="tracker_located">Pi located · %1$s</string>
     <string name="tracker_fix_title">Where the Pi is</string>
     <string name="tracker_fix_body">%1$.5f, %2$.5f\n\nFrom %3$d satellites, at %4$s.\n\nThis is the tracker\'s own position — the Raspberry Pi in your home, not your pet. Where your pet has been comes from the motion sensors.</string>

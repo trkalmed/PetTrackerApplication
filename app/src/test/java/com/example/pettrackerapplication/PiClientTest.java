@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@link PiClient} against a real server on a real socket.
@@ -57,6 +58,59 @@ public class PiClientTest {
         assertTrue(health.ok);
         assertEquals(42, health.latestCursor);
         assertTrue(health.motionSensors.get("Kitchen"));
+    }
+
+    // ── Feeding ─────────────────────────────────────────────────────────────
+
+    @Test
+    public void feedPostsTheGramsThePiExpects() throws IOException {
+        client.feed(40);
+
+        assertEquals("POST", pi.methods.get(0));
+        assertEquals("/feed", pi.requests.get(0));
+        // The Pi rejects anything that is not a positive integer under the key
+        // "grams", so the shape of this body is the contract.
+        assertEquals("{\"grams\":40}", pi.bodies.get(0));
+    }
+
+    @Test
+    public void tarePostsToTheRightPath() throws IOException {
+        client.tare();
+
+        assertEquals("POST", pi.methods.get(0));
+        assertEquals("/tare", pi.requests.get(0));
+    }
+
+    /**
+     * A refusal arrives as the Pi's own sentence, not as a status code.
+     *
+     * "Pi answered 503" sends someone to the logs. "feeder unavailable" sends
+     * them to the servo's plug, which is where the problem is.
+     */
+    @Test
+    public void aRefusedFeedCarriesThePisExplanation() {
+        pi.status = 503;
+        pi.postBody = "{'error': 'feeder unavailable'}";
+
+        try {
+            client.feed(40);
+            fail("a 503 should not look like success");
+        } catch (IOException e) {
+            assertEquals("feeder unavailable", e.getMessage());
+        }
+    }
+
+    @Test
+    public void aRefusalWithNoExplanationStillFails() {
+        pi.status = 400;
+        pi.postBody = "{}";
+
+        try {
+            client.feed(40);
+            fail("a 400 should not look like success");
+        } catch (IOException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("400"));
+        }
     }
 
     @Test
@@ -164,6 +218,8 @@ public class PiClientTest {
 
         private final ServerSocket socket;
         final List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        final List<String> methods  = Collections.synchronizedList(new ArrayList<>());
+        final List<String> bodies   = Collections.synchronizedList(new ArrayList<>());
 
         volatile int status = 200;
         volatile boolean truncateReply = false;
@@ -173,6 +229,8 @@ public class PiClientTest {
                 + "'sensors': {'scale': true, 'feeder': true, 'camera': true,"
                 + " 'location': false, 'motion': {'Kitchen': true}}}";
         volatile String eventsBody = "{'events': [], 'next_cursor': 0, 'has_more': false}";
+        volatile String postBody = "{'requested_grams': 40,"
+                + " 'note': 'actual amount comes from the load cell'}";
 
         FakePi() throws IOException {
             socket = new ServerSocket(0, 0, InetAddress.getByName("127.0.0.1"));
@@ -193,16 +251,40 @@ public class PiClientTest {
 
                     String requestLine = in.readLine();
                     if (requestLine == null) continue;
-                    String path = requestLine.split(" ")[1];
+                    String[] parts = requestLine.split(" ");
+                    String method = parts[0];
+                    String path = parts[1];
                     requests.add(path);
+                    methods.add(method);
 
-                    // Headers, up to the blank line. Ignored, but they have to be
-                    // read or the client's write can block against a full buffer.
+                    // Headers, up to the blank line. They have to be read or the
+                    // client's write can block against a full buffer — and the
+                    // length is needed to know where a POST body ends.
+                    int length = 0;
                     String line;
-                    while ((line = in.readLine()) != null && !line.isEmpty()) { /* drain */ }
+                    while ((line = in.readLine()) != null && !line.isEmpty()) {
+                        String lower = line.toLowerCase(Locale.ROOT);
+                        if (lower.startsWith("content-length:")) {
+                            length = Integer.parseInt(
+                                    line.substring(line.indexOf(':') + 1).trim());
+                        }
+                    }
+                    if (length > 0) {
+                        char[] payload = new char[length];
+                        int read = 0;
+                        while (read < length) {
+                            int n = in.read(payload, read, length - read);
+                            if (n < 0) break;
+                            read += n;
+                        }
+                        bodies.add(new String(payload, 0, Math.max(0, read)));
+                    }
 
-                    byte[] body = (path.startsWith("/health") ? healthBody : eventsBody)
-                            .replace('\'', '"').getBytes(StandardCharsets.UTF_8);
+                    String reply = path.startsWith("/health") ? healthBody
+                            : path.startsWith("/feed") || path.startsWith("/tare")
+                                    ? postBody : eventsBody;
+                    byte[] body = reply.replace('\'', '"')
+                            .getBytes(StandardCharsets.UTF_8);
 
                     OutputStream out = client.getOutputStream();
                     out.write(("HTTP/1.1 " + status + " \r\n"

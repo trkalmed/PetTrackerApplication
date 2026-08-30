@@ -125,6 +125,31 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!--
+              Dispense on demand. Disabled until the Pi says it has a feeder,
+              so the button cannot promise something the hardware cannot do.
+            -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFeedNow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:enabled="false"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
+                android:text="@string/feed_now"
+                app:cornerRadius="28dp" />
+
+            <TextView
+                android:id="@+id/tvFeedNowState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="@string/feeder_checking"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
             <!-- Meals -->
             <TextView
                 android:layout_width="wrap_content"

@@ -174,6 +174,28 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * Drops the cached instance, closing it first. Tests only.
+     *
+     * A test that wants a known-empty database calls
+     * {@code context.deleteDatabase("pets_db")}, which unlinks the file — but
+     * the singleton above is still holding an open connection to it, and
+     * {@link #getInstance} then hands that same dead connection back because
+     * INSTANCE is not null. What follows is "no such table: pets" from the
+     * second test onwards, which reads like a schema fault and is really a
+     * lifecycle one.
+     *
+     * So: close and forget, then delete, then ask for a new one.
+     */
+    static void closeForTests() {
+        synchronized (AppDatabase.class) {
+            if (INSTANCE != null) {
+                INSTANCE.close();
+                INSTANCE = null;
+            }
+        }
+    }
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {

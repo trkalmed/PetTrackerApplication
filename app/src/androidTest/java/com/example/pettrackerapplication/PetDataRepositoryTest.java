@@ -37,6 +37,10 @@ public class PetDataRepositoryTest {
     @Before
     public void setUp() {
         context = ApplicationProvider.getApplicationContext();
+        // Close the cached instance before unlinking the file, or the
+        // singleton hands the next test a connection to a database that
+        // no longer exists — see AppDatabase.closeForTests().
+        AppDatabase.closeForTests();
         context.deleteDatabase("pets_db");           // start from a known state
         db = AppDatabase.getInstance(context);
         repository = new PetDataRepository(context);
@@ -224,7 +228,7 @@ public class PetDataRepositoryTest {
     // ── Things with no hardware yet ─────────────────────────────────────────
 
     @Test
-    public void gpsStaysEmptyUntilThatHardwareExists() {
+    public void aFeedingReadingFillsInNothingItDoesNotKnow() {
         repository.recordFeeding(petId, todayAt(HOUR), 50, FeedingEvent.TYPE_EATEN, "f");
 
         DashboardStats stats = repository.statsForToday(pet());

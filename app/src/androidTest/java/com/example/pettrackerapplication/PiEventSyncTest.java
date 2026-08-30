@@ -49,6 +49,10 @@ public class PiEventSyncTest {
     @Before
     public void setUp() {
         context = ApplicationProvider.getApplicationContext();
+        // Close the cached instance before unlinking the file, or the
+        // singleton hands the next test a connection to a database that
+        // no longer exists — see AppDatabase.closeForTests().
+        AppDatabase.closeForTests();
         context.deleteDatabase("pets_db");
         db = AppDatabase.getInstance(context);
         repository = new PetDataRepository(context);

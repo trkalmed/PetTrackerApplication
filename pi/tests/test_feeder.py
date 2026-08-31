@@ -388,13 +388,12 @@ class PaddleTest(unittest.TestCase):
 class RestingAnglesStayOffTheEndStops(unittest.TestCase):
     """The defaults a feeder parks at must be reachable by a real servo.
 
-    This exists because a servo died. An angle is mapped linearly onto a
-    500-2400 us pulse, so 0 degrees asks for exactly the minimum, and many SG90
-    clones cannot get there — they stall against an internal stop and grind
-    their gears. The gate's closed angle used to be 0. A feeder parks on
-    construction and the service restarts on failure, so that default was
-    filing teeth off on every start, while voltage, current and wiring all
-    measured perfectly fine.
+    An angle is mapped linearly onto a 500-2400 us pulse, so 0 degrees asks for
+    exactly the minimum, and many SG90 clones cannot get there — they stall
+    against an internal stop and sit drawing stall current. The gate's closed
+    angle used to be 0. A feeder parks on construction and the service restarts
+    on failure, so that default was a standing request for an unreachable
+    position, renewed at every start.
 
     Nothing enforces the band at runtime: --check-servo has to be able to ask
     for any angle, because finding a particular servo's real limits is what it

@@ -320,12 +320,15 @@ class ServoOutput:
     #:
     #: Not enforced — a bring-up session needs to be able to ask for anything,
     #: because finding a particular servo's real limits is the point of it. This
-    #: is advice for choosing defaults and configured positions, and it is
-    #: written down because ignoring it destroyed an SG90: 0 degrees is exactly
-    #: MIN_PULSE_US, many clones cannot reach it, and a feeder parks on every
-    #: start. A servo held against its own end stop draws stall current and
-    #: files its gears until there are none left, silently, while every
-    #: measurement you can take says the wiring and the supply are fine.
+    #: is advice for choosing defaults and configured positions.
+    #:
+    #: 0 degrees is exactly MIN_PULSE_US and 180 exactly MAX_PULSE_US. Datasheet
+    #: travel for an SG90 is 1000-2000 us; the wider range here is what most
+    #: real ones manage, but "most" is not "this one", and a servo asked for a
+    #: pulse it cannot reach stalls against an internal stop and draws stall
+    #: current for as long as it is asked. A feeder parks on construction and
+    #: the service restarts on failure, so a resting position at the limit is
+    #: not a momentary mistake — it is a standing one, repeated at every start.
     #:
     #: Angles outside this band are for finding limits, not for living at.
     SAFE_MIN_ANGLE = 20

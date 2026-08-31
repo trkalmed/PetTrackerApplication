@@ -17,7 +17,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pettracker.sensors.gpio import ServoOutput
-from pettracker.sensors.real import ServoFeeder
+from pettracker.sensors.real import PaddleFeeder, ServoFeeder
 
 
 def setUpModule():
@@ -383,3 +383,38 @@ class PaddleTest(unittest.TestCase):
         self.assertFalse(feeder.available)
         with self.assertRaises(RuntimeError):
             feeder.dispense(10)
+
+
+class RestingAnglesStayOffTheEndStops(unittest.TestCase):
+    """The defaults a feeder parks at must be reachable by a real servo.
+
+    This exists because a servo died. An angle is mapped linearly onto a
+    500-2400 us pulse, so 0 degrees asks for exactly the minimum, and many SG90
+    clones cannot get there — they stall against an internal stop and grind
+    their gears. The gate's closed angle used to be 0. A feeder parks on
+    construction and the service restarts on failure, so that default was
+    filing teeth off on every start, while voltage, current and wiring all
+    measured perfectly fine.
+
+    Nothing enforces the band at runtime: --check-servo has to be able to ask
+    for any angle, because finding a particular servo's real limits is what it
+    is for. What must not happen is a *default* that lives outside it.
+    """
+
+    def test_gate_defaults_are_reachable(self):
+        self.assertGreaterEqual(ServoFeeder.DEFAULT_CLOSED_ANGLE,
+                                ServoOutput.SAFE_MIN_ANGLE)
+        self.assertLessEqual(ServoFeeder.DEFAULT_OPEN_ANGLE,
+                             ServoOutput.SAFE_MAX_ANGLE)
+
+    def test_paddle_defaults_are_reachable(self):
+        self.assertGreaterEqual(PaddleFeeder.DEFAULT_PARK_ANGLE,
+                                ServoOutput.SAFE_MIN_ANGLE)
+        self.assertLessEqual(PaddleFeeder.DEFAULT_DUMP_ANGLE,
+                             ServoOutput.SAFE_MAX_ANGLE)
+
+    def test_the_band_is_inside_the_pulse_range(self):
+        # Sanity: the advisory band has to be narrower than the travel it is
+        # advising about, or it advises nothing.
+        self.assertGreater(ServoOutput.SAFE_MIN_ANGLE, 0)
+        self.assertLess(ServoOutput.SAFE_MAX_ANGLE, 180)

@@ -316,6 +316,21 @@ class ServoOutput:
     MIN_PULSE_US = 500
     MAX_PULSE_US = 2400
 
+    #: The range a *resting* angle should stay inside.
+    #:
+    #: Not enforced — a bring-up session needs to be able to ask for anything,
+    #: because finding a particular servo's real limits is the point of it. This
+    #: is advice for choosing defaults and configured positions, and it is
+    #: written down because ignoring it destroyed an SG90: 0 degrees is exactly
+    #: MIN_PULSE_US, many clones cannot reach it, and a feeder parks on every
+    #: start. A servo held against its own end stop draws stall current and
+    #: files its gears until there are none left, silently, while every
+    #: measurement you can take says the wiring and the supply are fine.
+    #:
+    #: Angles outside this band are for finding limits, not for living at.
+    SAFE_MIN_ANGLE = 20
+    SAFE_MAX_ANGLE = 160
+
     def set_pulse_us(self, microseconds: int) -> None:
         raise NotImplementedError
 

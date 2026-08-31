@@ -337,8 +337,17 @@ class ServoFeeder(Feeder):
 
     #: Sensible until measured: a quarter turn, and a flow rate that is more
     #: likely to under-dispense than to empty the hopper onto the floor.
+    #:
+    #: Closed is 20 degrees rather than 0, and that number cost a servo to
+    #: learn. An angle is mapped linearly onto a 500-2400 us pulse, so 0 degrees
+    #: is 500 us — the hard minimum. Plenty of SG90 clones cannot physically
+    #: reach it: they drive into an internal end stop and sit there grinding
+    #: their nylon gears, with no load, a solid supply, and nothing at all wrong
+    #: with the wiring. The feeder parks on construction, and the service
+    #: restarts on failure, so a default at the limit means every start files
+    #: another tooth off. See SAFE_MIN_ANGLE.
     DEFAULT_OPEN_ANGLE = 90
-    DEFAULT_CLOSED_ANGLE = 0
+    DEFAULT_CLOSED_ANGLE = 20
     DEFAULT_MS_PER_GRAM = 50.0
 
     #: Time for the gate itself to swing, at each end of a dispense. An SG90

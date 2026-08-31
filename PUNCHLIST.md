@@ -610,6 +610,80 @@ the printed IP into the app's Pi Connection dialog.
 
 ---
 
+## Session — 2026-08-31 · the whole rig, in the house
+
+The first build with everything wired in its real position rather than on a
+bench. Four of five subsystems came up clean; the fifth is a cable.
+
+**Motion — done.** All three PIRs firing on their own pins, each lighting the
+right room. Two lessons worth keeping. The trigger *count* is close to
+meaningless as a health measure: `--check-motion` counts rising edges, and an
+HC-SR501 latches high for its delay period, so a sensor with a long delay pot
+shows one trigger for a dozen walk-passes and looks broken while working
+perfectly. What matters is the live state dot and the room name. Second, a PIR
+detects movement *across* its field far better than movement *toward* it, so a
+sensor aimed down a corridor is in its worst orientation for someone walking up
+that corridor.
+
+Rooms renamed to the real ones, in `service.env`:
+
+```
+PETTRACKER_ROOMS=Kitchen,BedRoom/Bathroom,Living Room / Hall
+PETTRACKER_PIR_PINS=17,27,22
+```
+
+Slashes are safe — `_slug` reduces them to hyphens before they reach a snapshot
+filename, verified.
+
+**Load cell — done.** Factor 385.66 held across the remount into the final
+assembly: tares to **0.018 g** with the plate on. No recalibration needed.
+
+**GPS — wired, not yet fixing.** `"location": false` at close of play, which
+means the module is not talking rather than not fixed. To check tomorrow.
+
+**Camera — `"camera": false`.** `service.env` says `usb`; the webcam was not
+connected during this session.
+
+**Servo — the evening's whole problem, and it was a cable.** Symptoms cycled
+through clicking, silence, working, buzzing and nothing, each change following a
+rewiring rather than a component change — which in hindsight was the signal.
+Two real faults, found by bisection:
+
+1. **The signal wire was on the wrong header pin.** GPIO 18 is *physical pin
+   12*. An unowned GPIO floats, and a floating servo input clicks whether or not
+   anything is driving it — which reads exactly like a stalling motor. This cost
+   hours and produced a confident and wrong diagnosis of a dead servo; see
+   commit 9338b8d, which corrects the record.
+2. **Voltage drop over about a metre of dupont wire on the 5 V pair.** The buck
+   is fine (12.1 V in, 5.0 V out) and the servo is fine — it drives the paddle
+   correctly off the Pi's own 5 V, and off the buck with short wires. Only the
+   long thin run fails, and it fails under load while measuring 5 V unloaded.
+
+**The fix for tomorrow, and it is a design change rather than a repair:** move
+the buck to the servo end. Run the long cable at 12 V and convert next to the
+feeder, so the 5 V run is 10 cm. Same power at 12 V is less current, and the
+drop matters far less proportionally. Only the signal wire and one ground
+reference return to the Pi, and both carry almost nothing. Add a 470-1000 uF
+electrolytic across the servo's red and brown at the servo end.
+
+**Grounding**, after some churn: keep it simple. Servo brown and buck OUT- join
+at the buck, one reference wire from there to any Pi GND. Everything else on the
+breadboard rail. The star-ground split was precautionary and unnecessary — the
+load cell measured 0.018 g on a shared rail with the buck powered.
+
+### Still open
+
+1. `PETTRACKER_PADDLE_GRAMS` — unmeasured, still the placeholder 5.0. Needs a
+   full hopper, because the column of kibble above the wheel is what fills the
+   pocket. Under the one-pocket-per-portion design this must be set to the
+   portion size, or a 40 g request turns the wheel eight times.
+2. Park and dump angles — not yet found for this servo in its final mounting.
+3. GPS and camera to be brought back up.
+4. The full end-to-end dispense: food in the hopper, bowl on the load cell,
+   **Feed now** pressed from the phone, and the meal appearing on the dashboard
+   having been weighed. Every part of that chain has worked; the whole chain in
+   one go has not.
+
 ## Next session — 2026-08-30
 
 The rig moves to **the hall, next to the kitchen**, which is where the feeder

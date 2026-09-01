@@ -187,6 +187,27 @@
     <string name="tracker_fix_title">Where the Pi is</string>
     <string name="tracker_fix_body">%1$.5f, %2$.5f\n\nFrom %3$d satellites, at %4$s.\n\nThis is the tracker\'s own position — the Raspberry Pi in your home, not your pet. Where your pet has been comes from the motion sensors.</string>
     <string name="tracker_fix_none">The Pi has not reported a GPS fix yet. It needs a clear view of the sky, and a cold start can take several minutes.</string>
+
+    <!--
+      The track screen. Every string names the tracker, not the pet. Carrying
+      the Pi to record a route demonstrates what a collar-mounted unit would
+      produce; it does not turn the route into an animal's.
+    -->
+    <string name="track_title">Tracker route</string>
+    <string name="track_subtitle">Where the Raspberry Pi has been, from its own GPS</string>
+    <string name="track_empty">No fixes recorded yet.\n\nThe Pi needs a clear view of the sky, and records a position on the interval it was started with.</string>
+    <string name="track_legend">● start   ● end</string>
+    <string name="track_no_fixes">No fixes</string>
+    <string name="track_points">%1$d fixes over %2$s</string>
+    <string name="track_distance_m">Distance: %1$d m</string>
+    <string name="track_distance_km">Distance: %1$.2f km</string>
+    <string name="track_satellites_flat">Satellites: %1$d</string>
+    <string name="track_satellites_range">Satellites: %1$d to %2$d</string>
+    <string name="track_latest">Last fix %1$.5f, %2$.5f at %3$s</string>
+    <string name="track_disclaimer">This is the tracker\'s route, not your pet\'s. A unit this size is a prototype for a large animal; where your pet has been indoors comes from the motion sensors.</string>
+    <string name="duration_seconds">%1$d s</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours">%1$d h %2$02d</string>
     <string name="detection_last">last %1$s</string>
 
     <string name="food_today_grams">Food today: %1$d g</string>

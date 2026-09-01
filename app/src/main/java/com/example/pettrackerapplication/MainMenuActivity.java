@@ -276,21 +276,12 @@ public class MainMenuActivity extends ThemedActivity {
                 ? getString(R.string.no_gps_fix_yet)
                 : getString(R.string.tracker_located, s.trackerFixTime));
 
-        tvGpsStatus.setOnClickListener(v -> {
-            String body;
-            if (s.trackerLatitude == null || s.trackerLongitude == null) {
-                body = getString(R.string.tracker_fix_none);
-            } else {
-                body = getString(R.string.tracker_fix_body,
-                        s.trackerLatitude, s.trackerLongitude,
-                        s.trackerSatellites, s.trackerFixTime);
-            }
-            new MaterialAlertDialogBuilder(this)
-                    .setTitle(R.string.tracker_fix_title)
-                    .setMessage(body)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show();
-        });
+        // Opens the route rather than a dialog about one point. A single fix
+        // shows the module works; the run of them shows the whole chain does —
+        // the Pi buffering while off the network and the phone reconciling
+        // afterwards, which no "latest reading" view can display.
+        tvGpsStatus.setOnClickListener(v ->
+                startActivity(new Intent(this, TrackActivity.class)));
     }
 
     private void renderFood(DashboardStats s) {

@@ -283,6 +283,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gps-port", default="/dev/serial0",
                         help="serial port the GPS is on (default /dev/serial0; "
                              "/dev/ttyAMA0 is wrong on a Pi 4)")
+    parser.add_argument("--gps-interval", type=float, default=None,
+                        help="seconds between recorded fixes (default 300). "
+                             "Use a few seconds to record a walked track: at "
+                             "300 a fifteen-minute route is three points")
     parser.add_argument("--no-gps", action="store_true",
                         help="do not open the serial port at all")
     parser.add_argument("--check-gps", action="store_true",
@@ -395,7 +399,14 @@ def main() -> int:
         snapshots = SnapshotStore(args.snapshot_dir)
         log.info("motion snapshots: %s", snapshots.directory)
 
-    monitor = Monitor(sensors, store, snapshots=snapshots)
+    monitor_options = {}
+    if args.gps_interval is not None:
+        if args.gps_interval <= 0:
+            log.error("--gps-interval must be greater than zero")
+            return 2
+        monitor_options["location_log_interval_s"] = args.gps_interval
+
+    monitor = Monitor(sensors, store, snapshots=snapshots, **monitor_options)
     monitor.start()
 
     server = PetTrackerServer(sensors, store, monitor,

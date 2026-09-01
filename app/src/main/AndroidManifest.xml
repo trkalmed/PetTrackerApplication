@@ -47,6 +47,7 @@
         <activity android:name=".AddPetActivity" />
         <activity android:name=".PetListActivity" />
         <activity android:name=".SightingHistoryActivity" />
+        <activity android:name=".TrackActivity" />
         <activity android:name=".SettingsActivity" />
         <activity android:name=".FeedingActivity" />
 

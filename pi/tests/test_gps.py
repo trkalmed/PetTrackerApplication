@@ -18,7 +18,11 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from pettracker.monitor import Monitor
 from pettracker.nmea import parse_gga, valid_checksum
+from pettracker.sensors.fake import (FakeLocationSensor,
+                                     build_fake_sensor_set)
+from pettracker.store import EventStore
 from pettracker.sensors.real import UbloxLocationSensor
 
 #: A real sentence, from the NEO-6M datasheet's own example.
@@ -329,3 +333,47 @@ class NoSatellitesTest(unittest.TestCase):
 
         self.assertIn("Put it by a window", text)
         self.assertNotIn("Suspect the antenna", text)
+
+
+class LocationLoggingInterval(unittest.TestCase):
+    """How often a fix is recorded, which decides whether a track exists.
+
+    A Pi bolted to a kitchen floor wants a fix every few minutes. A Pi carried
+    on a walk wants one every few seconds, because at 300 s a fifteen-minute
+    route is three points and the straight lines between them — a shape that
+    says nothing about where anyone went.
+    """
+
+    def setUp(self):
+        self.store = EventStore(":memory:")
+        self.sensors = build_fake_sensor_set(rooms=["Hall"])
+        # The stock fake simulates a cold start and withholds its first two
+        # fixes, which is honest but makes counting points here a test of the
+        # fake rather than of the interval. This one has a fix immediately.
+        self.sensors.location = FakeLocationSensor(fix_after_reads=1)
+
+    def _fixes_recorded(self, interval_s, clock_steps):
+        """Runs the location poll over a scripted clock and counts the rows."""
+        monitor = Monitor(self.sensors, self.store,
+                          location_log_interval_s=interval_s)
+        for now in clock_steps:
+            monitor._poll_location(now, int(now * 1000))
+        return [e for e in self.store.since(0) if e["kind"] == "location"]
+
+    def test_a_short_interval_records_a_track(self):
+        # Ten seconds of walking, sampled every second.
+        fixes = self._fixes_recorded(1.0, [float(n) for n in range(10)])
+        self.assertGreaterEqual(len(fixes), 9)
+
+    def test_the_default_interval_would_not(self):
+        # The same ten seconds at the fixed-installation default. At most one
+        # point, which is a dot rather than a route.
+        fixes = self._fixes_recorded(300.0, [float(n) for n in range(10)])
+        self.assertLessEqual(len(fixes), 1)
+
+    def test_fixes_carry_coordinates_and_satellites(self):
+        fixes = self._fixes_recorded(1.0, [0.0, 1.0])
+        self.assertIn("lat", fixes[0])
+        self.assertIn("lon", fixes[0])
+        self.assertIn("satellites", fixes[0])
+        self.assertEqual("gps", fixes[0]["source"])

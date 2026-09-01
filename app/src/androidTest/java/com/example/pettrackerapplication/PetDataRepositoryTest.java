@@ -348,6 +348,52 @@ public class PetDataRepositoryTest {
                 petId, todayAt(HOUR), 32.00964, 35.76567, 12, "gps", 421L));
     }
 
+    /**
+     * A route is read oldest first, and that ordering is load-bearing.
+     *
+     * The fixes are joined point to point to draw the track, so the wrong order
+     * does not reverse the picture — it scrambles it, because every consecutive
+     * pair becomes a jump between the wrong two places.
+     */
+    @Test
+    public void aRouteComesBackInTheOrderItWasWalked() {
+        long midnight = DayRange.today().startMillis;
+        repository.recordTrackerFix(petId, midnight + 3 * HOUR, 32.03, 35.03, 9, "gps", 3L);
+        repository.recordTrackerFix(petId, midnight + HOUR, 32.01, 35.01, 9, "gps", 1L);
+        repository.recordTrackerFix(petId, midnight + 2 * HOUR, 32.02, 35.02, 9, "gps", 2L);
+
+        java.util.List<TrackerFix> route =
+                db.trackerFixDao().getMostRecentRun(petId, 100);
+
+        assertEquals(3, route.size());
+        assertEquals(32.01, route.get(0).getLatitude(), 0.000005);
+        assertEquals(32.02, route.get(1).getLatitude(), 0.000005);
+        assertEquals(32.03, route.get(2).getLatitude(), 0.000005);
+    }
+
+    /**
+     * The limit takes the newest fixes, then hands them back oldest first.
+     *
+     * Getting this backwards would cap a long walk by keeping its beginning and
+     * discarding where the tracker actually ended up.
+     */
+    @Test
+    public void aCappedRouteKeepsTheMostRecentFixes() {
+        long midnight = DayRange.today().startMillis;
+        for (int i = 0; i < 5; i++) {
+            repository.recordTrackerFix(petId, midnight + i * HOUR,
+                    32.0 + i * 0.01, 35.0, 9, "gps", (long) (100 + i));
+        }
+
+        java.util.List<TrackerFix> route =
+                db.trackerFixDao().getMostRecentRun(petId, 2);
+
+        assertEquals(2, route.size());
+        assertEquals("the two newest, oldest of them first",
+                32.03, route.get(0).getLatitude(), 0.000005);
+        assertEquals(32.04, route.get(1).getLatitude(), 0.000005);
+    }
+
     @Test
     public void fixesDoNotOutliveTheirPet() {
         repository.recordTrackerFix(petId, todayAt(HOUR), 32.0, 35.0, 7, "gps", 600L);

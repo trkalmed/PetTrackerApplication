@@ -41,6 +41,11 @@ Environment="PETTRACKER_SCALE_PINS=5,6"
 # label. Run --calibrate-scale and put the real number in service.env.
 Environment="PETTRACKER_SCALE_FACTOR=1.0"
 Environment="PETTRACKER_GPS_PORT=/dev/serial0"
+# Seconds between recorded fixes. 300 suits a Pi that does not move: often
+# enough to show the module still works, rare enough that the event log is not
+# mostly GPS. Carrying the Pi to record a route wants a few seconds instead —
+# at 300 a fifteen-minute walk is three points.
+Environment="PETTRACKER_GPS_INTERVAL=300"
 # How the hopper meters food: "gate" holds a flap open for a time, "paddle"
 # turns whole pockets. The paddle numbers are ignored by the gate and the gate
 # numbers by the paddle, so switching designs is this one variable and nothing
@@ -69,6 +74,7 @@ ExecStart=/usr/bin/python3 run.py \
     --scale-pins ${PETTRACKER_SCALE_PINS} \
     --scale-factor ${PETTRACKER_SCALE_FACTOR} \
     --gps-port ${PETTRACKER_GPS_PORT} \
+    --gps-interval ${PETTRACKER_GPS_INTERVAL} \
     --feeder ${PETTRACKER_FEEDER} \
     --servo-pin ${PETTRACKER_SERVO_PIN} \
     --servo-open ${PETTRACKER_SERVO_OPEN} \

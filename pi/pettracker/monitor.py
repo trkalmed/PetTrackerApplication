@@ -172,13 +172,19 @@ class Monitor:
                      " (snapshot)" if snapshot else "")
 
     def _poll_location(self, now: float, now_ms: int) -> None:
-        """Records where the Pi is, occasionally.
+        """Records where the Pi is.
 
-        Diagnostics, like the raw weights — and worth being clear about what it
-        is: the position of the Pi, which for a feeder on a kitchen floor is a
-        constant. It is not where the pet is, and nothing on the app's pet
-        screens reads it. It earns its place by proving the module has a fix,
-        and by being there if the Pi is ever mounted on something that moves.
+        Worth being clear about what this is: the position of the Pi. For a
+        feeder bolted to a kitchen floor that is a constant, and the app labels
+        it as the tracker's location rather than the pet's for exactly that
+        reason.
+
+        The interval is configurable because the two uses want opposite things.
+        A fixed installation wants a fix every few minutes — enough to show the
+        module still works, rare enough that the event log is not mostly GPS. A
+        Pi carried on a walk wants one every few seconds, because there the
+        points *are* the result: at 300 s a fifteen-minute route is three dots
+        and a straight line between them, which is not a track of anything.
         """
         location = self._sensors.location
         if location is None or not location.available:

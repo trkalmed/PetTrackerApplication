@@ -110,6 +110,85 @@ public class GeoTest {
         assertTrue("nor should it exceed the distance walked: " + metres, metres <= 99.5);
     }
 
+    // ── Breaks in coverage ──────────────────────────────────────────────────
+    //
+    // A route is drawn by joining consecutive fixes. When the receiver loses
+    // lock for a while the next fix is far away, and joining them with a solid
+    // line draws a path through streets and buildings that nothing measured.
+    // The first real walk produced several of these.
+
+    /** Timestamps at a steady interval, with optional gaps injected. */
+    private static long[] steady(int count, long stepMillis, int... gapAt) {
+        long[] out = new long[count];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < count; i++) {
+            out[i] = now;
+            long step = stepMillis;
+            for (int g : gapAt) {
+                if (g == i) step = stepMillis * 40;
+            }
+            now += step;
+        }
+        return out;
+    }
+
+    @Test
+    public void aSteadyRunHasNoGaps() {
+        assertEquals(0, Geo.countGaps(steady(100, 2000)));
+    }
+
+    @Test
+    public void aPauseInReportingIsAGap() {
+        assertEquals(1, Geo.countGaps(steady(100, 2000, 40)));
+        assertEquals(3, Geo.countGaps(steady(100, 2000, 10, 40, 70)));
+    }
+
+    /**
+     * The threshold follows the recording interval rather than being fixed.
+     *
+     * A walk records every 2 s and a fixed installation every 300 s. A constant
+     * right for one is nonsense for the other: 30 s would miss every gap in the
+     * slow case and mark every normal step as a gap in it too.
+     */
+    @Test
+    public void theThresholdAdaptsToTheRecordingInterval() {
+        long fast = Geo.gapThresholdMillis(steady(50, 2000));
+        long slow = Geo.gapThresholdMillis(steady(50, 300_000));
+
+        assertTrue("a 2 s run should not treat 30 s as normal", fast < 30_000);
+        assertTrue("a 300 s run should not treat 30 s as a gap", slow > 30_000);
+    }
+
+    /** A run recorded slowly is not all gaps just because the steps are long. */
+    @Test
+    public void aSlowlyRecordedRunIsNotAllGaps() {
+        assertEquals(0, Geo.countGaps(steady(50, 300_000)));
+    }
+
+    /**
+     * Ordinary jitter is not a gap.
+     *
+     * Fixes do not arrive on a metronome — the receiver misses one now and
+     * then, the poll loop drifts. Marking each of those would litter the
+     * drawing with breaks that mean nothing.
+     */
+    @Test
+    public void aSingleMissedFixIsNotAGap() {
+        long[] stamps = steady(50, 2000);
+        for (int i = 25; i < stamps.length; i++) {
+            stamps[i] += 2000;             // one fix skipped, mid-run
+        }
+
+        assertEquals(0, Geo.countGaps(stamps));
+    }
+
+    @Test
+    public void tooFewFixesToJudgeIsNotAGap() {
+        assertEquals(0, Geo.countGaps(new long[]{1_788_000_000_000L}));
+        assertEquals(0, Geo.countGaps(new long[0]));
+        assertEquals(0, Geo.countGaps(null));
+    }
+
     @Test
     public void aSingleFixIsNoDistanceAndDoesNotCrash() {
         assertEquals(0.0, Geo.routeLengthMetres(new double[]{32}, new double[]{35}), 0.0);

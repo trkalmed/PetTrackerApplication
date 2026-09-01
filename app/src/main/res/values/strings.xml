@@ -197,6 +197,16 @@
     <string name="track_subtitle">Where the Raspberry Pi has been, from its own GPS</string>
     <string name="track_empty">No fixes recorded yet.\n\nThe Pi needs a clear view of the sky, and records a position on the interval it was started with.</string>
     <string name="track_legend">● start   ● end</string>
+    <!--
+      A dashed segment is the receiver having stopped reporting. The tracker
+      did travel between those two points, so the distance counts it — but the
+      path it took is unknown, and a solid line there would be the drawing
+      claiming something nothing measured.
+    -->
+    <plurals name="track_legend_gaps">
+        <item quantity="one">● start   ● end   ┄ %1$d break in coverage</item>
+        <item quantity="other">● start   ● end   ┄ %1$d breaks in coverage</item>
+    </plurals>
     <string name="track_no_fixes">No fixes</string>
     <string name="track_points">%1$d fixes over %2$s</string>
     <string name="track_distance_m">Distance: %1$d m</string>

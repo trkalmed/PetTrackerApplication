@@ -72,6 +72,72 @@ public final class Geo {
         return total;
     }
 
+    /** No run of fixes is treated as continuous across a gap shorter than this. */
+    private static final long MIN_GAP_MS = 10_000;
+
+    /**
+     * How much longer than the usual step a gap has to be before it counts.
+     *
+     * Four is loose on purpose. Fixes do not arrive on a perfect metronome —
+     * the receiver occasionally misses one, the poll loop drifts — and marking
+     * every hiccup as a coverage gap would clutter the drawing with breaks that
+     * mean nothing.
+     */
+    private static final long GAP_MULTIPLIER = 4;
+
+    /**
+     * The gap, in milliseconds, above which two fixes are not a straight line.
+     *
+     * <b>Why this exists.</b> A route is drawn by joining consecutive fixes. If
+     * the receiver loses lock behind a building for a minute, the next fix is
+     * hundreds of metres away, and the drawing joins them with a confident
+     * straight line through whatever was in between — a line that crosses
+     * streets, buildings and the rest of the route, and that no part of the
+     * system ever measured. It is the one place the picture claims more than
+     * the data supports, and the first walk produced several.
+     *
+     * Adaptive rather than a constant, because the recording interval is a
+     * setting: a walk records every 2 s and a fixed installation every 300 s,
+     * and a threshold right for one is nonsense for the other. Taking the
+     * median of the actual intervals means the drawing calibrates itself to
+     * however the run was recorded.
+     *
+     * The median, not the mean — the gaps being looked for would drag a mean
+     * upwards and hide themselves.
+     */
+    public static long gapThresholdMillis(long[] timestampsMillis) {
+        if (timestampsMillis == null || timestampsMillis.length < 3) {
+            return MIN_GAP_MS;
+        }
+
+        long[] steps = new long[timestampsMillis.length - 1];
+        for (int i = 1; i < timestampsMillis.length; i++) {
+            steps[i - 1] = Math.max(0, timestampsMillis[i] - timestampsMillis[i - 1]);
+        }
+        java.util.Arrays.sort(steps);
+        long median = steps[steps.length / 2];
+
+        return Math.max(MIN_GAP_MS, median * GAP_MULTIPLIER);
+    }
+
+    /**
+     * How many breaks in coverage a run of fixes contains.
+     *
+     * Worth reporting next to the route rather than only drawing: a track with
+     * six gaps in it is a different piece of evidence from one with none, and
+     * the difference is not obvious at a glance on a busy drawing.
+     */
+    public static int countGaps(long[] timestampsMillis) {
+        if (timestampsMillis == null || timestampsMillis.length < 2) return 0;
+
+        long threshold = gapThresholdMillis(timestampsMillis);
+        int gaps = 0;
+        for (int i = 1; i < timestampsMillis.length; i++) {
+            if (timestampsMillis[i] - timestampsMillis[i - 1] > threshold) gaps++;
+        }
+        return gaps;
+    }
+
     /**
      * Metres per degree of longitude at a given latitude.
      *

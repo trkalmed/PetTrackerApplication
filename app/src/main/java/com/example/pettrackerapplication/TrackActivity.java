@@ -114,6 +114,13 @@ public class TrackActivity extends ThemedActivity {
             maxSatellites = Math.max(maxSatellites, fix.getSatellites());
         }
 
+        long[] stamps = new long[count];
+        for (int i = 0; i < count; i++) stamps[i] = fixes.get(i).getTimestampMillis();
+        int gaps = Geo.countGaps(stamps);
+        tvTrackLegend.setText(gaps == 0
+                ? getString(R.string.track_legend)
+                : getResources().getQuantityString(R.plurals.track_legend_gaps, gaps, gaps));
+
         double metres = Geo.routeLengthMetres(lats, lons);
         tvTrackDistance.setText(metres >= 1000
                 ? getString(R.string.track_distance_km, metres / 1000)

@@ -46,8 +46,22 @@ public class TrackView extends View {
     private final Paint startPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint endPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
+    private final Path gapPath = new Path();
 
     private final List<double[]> points = new ArrayList<>();   // {lat, lon}
+    private final List<Long> times = new ArrayList<>();        // epoch millis
+
+    /**
+     * Segments where the receiver stopped reporting, drawn as a broken line.
+     *
+     * Joining across a gap with the same confident stroke as the rest claims a
+     * path nothing measured — the straight lines cutting across the first
+     * walk's route were all of this kind. The distance still counts them,
+     * because the tracker genuinely travelled between those two points; what
+     * is unknown is the shape of the route it took, and a dashed line says
+     * exactly that.
+     */
+    private final Paint gapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public TrackView(Context context) {
         this(context, null);
@@ -69,14 +83,23 @@ public class TrackView extends View {
 
         endPaint.setStyle(Paint.Style.FILL);
         endPaint.setColor(ContextCompat.getColor(context, R.color.text_primary));
+
+        gapPaint.setStyle(Paint.Style.STROKE);
+        gapPaint.setStrokeWidth(STROKE_DP * density * 0.6f);
+        gapPaint.setColor(ContextCompat.getColor(context, R.color.accent_2));
+        gapPaint.setAlpha(90);
+        gapPaint.setPathEffect(new android.graphics.DashPathEffect(
+                new float[]{6 * density, 6 * density}, 0));
     }
 
     /** Fixes in the order they were recorded, oldest first. */
     public void setFixes(List<TrackerFix> fixes) {
         points.clear();
+        times.clear();
         if (fixes != null) {
             for (TrackerFix fix : fixes) {
                 points.add(new double[]{fix.getLatitude(), fix.getLongitude()});
+                times.add(fix.getTimestampMillis());
             }
         }
         invalidate();
@@ -128,7 +151,10 @@ public class TrackView extends View {
         float offsetX = pad + (usableWidth - (float) (spanX * scale)) / 2f;
         float offsetY = pad + (usableHeight - (float) (spanY * scale)) / 2f;
 
+        long gapThreshold = Geo.gapThresholdMillis(timestamps());
+
         path.reset();
+        gapPath.reset();
         float firstX = 0, firstY = 0, lastX = 0, lastY = 0;
         for (int i = 0; i < points.size(); i++) {
             double[] p = points.get(i);
@@ -141,6 +167,14 @@ public class TrackView extends View {
             if (i == 0) {
                 path.moveTo(x, y);
                 firstX = x; firstY = y;
+            } else if (times.get(i) - times.get(i - 1) > gapThreshold) {
+                // The receiver stopped reporting between these two fixes. It
+                // did travel from one to the other, so the distance still
+                // counts — but the path it took is unknown, and drawing it as
+                // a confident line is the one way this picture can lie.
+                gapPath.moveTo(lastX, lastY);
+                gapPath.lineTo(x, y);
+                path.moveTo(x, y);
             } else {
                 path.lineTo(x, y);
             }
@@ -154,9 +188,16 @@ public class TrackView extends View {
             return;
         }
 
+        canvas.drawPath(gapPath, gapPaint);
         canvas.drawPath(path, routePaint);
         canvas.drawCircle(firstX, firstY, markerRadius, startPaint);
         canvas.drawCircle(lastX, lastY, markerRadius, endPaint);
+    }
+
+    private long[] timestamps() {
+        long[] out = new long[times.size()];
+        for (int i = 0; i < out.length; i++) out[i] = times.get(i);
+        return out;
     }
 
     private double midLatitude() {

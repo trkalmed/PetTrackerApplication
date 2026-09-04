@@ -199,6 +199,15 @@ class UnitDefaultsMatchCodeDefaults(unittest.TestCase):
         self.assertEqual(self.args.gps_port,
                          run.build_parser().get_default("gps_port"))
 
+    def test_camera_device(self):
+        # Zero is right for a Pi with only a webcam. It stops being right the
+        # moment a CSI camera is connected: the ISP pipeline claims the low
+        # /dev/videoN nodes and the webcam moves up, which presents as a camera
+        # that is plugged in, powered, and "could not open".
+        import run
+        self.assertEqual(self.args.camera_device,
+                         run.build_parser().get_default("camera_device"))
+
     def test_scale_pins(self):
         from pettracker.sensors.real import DEFAULT_SCALE_PINS, parse_pins
         self.assertEqual(parse_pins(self.args.scale_pins), DEFAULT_SCALE_PINS)

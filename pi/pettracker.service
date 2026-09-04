@@ -36,6 +36,13 @@ Environment="PYTHONUNBUFFERED=1"
 Environment="PETTRACKER_ROOMS=Kitchen,Living room,Hall"
 Environment="PETTRACKER_PIR_PINS=17,27,22"
 Environment="PETTRACKER_CAMERA=usb"
+# Which /dev/videoN the USB camera is, for --camera usb. Zero is right on a Pi
+# with only a webcam attached — but a connected CSI camera brings up the whole
+# ISP pipeline and takes the low numbers, so /dev/video0 becomes unicam and the
+# webcam lands on 1 or higher. `v4l2-ctl --list-devices` says which is which,
+# and the symptom of getting it wrong is "could not open video device 0" on a
+# camera that is plugged in and working.
+Environment="PETTRACKER_CAMERA_DEVICE=0"
 Environment="PETTRACKER_SCALE_PINS=5,6"
 # 1.0 means uncalibrated, and every weight is then raw counts wearing a gram
 # label. Run --calibrate-scale and put the real number in service.env.
@@ -71,6 +78,7 @@ ExecStart=/usr/bin/python3 run.py \
     --rooms ${PETTRACKER_ROOMS} \
     --pir-pins ${PETTRACKER_PIR_PINS} \
     --camera ${PETTRACKER_CAMERA} \
+    --camera-device ${PETTRACKER_CAMERA_DEVICE} \
     --scale-pins ${PETTRACKER_SCALE_PINS} \
     --scale-factor ${PETTRACKER_SCALE_FACTOR} \
     --gps-port ${PETTRACKER_GPS_PORT} \

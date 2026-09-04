@@ -102,6 +102,7 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
             graphicOverlay.setScaleMode(BoxMapper.ScaleMode.FIT_CENTER);
             detectionRecorder = createRecorder(DetectionEvent.SOURCE_PI);
             startPiStream();
+            loadPiCameras();
         } else {
             tvCameraName.setText(R.string.phone_camera);
             // PreviewView defaults to FILL_CENTER: fills the view and crops.
@@ -150,6 +151,93 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         if (cocoDetector != null) cocoDetector.close();
     }
 
+
+    /**
+     * Names of the cameras this Pi has, from /health, in the Pi's own order.
+     *
+     * Empty until the first health reply lands, and empty forever on a Pi that
+     * predates named cameras — in which case the screen behaves exactly as it
+     * did before, streaming the one camera with no way to switch.
+     */
+    private final java.util.List<String> piCameras = new java.util.ArrayList<>();
+    private int piCameraIndex = 0;
+
+    /**
+     * Asks which cameras exist, and offers a switch only if there are two.
+     *
+     * A control that switches between one thing is worse than no control: it
+     * invites a tap that appears to do nothing. So the label only becomes
+     * tappable once the Pi has actually reported more than one camera.
+     */
+    private void loadPiCameras() {
+        PiClient client = PiClient.forSavedPi(this);
+        if (client == null) return;
+
+        new Thread(() -> {
+            final java.util.List<String> found = new java.util.ArrayList<>();
+            try {
+                for (java.util.Map.Entry<String, Boolean> entry
+                        : client.health().camerasOrLegacy().entrySet()) {
+                    // Only cameras the Pi says are up. Offering to switch to one
+                    // that is unplugged would trade a working picture for an
+                    // error, which is not a choice worth presenting.
+                    if (Boolean.TRUE.equals(entry.getValue())) found.add(entry.getKey());
+                }
+            } catch (IOException e) {
+                Log.d(TAG, "could not list cameras: " + e.getMessage());
+                return;
+            }
+
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                piCameras.clear();
+                piCameras.addAll(found);
+                if (piCameras.size() > 1) {
+                    tvCameraName.setText(getString(R.string.pi_camera_named,
+                            piCameras.get(piCameraIndex)));
+                    tvCameraName.setOnClickListener(v -> switchPiCamera());
+                    Toast.makeText(this, R.string.tap_to_switch_camera,
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }).start();
+    }
+
+    /** Moves to the next camera and reconnects the stream to it. */
+    private void switchPiCamera() {
+        if (piCameras.size() < 2) return;
+
+        piCameraIndex = (piCameraIndex + 1) % piCameras.size();
+        String name = piCameras.get(piCameraIndex);
+
+        String base = PiConnectionManager.getBaseUrl(this);
+        if (base == null) return;
+        streamUrl = base + "/stream?camera=" + android.net.Uri.encode(name);
+
+        tvCameraName.setText(getString(R.string.pi_camera_named, name));
+        stopPiStream();
+        startPiStream();
+    }
+
+    /**
+     * Ends the current stream and waits briefly for its thread to notice.
+     *
+     * The wait matters: without it the old thread can deliver one more frame
+     * after the new one has started, and a frame from the previous camera
+     * appears under the new camera's label.
+     */
+    private void stopPiStream() {
+        piStreamRunning = false;
+        if (piStreamThread != null) {
+            piStreamThread.interrupt();
+            try {
+                piStreamThread.join(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            piStreamThread = null;
+        }
+    }
 
     private void startPiStream() {
         previewView.setVisibility(View.GONE);

@@ -168,13 +168,25 @@ def camera_mode(args, log) -> int:
         from pettracker.sensors.fake import build_fake_sensor_set
         camera = build_fake_sensor_set().camera
     else:
-        from pettracker.sensors.real import build_camera
+        from pettracker.sensors.real import build_cameras
 
         try:
-            camera = build_camera(args.camera, args.camera_device)
+            cameras = build_cameras(args.camera, args.camera_device)
         except ValueError as e:
             log.error("%s", e)
             return 2
+
+        # Every camera named, one after another. Checking only the first would
+        # pass a rig whose second camera is unplugged, which is exactly the rig
+        # someone runs this to find.
+        for name, camera in cameras.items():
+            print()
+            print(f"--- {name} ---")
+            try:
+                check_camera(camera, save_to=f"last-frame-{name}.jpg")
+            finally:
+                camera.close()
+        return 0
 
     try:
         check_camera(camera, save_to="last-frame.jpg")
@@ -261,7 +273,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "this process, so pass 0 when restarting the service "
                              "on a rig that has been powered for a while")
     parser.add_argument("--camera", default="csi",
-                        help="which camera this Pi has: csi (ribbon), usb, or none")
+                        help="which cameras this Pi has: csi (ribbon), usb, or "
+                             "none. Comma-separate for both — 'usb,csi' — and "
+                             "the first is the primary, used for motion "
+                             "snapshots and for /stream with no camera named")
     parser.add_argument("--camera-device", type=int, default=0,
                         help="which /dev/videoN, for --camera usb (default 0)")
     parser.add_argument("--snapshot-dir", default="snapshots",
@@ -395,7 +410,7 @@ def main() -> int:
     # events still arriving, only the pictures missing. The camera reopens
     # itself now, so the only question here is whether this rig has one at all.
     snapshots = None
-    if not args.no_snapshots and args.camera != "none":
+    if not args.no_snapshots and args.camera.strip() != "none":
         snapshots = SnapshotStore(args.snapshot_dir)
         log.info("motion snapshots: %s", snapshots.directory)
 

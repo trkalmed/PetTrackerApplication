@@ -13,6 +13,7 @@ only real constraints are noted per sensor.
 """
 
 import io
+from collections import OrderedDict
 import logging
 import os
 import threading
@@ -1021,6 +1022,46 @@ def build_camera(kind: str = "csi", device_index: int = 0,
     return ReopeningCamera(factory, retry_interval_s=retry_interval_s)
 
 
+def build_cameras(spec: str = "csi", usb_device_index: int = 0,
+                  retry_interval_s: float = 10.0):
+    """One camera per kind named in ``spec``, keyed by kind.
+
+    ``"usb"`` is one camera; ``"usb,csi"`` is two, and the first named is the
+    primary — the one motion snapshots come from and the one ``/stream`` serves
+    when the client does not say which it wants.
+
+    The two buses are independent, which is what makes this worth doing at all:
+    a CSI camera and a USB webcam cost each other nothing, while two USB
+    webcams compete for the same controller's bandwidth and neither gets a
+    usable frame rate. A Pi has one CSI connector, so "csi,csi" is not a rig
+    that exists.
+
+    ``"none"`` is only meaningful on its own — a rig with no camera. Mixed with
+    a real one it would add a camera that can never produce a frame, so it is
+    rejected rather than quietly dropped.
+    """
+    kinds = [k.strip() for k in (spec or "").split(",") if k.strip()]
+    if not kinds:
+        raise ValueError("--camera needs at least one kind")
+
+    seen = []
+    for kind in kinds:
+        if kind not in CAMERA_KINDS:
+            raise ValueError(
+                f"unknown camera '{kind}' (expected one of "
+                f"{', '.join(CAMERA_KINDS)})")
+        if kind in seen:
+            raise ValueError(f"camera '{kind}' named twice")
+        seen.append(kind)
+
+    if "none" in seen and len(seen) > 1:
+        raise ValueError("'none' cannot be combined with a real camera")
+
+    return OrderedDict(
+        (kind, build_camera(kind, usb_device_index, retry_interval_s))
+        for kind in seen)
+
+
 def probe_scale_pins(dout_pin: int, sck_pin: int):
     """Tries the pins both ways round and returns the pair that reads.
 
@@ -1066,11 +1107,13 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
         in, working, and still reported as absent.
     """
     dout, sck = (scale_pins or DEFAULT_SCALE_PINS)
+    cameras = build_cameras(camera, camera_device)
     return SensorSet(
         scale=HX711Scale(dout_pin=dout, sck_pin=sck,
                          calibration_factor=scale_factor),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=(feeder if feeder is not None else ServoFeeder()),
-        camera=build_camera(camera, camera_device),
+        camera=next(iter(cameras.values())),
+        cameras=cameras,
         location=(UbloxLocationSensor(port=gps_port) if gps_port else None),
     )

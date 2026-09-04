@@ -11,6 +11,7 @@ which parts are actually live.
 """
 
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import List, Optional
 
 
@@ -120,18 +121,48 @@ class SensorSet:
         feeder: Feeder,
         camera: Camera,
         location: Optional[LocationSensor] = None,
+        cameras: Optional["OrderedDict[str, Camera]"] = None,
     ):
+        """
+        :param camera: the primary camera. Motion snapshots come from this one,
+            and it is what ``/stream`` serves when no camera is named.
+        :param cameras: every camera by name, in the order they were configured.
+            A rig with one camera passes nothing here and behaves as it always
+            did; the name is only needed once there is a choice to make.
+        """
         self.scale = scale
         self.motion_sensors = motion_sensors
         self.feeder = feeder
         self.camera = camera
         self.location = location
 
+        if cameras:
+            self.cameras = OrderedDict(cameras)
+        else:
+            self.cameras = OrderedDict()
+            if camera is not None:
+                self.cameras["camera"] = camera
+
+    def camera_named(self, name: Optional[str]) -> Optional[Camera]:
+        """The camera by name, or the primary one when nothing is named.
+
+        Returns None for a name that does not exist, which the server answers
+        with a 404 — deliberately not "fall back to the primary". A phone asking
+        for the kitchen camera and quietly being shown the hall is worse than an
+        error, because nothing about the picture says it is the wrong room.
+        """
+        if not name:
+            return self.camera
+        return self.cameras.get(name)
+
     def health(self) -> dict:
         return {
             "scale": self.scale.available,
             "feeder": self.feeder.available,
-            "camera": self.camera.available,
+            # Kept for older clients: true when *any* camera is up. The named
+            # map below is what a client with a choice to offer should read.
+            "camera": any(c.available for c in self.cameras.values()),
+            "cameras": {name: c.available for name, c in self.cameras.items()},
             "location": self.location.available if self.location else False,
             "motion": {s.room: s.available for s in self.motion_sensors},
         }
@@ -143,6 +174,7 @@ class SensorSet:
         restarting the service without freeing the pins leaves the next run
         unable to open them, which looks exactly like a wiring fault.
         """
-        self.camera.close()
+        for camera in self.cameras.values():
+            camera.close()
         for sensor in self.motion_sensors:
             sensor.close()

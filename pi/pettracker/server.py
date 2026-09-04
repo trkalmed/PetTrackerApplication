@@ -94,7 +94,7 @@ class _Handler(BaseHTTPRequestHandler):
         if route.path == "/snapshot":
             return self._snapshot(parse_qs(route.query))
         if route.path == "/stream":
-            return self._stream()
+            return self._stream(parse_qs(route.query))
         self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -180,9 +180,23 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _stream(self) -> None:
-        """multipart/x-mixed-replace, the format MjpegInputStream expects."""
-        camera = self.sensors.camera
+    def _stream(self, query: Optional[dict] = None) -> None:
+        """multipart/x-mixed-replace, the format MjpegInputStream expects.
+
+        ``?camera=<name>`` picks one on a rig with more than one; without it the
+        primary is served, so a client that predates the second camera keeps
+        working unchanged.
+
+        An unknown name is a 404 rather than a fall back to the primary. Showing
+        the hall to a phone that asked for the kitchen would be worse than an
+        error: nothing in the picture says it is the wrong room.
+        """
+        name = ((query or {}).get("camera") or [""])[0]
+        camera = self.sensors.camera_named(name)
+        if camera is None:
+            return self._send_json(
+                {"error": f"no camera named '{name}'",
+                 "cameras": list(self.sensors.cameras)}, 404)
         if not camera.available:
             return self._send_json({"error": "camera unavailable"}, 503)
 

@@ -14,7 +14,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pettracker.sensors.base import Camera
+from pettracker.sensors.base import Camera, SensorSet
+from pettracker.sensors.fake import FakeFeeder, FakeScale
 from pettracker.sensors.camera import ReopeningCamera
 
 FRAME = b"\xff\xd8 frame \xff\xd9"
@@ -301,3 +302,106 @@ class CheckCameraTest(unittest.TestCase):
             self.assertIn("pointing at", text)
         finally:
             os.unlink(path)
+
+
+class TwoCameras(unittest.TestCase):
+    """A rig with a CSI camera and a USB webcam, and one client choosing.
+
+    The two buses are independent, which is what makes this worth supporting:
+    a CSI camera and a webcam cost each other nothing, while two webcams
+    compete for one USB controller and neither gets a usable frame rate.
+    """
+
+    def _set(self, names):
+        from collections import OrderedDict
+        cameras = OrderedDict((n, FakeDevice()) for n in names)
+        return SensorSet(
+            scale=FakeScale(), motion_sensors=[], feeder=FakeFeeder(),
+            camera=next(iter(cameras.values())), cameras=cameras)
+
+    def test_health_names_every_camera(self):
+        health = self._set(["usb", "csi"]).health()
+
+        self.assertEqual({"usb": True, "csi": True}, health["cameras"])
+
+    def test_health_keeps_the_old_flag_for_older_clients(self):
+        # A phone built before the second camera reads sensors.camera and must
+        # keep working. True when any camera is up.
+        self.assertTrue(self._set(["usb", "csi"]).health()["camera"])
+
+    def test_the_first_named_is_the_primary(self):
+        sensors = self._set(["usb", "csi"])
+
+        # What /stream serves with no camera named, and where motion snapshots
+        # come from.
+        self.assertIs(sensors.cameras["usb"], sensors.camera)
+        self.assertIs(sensors.cameras["usb"], sensors.camera_named(None))
+        self.assertIs(sensors.cameras["usb"], sensors.camera_named(""))
+
+    def test_a_camera_can_be_chosen_by_name(self):
+        sensors = self._set(["usb", "csi"])
+
+        self.assertIs(sensors.cameras["csi"], sensors.camera_named("csi"))
+
+    def test_an_unknown_name_is_not_the_primary(self):
+        # None, so the server can answer 404. Falling back to the primary would
+        # show the hall to a phone that asked for the kitchen, and nothing in
+        # the picture would say so.
+        self.assertIsNone(self._set(["usb", "csi"]).camera_named("garden"))
+
+    def test_one_camera_still_behaves_as_it_always_did(self):
+        sensors = SensorSet(scale=FakeScale(), motion_sensors=[],
+                            feeder=FakeFeeder(), camera=FakeDevice())
+
+        self.assertIs(sensors.camera, sensors.camera_named(None))
+        self.assertTrue(sensors.health()["camera"])
+        self.assertEqual(1, len(sensors.health()["cameras"]))
+
+    def test_closing_releases_every_camera(self):
+        sensors = self._set(["usb", "csi"])
+        sensors.close()
+
+        for camera in sensors.cameras.values():
+            self.assertTrue(camera.closed)
+
+
+class BuildingCameras(unittest.TestCase):
+    """Parsing the --camera setting, which is now a list."""
+
+    def _build(self, spec):
+        from pettracker.sensors.real import build_cameras
+        return build_cameras(spec)
+
+    def test_one_kind(self):
+        self.assertEqual(["usb"], list(self._build("usb")))
+
+    def test_two_kinds_keep_their_order(self):
+        # The order decides which is primary, so it is not incidental.
+        self.assertEqual(["usb", "csi"], list(self._build("usb,csi")))
+        self.assertEqual(["csi", "usb"], list(self._build("csi,usb")))
+
+    def test_whitespace_is_forgiven(self):
+        self.assertEqual(["usb", "csi"], list(self._build(" usb , csi ")))
+
+    def test_an_unknown_kind_is_refused(self):
+        with self.assertRaises(ValueError):
+            self._build("usb,thermal")
+
+    def test_the_same_kind_twice_is_refused(self):
+        # A Pi has one CSI connector, and two webcams on one controller is a
+        # rig that does not work rather than one that is unsupported.
+        with self.assertRaises(ValueError):
+            self._build("usb,usb")
+
+    def test_none_cannot_be_mixed_with_a_real_camera(self):
+        # It would add a camera that can never produce a frame, and /health
+        # would report it as a camera that is simply unavailable.
+        with self.assertRaises(ValueError):
+            self._build("usb,none")
+
+    def test_none_alone_is_a_rig_with_no_camera(self):
+        self.assertEqual(["none"], list(self._build("none")))
+
+    def test_nothing_at_all_is_refused(self):
+        with self.assertRaises(ValueError):
+            self._build("")

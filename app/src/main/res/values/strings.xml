@@ -127,6 +127,8 @@
     <string name="pet_not_found">Pet not found</string>
     <string name="phone_camera">Phone camera</string>
     <string name="pi_camera">Pi camera</string>
+    <string name="pi_camera_named">Pi camera · %1$s</string>
+    <string name="tap_to_switch_camera">Tap the camera name to switch</string>
     <string name="pi_camera_live">● Pi camera — live</string>
     <string name="please_log_in_again">Please log in again</string>
     <string name="registration_failed">Registration failed: </string>
@@ -171,6 +173,19 @@
       moves food, and only the load cell knows how much arrived, which comes
       back later as a meal. "Dispensing" and "sent" say what actually happened.
     -->
+    <!--
+      The live bowl reading. Deliberately worded as the bowl's weight rather
+      than "food remaining": the load cell weighs whatever is on it, which is
+      food plus anything else that has been put there, and the app has no way
+      to tell those apart.
+    -->
+    <string name="in_the_bowl_now">IN THE BOWL NOW</string>
+    <string name="bowl_live">live from the load cell</string>
+    <string name="bowl_empty_note">empty · anything under 2 g reads as nothing</string>
+    <string name="bowl_no_scale">The Pi is not reporting a load cell</string>
+    <string name="bowl_no_pi">No Pi paired. Add one in Settings.</string>
+    <string name="bowl_uncalibrated">reading is not in grams — the scale is uncalibrated</string>
+
     <string name="feed_now">Feed now</string>
     <string name="feeder_checking">Checking the feeder…</string>
     <string name="feeder_ready">Ready · the load cell reports what actually lands</string>

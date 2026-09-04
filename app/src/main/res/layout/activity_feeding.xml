@@ -126,6 +126,55 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!--
+              What the load cell reads right now. Distinct from everything else
+              on this screen: the meal figures are history the Pi derived and
+              the phone stored, while this is the bowl as it is at this moment,
+              read straight from /health and never written down.
+            -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="3dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="@string/in_the_bowl_now"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/tvBowlGrams"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="@font/poppins_semibold"
+                        android:textColor="@color/text_primary"
+                        android:textSize="28sp"
+                        tools:text="42 g" />
+
+                    <TextView
+                        android:id="@+id/tvBowlState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        tools:text="live from the load cell" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!--
               Dispense on demand. Disabled until the Pi says it has a feeder,
               so the button cannot promise something the hardware cannot do.
             -->

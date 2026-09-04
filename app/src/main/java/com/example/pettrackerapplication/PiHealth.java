@@ -24,6 +24,18 @@ public final class PiHealth {
     /** The highest event id the Pi holds. 0 when its log is empty. */
     public final long latestCursor;
 
+    /**
+     * What the bowl weighs right now, or null when the scale is not reporting.
+     *
+     * Null rather than 0: a load cell that has stopped answering and a bowl
+     * with nothing in it are different facts, and only one of them means the
+     * pet has eaten everything.
+     */
+    public final Double latestWeightGrams;
+
+    /** Camera name to whether it is up, in the Pi's own order. */
+    public final Map<String, Boolean> cameras;
+
     public final boolean scaleAvailable;
     public final boolean feederAvailable;
     public final boolean cameraAvailable;
@@ -35,7 +47,8 @@ public final class PiHealth {
     private PiHealth(boolean ok, long timeMillis, long uptimeSeconds, long latestCursor,
                      boolean scaleAvailable, boolean feederAvailable,
                      boolean cameraAvailable, boolean locationAvailable,
-                     Map<String, Boolean> motionSensors) {
+                     Map<String, Boolean> motionSensors,
+                     Map<String, Boolean> cameras, Double latestWeightGrams) {
         this.ok = ok;
         this.timeMillis = timeMillis;
         this.uptimeSeconds = uptimeSeconds;
@@ -45,6 +58,8 @@ public final class PiHealth {
         this.cameraAvailable = cameraAvailable;
         this.locationAvailable = locationAvailable;
         this.motionSensors = Collections.unmodifiableMap(motionSensors);
+        this.cameras = Collections.unmodifiableMap(cameras);
+        this.latestWeightGrams = latestWeightGrams;
     }
 
     public static PiHealth fromJson(JSONObject json) {
@@ -60,6 +75,15 @@ public final class PiHealth {
             }
         }
 
+        Map<String, Boolean> cameras = new LinkedHashMap<>();
+        JSONObject camerasJson = sensors.optJSONObject("cameras");
+        if (camerasJson != null) {
+            for (Iterator<String> it = camerasJson.keys(); it.hasNext(); ) {
+                String name = it.next();
+                cameras.put(name, camerasJson.optBoolean(name, false));
+            }
+        }
+
         return new PiHealth(
                 json.optBoolean("ok", false),
                 json.optLong("time_ms", 0),
@@ -69,7 +93,24 @@ public final class PiHealth {
                 sensors.optBoolean("feeder", false),
                 sensors.optBoolean("camera", false),
                 sensors.optBoolean("location", false),
-                motion);
+                motion,
+                cameras,
+                json.isNull("latest_weight_grams")
+                        ? null : json.optDouble("latest_weight_grams"));
+    }
+
+    /**
+     * The cameras this Pi has, in its own order, or a single unnamed one.
+     *
+     * A Pi that predates named cameras sends only the boolean, so one entry is
+     * synthesised from it. That keeps the screen's "which camera" logic in one
+     * shape rather than branching on the age of the Pi it is talking to.
+     */
+    public Map<String, Boolean> camerasOrLegacy() {
+        if (!cameras.isEmpty()) return cameras;
+        Map<String, Boolean> single = new LinkedHashMap<>();
+        single.put("camera", cameraAvailable);
+        return Collections.unmodifiableMap(single);
     }
 
     /** True when at least one PIR was claimed — i.e. rooms can be expected. */

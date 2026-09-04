@@ -41,8 +41,18 @@ public class FeedingActivity extends ThemedActivity {
     /** The Pi's own cap, mirrored so the phone can refuse before the network. */
     private static final int MAX_FEED_GRAMS = 500;
 
+    /**
+     * Below this the bowl is called empty.
+     *
+     * A tared load cell wanders either side of zero by a fraction of a gram
+     * as it settles, and this rig's meal detector already ignores changes
+     * under 5 g. Reporting "-0.4 g" would be precise about noise.
+     */
+    private static final double EMPTY_BAND_G = 2.0;
+
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
     private MaterialButton btnFeedNow;
+    private TextView       tvBowlGrams, tvBowlState;
     private TextView       tvFeedNowState;
     private ProgressBar  barToday;
     private LinearLayout mealList, emptyFeeder;
@@ -69,6 +79,8 @@ public class FeedingActivity extends ThemedActivity {
 
         btnFeedNow     = findViewById(R.id.btnFeedNow);
         tvFeedNowState = findViewById(R.id.tvFeedNowState);
+        tvBowlGrams    = findViewById(R.id.tvBowlGrams);
+        tvBowlState    = findViewById(R.id.tvBowlState);
         btnFeedNow.setOnClickListener(v -> askHowMuch());
 
         setupBottomNavigation();
@@ -82,13 +94,15 @@ public class FeedingActivity extends ThemedActivity {
         nav.setSelectedItemId(R.id.nav_food);
         NavTint.apply(this, nav, R.id.nav_food);
         load();
-        refreshFeederAvailability();
+        bowlPoll.removeCallbacks(bowlTick);
+        bowlPoll.post(bowlTick);
         piPoller.start();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        bowlPoll.removeCallbacks(bowlTick);
         piPoller.stop();
     }
 
@@ -100,7 +114,36 @@ public class FeedingActivity extends ThemedActivity {
     // ── Feeding on demand ───────────────────────────────────────────────────
 
     /**
-     * Asks the Pi whether it has a feeder before offering to use one.
+     * How often the bowl reading is re-read while this screen is open.
+     *
+     * Two seconds, not the event poller's fifteen. That poller collects history
+     * and fifteen is generous for it, but this number is meant to be watched:
+     * food lands, the weight climbs, the figure follows. At fifteen seconds it
+     * would look broken. /health is a few hundred bytes and the Pi answers it
+     * from memory, so the cost is nothing.
+     *
+     * Stops on pause, like the event poller and for the same reason — nothing
+     * in this app polls a device when nobody is looking at the result.
+     */
+    private static final long BOWL_POLL_MS = 2000;
+
+    private final android.os.Handler bowlPoll =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** One health request at a time, so a slow network cannot stack them up. */
+    private final java.util.concurrent.atomic.AtomicBoolean bowlInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    private final Runnable bowlTick = new Runnable() {
+        @Override
+        public void run() {
+            refreshFeederAvailability();
+            bowlPoll.postDelayed(this, BOWL_POLL_MS);
+        }
+    };
+
+    /**
+     * Reads /health: whether the feeder can be offered, and what the bowl weighs.
      *
      * The button starts disabled and only opens once /health says a feeder was
      * claimed. A button that is always tappable and fails at the far end blames
@@ -116,24 +159,65 @@ public class FeedingActivity extends ThemedActivity {
         if (client == null) {
             btnFeedNow.setEnabled(false);
             tvFeedNowState.setText(R.string.feeder_no_pi);
+            tvBowlGrams.setText(R.string.em_dash);
+            tvBowlState.setText(R.string.bowl_no_pi);
             return;
         }
 
+        if (!bowlInFlight.compareAndSet(false, true)) return;
+
         new Thread(() -> {
-            boolean available;
+            PiHealth health = null;
             try {
-                available = client.health().feederAvailable;
-            } catch (IOException e) {
-                available = false;
+                health = client.health();
+            } catch (IOException ignored) {
+                // Unreachable Pi. Rendered below as "not reporting", which is
+                // true and is what the person can act on.
             }
-            boolean ready = available;
+            final PiHealth answer = health;
+            bowlInFlight.set(false);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
+
+                boolean ready = answer != null && answer.feederAvailable;
                 btnFeedNow.setEnabled(ready);
                 tvFeedNowState.setText(ready
                         ? R.string.feeder_ready : R.string.feeder_unavailable);
+
+                renderBowl(answer);
             });
         }).start();
+    }
+
+    /**
+     * What the load cell reads at this moment.
+     *
+     * Different in kind from everything else on this screen. The meal figures
+     * are history: the Pi's detector decided a weight change was a meal, the
+     * phone stored it, and it stays true. This is the bowl right now, read
+     * straight from /health and never written down — so it updates while you
+     * watch, and it is the only thing here that shows the hardware working
+     * live rather than showing what it once recorded.
+     *
+     * Small negatives are shown as empty. A tared load cell drifts either side
+     * of zero by a fraction of a gram, and "-0.4 g of food" is not a sentence
+     * about anything.
+     */
+    private void renderBowl(PiHealth health) {
+        if (health == null || !health.scaleAvailable
+                || health.latestWeightGrams == null) {
+            tvBowlGrams.setText(R.string.em_dash);
+            tvBowlState.setText(R.string.bowl_no_scale);
+            return;
+        }
+
+        double grams = health.latestWeightGrams;
+        long rounded = Math.round(grams);
+        if (rounded < 0 && grams > -EMPTY_BAND_G) rounded = 0;
+
+        tvBowlGrams.setText(getString(R.string.grams_value, (int) rounded));
+        tvBowlState.setText(Math.abs(grams) < EMPTY_BAND_G
+                ? R.string.bowl_empty_note : R.string.bowl_live);
     }
 
     private void askHowMuch() {

@@ -113,6 +113,12 @@ class _Handler(BaseHTTPRequestHandler):
             "sensors": self.sensors.health(),
             "latest_cursor": self.store.latest_cursor(),
             "latest_weight_grams": self.monitor.latest_weight_grams,
+            # What one serving is, so the app does not have to ask a person a
+            # question only the rig can answer. A paddle wheel meters in whole
+            # pockets, so a portion is one pocket and the number lives here;
+            # null for a design with no natural serving, and the client then
+            # falls back to something sensible.
+            "portion_grams": getattr(self.sensors.feeder, "grams_per_cycle", None),
         })
 
     def _events(self, query: dict) -> None:

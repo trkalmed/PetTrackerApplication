@@ -2,9 +2,6 @@ package com.example.pettrackerapplication;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.InputType;
-import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -30,12 +27,12 @@ import java.util.List;
 public class FeedingActivity extends ThemedActivity {
 
     /**
-     * Grams the last dispense asked for, so the next one opens on the same
-     * number. A household feeds the same portion nearly every time, and making
-     * someone retype it is the sort of small friction that gets a feature
-     * called broken.
+     * Sent when the Pi does not say what a portion is.
+     *
+     * A gate feeder has no natural serving, and an older Pi does not report
+     * one. Some number still has to go on the wire, and this is a plausible
+     * single meal for a cat.
      */
-    private static final String KEY_LAST_FEED_GRAMS = "last_feed_grams";
     private static final int DEFAULT_FEED_GRAMS = 40;
 
     /** The Pi's own cap, mirrored so the phone can refuse before the network. */
@@ -53,6 +50,9 @@ public class FeedingActivity extends ThemedActivity {
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
     private MaterialButton btnFeedNow;
     private TextView       tvBowlGrams, tvBowlState;
+
+    /** The most recent /health, for the portion size the confirm dialog names. */
+    private volatile PiHealth lastHealth;
     private TextView       tvFeedNowState;
     private ProgressBar  barToday;
     private LinearLayout mealList, emptyFeeder;
@@ -81,7 +81,7 @@ public class FeedingActivity extends ThemedActivity {
         tvFeedNowState = findViewById(R.id.tvFeedNowState);
         tvBowlGrams    = findViewById(R.id.tvBowlGrams);
         tvBowlState    = findViewById(R.id.tvBowlState);
-        btnFeedNow.setOnClickListener(v -> askHowMuch());
+        btnFeedNow.setOnClickListener(v -> confirmDispense());
 
         setupBottomNavigation();
         piPoller = new PiSync.Poller(this, this::onSynced);
@@ -176,6 +176,7 @@ public class FeedingActivity extends ThemedActivity {
             }
             final PiHealth answer = health;
             bowlInFlight.set(false);
+            lastHealth = answer;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
 
@@ -220,39 +221,47 @@ public class FeedingActivity extends ThemedActivity {
                 ? R.string.bowl_empty_note : R.string.bowl_live);
     }
 
-    private void askHowMuch() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setText(String.valueOf(Prefs.get(this)
-                .getInt(KEY_LAST_FEED_GRAMS, DEFAULT_FEED_GRAMS)));
-        input.setSelectAllOnFocus(true);
-
-        int pad = Math.round(24 * getResources().getDisplayMetrics().density);
-        FrameLayout wrapper = new FrameLayout(this);
-        wrapper.setPadding(pad, pad / 2, pad, 0);
-        wrapper.addView(input);
+    /**
+     * Confirms, rather than asking how much.
+     *
+     * The feeder meters in whole pockets, so grams typed on a phone were always
+     * rounded to the nearest one by the wheel — the box invited a precision the
+     * hardware does not have. One pocket is one portion, the Pi says how big
+     * that is, and the only question left is whether to run it.
+     *
+     * A confirmation and not a bare button, because this moves food in a room
+     * nobody is standing in, and a pocket dispensed by a mis-tap has to be
+     * taken out of the bowl by hand.
+     */
+    private void confirmDispense() {
+        Double portion = lastHealth == null ? null : lastHealth.portionGrams;
+        String message = portion == null
+                ? getString(R.string.feed_confirm_message)
+                : getString(R.string.feed_confirm_message_portion,
+                        (int) Math.round(portion));
 
         new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.feed_dialog_title)
-                .setMessage(R.string.feed_dialog_message)
-                .setView(wrapper)
+                .setTitle(R.string.feed_confirm_title)
+                .setMessage(message)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.feed_action, (d, which) -> {
-                    int grams;
-                    try {
-                        grams = Integer.parseInt(input.getText().toString().trim());
-                    } catch (NumberFormatException e) {
-                        grams = -1;
-                    }
-                    if (grams < 1 || grams > MAX_FEED_GRAMS) {
-                        Toast.makeText(this, R.string.feed_grams_invalid,
-                                Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    Prefs.get(this).edit().putInt(KEY_LAST_FEED_GRAMS, grams).apply();
-                    dispense(grams);
-                })
+                .setPositiveButton(R.string.feed_action, (d, which) -> dispense(portionGrams()))
                 .show();
+    }
+
+    /**
+     * One portion, in grams, as the Pi defines it.
+     *
+     * The Pi rounds this to whole pockets, so the exact number matters less
+     * than it looks: asking for a portion gets exactly one turn of the wheel.
+     * The fallback covers a feeder with no natural serving — a gate design, or
+     * a Pi too old to report one — where some number still has to be sent.
+     */
+    private int portionGrams() {
+        Double portion = lastHealth == null ? null : lastHealth.portionGrams;
+        if (portion == null || portion < 1 || portion > MAX_FEED_GRAMS) {
+            return DEFAULT_FEED_GRAMS;
+        }
+        return (int) Math.round((double) portion);
     }
 
     /**

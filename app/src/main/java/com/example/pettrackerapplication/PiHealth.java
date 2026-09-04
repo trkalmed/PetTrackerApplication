@@ -33,6 +33,16 @@ public final class PiHealth {
      */
     public final Double latestWeightGrams;
 
+    /**
+     * What one serving is, in grams, or null if this feeder has no natural one.
+     *
+     * A paddle wheel meters in whole pockets, so a portion is one pocket and
+     * the Pi is the only thing that knows how much that is. It belongs here
+     * rather than in a box on the phone: asking a person for grams invites an
+     * answer the hardware will round to the nearest pocket anyway.
+     */
+    public final Double portionGrams;
+
     /** Camera name to whether it is up, in the Pi's own order. */
     public final Map<String, Boolean> cameras;
 
@@ -48,7 +58,8 @@ public final class PiHealth {
                      boolean scaleAvailable, boolean feederAvailable,
                      boolean cameraAvailable, boolean locationAvailable,
                      Map<String, Boolean> motionSensors,
-                     Map<String, Boolean> cameras, Double latestWeightGrams) {
+                     Map<String, Boolean> cameras, Double latestWeightGrams,
+                     Double portionGrams) {
         this.ok = ok;
         this.timeMillis = timeMillis;
         this.uptimeSeconds = uptimeSeconds;
@@ -60,6 +71,7 @@ public final class PiHealth {
         this.motionSensors = Collections.unmodifiableMap(motionSensors);
         this.cameras = Collections.unmodifiableMap(cameras);
         this.latestWeightGrams = latestWeightGrams;
+        this.portionGrams = portionGrams;
     }
 
     public static PiHealth fromJson(JSONObject json) {
@@ -96,7 +108,9 @@ public final class PiHealth {
                 motion,
                 cameras,
                 json.isNull("latest_weight_grams")
-                        ? null : json.optDouble("latest_weight_grams"));
+                        ? null : json.optDouble("latest_weight_grams"),
+                json.isNull("portion_grams")
+                        ? null : json.optDouble("portion_grams"));
     }
 
     /**

@@ -72,10 +72,22 @@ class HX711Scale(Scale):
 
     def __init__(self, dout_pin: int = 5, sck_pin: int = 6,
                  calibration_factor: float = UNCALIBRATED, samples: int = 5,
-                 gain: int = 128):
+                 gain: int = 128, tare_path: Optional[str] = None):
+        """
+        :param tare_path: file to remember the tare offset in, or None to keep
+            it only in memory. The offset is a *measurement* of this particular
+            bowl on this particular cell — not configuration — so it belongs in
+            a file the service writes rather than in service.env.
+
+            Without it the tare lives only as long as the process. The unit
+            restarts on failure and at boot, so every restart would report the
+            bowl's own weight as food: a screen showing "1196 g in the bowl"
+            with an empty bowl, which is exactly how this was found.
+        """
         self._calibration_factor = calibration_factor
         self._samples = samples
-        self._offset = 0.0
+        self._tare_path = tare_path
+        self._offset = self._load_offset()
         self._hx = None
         self._backend = "none"
         self._last_good_read = None
@@ -137,7 +149,43 @@ class HX711Scale(Scale):
             log.warning("could not tare — the HX711 is not returning readings")
             return
         self._offset = float(raw)
+        self._save_offset(self._offset)
         log.info("tared at %d counts", raw)
+
+    def _load_offset(self) -> float:
+        """The remembered tare, or zero if there is not one to remember.
+
+        Every failure here is deliberately quiet and returns zero: a missing
+        file is the normal state before the first tare, and a corrupt one is
+        worth no more than a fresh tare costs. Refusing to start because a
+        cached number could not be read would be the wrong trade.
+        """
+        if not self._tare_path:
+            return 0.0
+        try:
+            with open(self._tare_path) as handle:
+                return float(handle.read().strip())
+        except (OSError, ValueError):
+            return 0.0
+
+    def _save_offset(self, offset: float) -> None:
+        """Writes the tare, atomically, so a power cut cannot leave half of one.
+
+        A truncated file would parse as a wrong offset rather than as no
+        offset, which is worse than either — the bowl would read heavy or light
+        by an arbitrary amount and nothing would look broken.
+        """
+        if not self._tare_path:
+            return
+        temporary = self._tare_path + ".part"
+        try:
+            with open(temporary, "w") as handle:
+                handle.write(repr(float(offset)))
+            os.replace(temporary, self._tare_path)
+        except OSError as e:
+            # Worth saying, but not worth failing a tare over: the offset is
+            # correct in memory and the scale works for this run.
+            log.warning("could not save the tare offset: %s", e)
 
     @property
     def chip(self):
@@ -1090,6 +1138,7 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           camera_device: int = 0,
                           scale_pins: Optional[List[int]] = None,
                           scale_factor: float = HX711Scale.UNCALIBRATED,
+                          tare_path: Optional[str] = "scale-tare",
                           gps_port: Optional[str] = "/dev/serial0",
                           feeder: Optional[Feeder] = None) -> SensorSet:
     """Wires up the real rig.
@@ -1110,7 +1159,8 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
     cameras = build_cameras(camera, camera_device)
     return SensorSet(
         scale=HX711Scale(dout_pin=dout, sck_pin=sck,
-                         calibration_factor=scale_factor),
+                         calibration_factor=scale_factor,
+                         tare_path=tare_path),
         motion_sensors=build_motion_sensors(rooms, pir_pins, warmup_s=pir_warmup_s),
         feeder=(feeder if feeder is not None else ServoFeeder()),
         camera=next(iter(cameras.values())),

@@ -11,6 +11,8 @@ pet appears to have eaten.
 import io
 import logging
 import os
+import shutil
+import tempfile
 import sys
 import unittest
 
@@ -526,3 +528,75 @@ class AvailabilityTest(unittest.TestCase):
 
         # Each probe waits on the chip, and /health asks on every poll.
         self.assertEqual(1, len(reads))
+
+
+class TareSurvivesARestart(unittest.TestCase):
+    """The tare offset is remembered on disk.
+
+    It lived only in memory, and the unit restarts on failure and at boot — so
+    every restart reported the bowl's own weight as food. That surfaced as an
+    app showing 1196 g in an empty bowl, which looks like a calibration fault
+    and is a lifetime fault.
+
+    The offset is a measurement of this bowl on this cell, not configuration,
+    which is why it belongs in a file the service writes rather than in
+    service.env alongside the calibration factor.
+    """
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.path = os.path.join(self.directory, "scale-tare")
+
+    def tearDown(self):
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def _scale(self):
+        # servo/pin claiming is irrelevant here: with no chip the arithmetic
+        # under test is the offset handling, which is what this is about.
+        from pettracker.sensors.real import HX711Scale
+        return HX711Scale.__new__(HX711Scale)
+
+    def _configured(self, path):
+        scale = self._scale()
+        scale._tare_path = path
+        scale._offset = scale._load_offset()
+        return scale
+
+    def test_no_file_yet_means_no_offset(self):
+        self.assertEqual(0.0, self._configured(self.path)._offset)
+
+    def test_an_offset_is_written_and_read_back(self):
+        writer = self._configured(self.path)
+        writer._save_offset(379915.0)
+
+        self.assertEqual(379915.0, self._configured(self.path)._offset)
+
+    def test_a_corrupt_file_is_worth_no_more_than_a_fresh_tare(self):
+        with open(self.path, "w") as handle:
+            handle.write("half a number")
+
+        # Zero, not a crash. Refusing to start because a cached number could
+        # not be parsed would be the wrong trade.
+        self.assertEqual(0.0, self._configured(self.path)._offset)
+
+    def test_no_path_means_memory_only(self):
+        scale = self._configured(None)
+        scale._save_offset(1234.0)
+
+        self.assertEqual(0.0, self._configured(None)._offset)
+
+    def test_the_write_is_atomic(self):
+        # Written to .part and renamed, so a power cut leaves either the old
+        # offset or the new one — never half of one, which would parse as a
+        # wrong offset rather than as no offset.
+        scale = self._configured(self.path)
+        scale._save_offset(100.0)
+        scale._save_offset(200.0)
+
+        self.assertEqual(200.0, self._configured(self.path)._offset)
+        self.assertFalse(os.path.exists(self.path + ".part"))
+
+    def test_an_unwritable_path_does_not_fail_the_tare(self):
+        # The offset is right in memory and the scale works for this run.
+        scale = self._configured(os.path.join(self.directory, "nope", "tare"))
+        scale._save_offset(5.0)          # must not raise

@@ -52,6 +52,15 @@ brown-out during an SD-card write is how a Raspberry Pi loses its filesystem.
 The HX711 is powered from **3.3 V rather than 5 V** deliberately: at 5 V its data
 line drives 5 V logic into a 3.3 V-only GPIO input, which is out of specification.
 
+**A deployment constraint discovered by building it.** The feeder had to be moved
+closer to the Pi. Five metres each way of jumper wire is roughly 2 Ω, which costs
+1.4 V at a servo's stall current — enough that the servo buzzed and would not
+turn, while measuring a healthy 5 V unloaded. The general point is worth stating
+in a design chapter: **the sensors can sit metres from the Pi because they carry
+signals; the actuator cannot, because it carries current.** The remedy is to run
+the long cable at 12 V and convert beside the servo, so the low-voltage leg stays
+short.
+
 ---
 
 ## 3. Software architecture
@@ -88,10 +97,10 @@ The interface between the two halves. Documented in `pi/README.md`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Per-sensor availability, uptime, latest cursor, latest weight |
+| GET | `/health` | Per-sensor availability, uptime, latest cursor, live bowl weight, portion size, cameras by name |
 | GET | `/events?since=<id>` | A page of buffered readings after a cursor |
 | GET | `/snapshot?name=<file>` | One saved camera frame |
-| GET | `/stream` | MJPEG live video |
+| GET | `/stream?camera=<name>` | MJPEG live video; the primary camera when unnamed |
 | POST | `/feed` | `{"grams": n}` — run the feeder |
 | POST | `/tare` | Zero the scale |
 
@@ -163,6 +172,29 @@ degrees conversion, and fix-quality checking. Fixes logged every 5 minutes.
 score threshold 0.40, maximum 10 results, filtered to COCO animal classes before
 anything is recorded.
 
+**Route drawing.** Fixes are plotted directly rather than on a tiled map — a
+maps SDK would mean an API key, a billing account and a network round trip to
+display data the app already holds, and would make an offline demonstration
+depend on a CDN. Longitude is scaled by cos(latitude) before plotting: a degree
+of latitude is the same length everywhere while a degree of longitude shrinks
+towards the poles, so plotting one against the other unscaled stretches an
+east-west route by about 15% at 32°N. One scale factor serves both axes, so a
+route keeps its true proportions instead of being stretched to fill the view.
+
+**Route distance** discards steps under 3 m, because a stationary receiver
+wanders by metres as satellite geometry shifts and summing that would have a Pi
+on a table accumulate kilometres overnight. The comparison anchor stays at the
+last *accepted* point rather than the previous one, so a slow walk sampled
+quickly still accumulates instead of being discarded a sub-threshold step at a
+time.
+
+**Coverage gaps.** When the receiver loses lock, the next fix is far away and
+joining the two draws a confident straight line through ground nothing measured.
+Such segments are drawn broken and counted. The threshold is adaptive — four
+times the median sampling interval, ten-second floor — because a constant cannot
+serve both a 2 s walk and a 300 s fixed installation. Median rather than mean:
+the gaps being detected would drag a mean upwards and hide themselves.
+
 ---
 
 ## 7. The design principle the whole project runs on
@@ -191,6 +223,16 @@ Concrete instances:
   naming is carried into the schema (`tracker_fixes`, `TrackerFix`,
   `trackerLatitude`) so nothing downstream can quietly repurpose it.
 - "Available" means *the sensor can do its job*, not *a handle was opened*.
+- The live bowl weight is **never stored**. Everything else on that screen is
+  history the Pi derived and the phone kept; this is what the hardware is saying
+  this second, read from `/health` and discarded. The meal record is a
+  measurement someone can cite; the live number is not.
+- Asking a phone for grams was removed once the feeder metered in whole pockets:
+  the box invited a precision the hardware does not have. The Pi reports what a
+  portion is and the app only asks whether to dispense it.
+- A route's **breaks in coverage are drawn as breaks**. Joining across a lost
+  fix with the same stroke as measured ground was the one place the drawing
+  claimed more than the data supported.
 
 **Timestamps before 2020-01-01 are discarded.** A Pi with no RTC genuinely
 believes it is 1970 between boot and first NTP sync. Those readings cannot be
@@ -201,13 +243,13 @@ or worse, moved to "now", which would invent a meal that never happened.
 
 ## 8. Testing and verification
 
-**376 automated tests**, in three suites with different purposes:
+**420 automated tests**, in three suites with different purposes:
 
 | Suite | Count | Runs on | Covers |
 |---|---|---|---|
-| Pi | 218 | Any machine, no hardware | Protocols, parsing, event store, feeders, HTTP |
-| Android unit (JVM) | 59 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing |
-| Android instrumented | 99 | A real phone | Room migrations, repository, sync, layouts, theming |
+| Pi | 246 | Any machine, no hardware | Protocols, parsing, event store, feeders, cameras, HTTP, the systemd unit |
+| Android unit (JVM) | 73 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
+| Android instrumented | 101 | A real phone | Room migrations, repository, sync, layouts, theming |
 
 **Fakes as first-class citizens.** `sensors/fake.py` lets the whole service run
 with `--fake`, so the app can be developed against a simulated rig and the tests
@@ -278,7 +320,31 @@ deleted-but-open file was lenient enough to hide it. The lesson:
 **emulated verification and real-device verification are not interchangeable**,
 and a test suite can be green because the environment is forgiving.
 
-**6. The failure mode of a camera that worked yesterday.** Only one process may
+**6. A subsystem that broke the first time someone attached a monitor.** The USB
+camera had worked headless for weeks. It stopped the day a screen was plugged in:
+the desktop session's media stack (PipeWire) claims V4L2 devices, and only one
+process may hold a camera. Booting to console was not enough — PipeWire is
+socket-activated per user session and had to be masked. Immediately behind it sat
+a second, independent fault with identical symptoms: with a CSI camera connected,
+the ISP pipeline brings up a dozen `/dev/videoN` nodes and takes the low numbers,
+so the webcam moved from `video0` to `video1` and "could not open video device 0"
+was reported by a camera that was plugged in and working. Two unrelated causes,
+one symptom, both invisible from the application. The lesson: **a device being
+present, enumerated and powered says nothing about whether this process can have
+it.**
+
+**7. A confident wrong diagnosis, and correcting the record.** A servo that
+clicked and would not move was diagnosed as having stripped gears, and that
+conclusion was written into the code as justification for a constant. It was
+wrong: the signal wire was on the wrong header pin (GPIO 18 is *physical pin
+12*), and an unowned GPIO floats, so the servo was twitching at electrical noise
+— which looks exactly like a stalling motor. The commit correcting it is in the
+history. The lesson for a methodology chapter: **an intermittent symptom that
+changes with every rewiring is evidence about the wiring, not about the
+component**, and a diagnosis should not be recorded as fact in a place that
+outlives the conversation that produced it.
+
+**8. The failure mode of a camera that worked yesterday.** Only one process may
 hold a CSI camera. A second copy of the service — including one started by hand
 next to the systemd one — takes the camera and produces a fault that looks like
 hardware. Handled by `ReopeningCamera`, which retries at a rate limit after
@@ -318,9 +384,10 @@ Numbers produced by the real system. Use these rather than estimates.
 | GPS fix | **12 satellites**, 32.00964, 35.76567 | `--check-gps` |
 | CSI camera | **20/20 frames, 18.4 fps** | `--check-camera` |
 | Motion sensors | 3 of 3 firing, correct rooms | `--check-motion` |
-| Automated tests | **376** (218 + 59 + 99) | All passing |
-| Codebase | 6,531 lines Java, 4,737 Python | 45 classes, 13 layouts |
-| Development span | 2026-04-29 → 2026-08-30 | 54 commits |
+| Route recorded on foot | Yes — over a phone hotspot, on battery | TrackActivity |
+| Automated tests | **420** (246 + 73 + 101) | All passing |
+| Codebase | 7,306 lines Java, 4,941 Python | 48 classes, 14 layouts |
+| Development span | 2026-04-29 → 2026-09-04 | 65 commits |
 
 **A calibration methodology note worth including.** The first calibration used a
 phone of assumed weight; the second used a 600 ml water bottle. The second was

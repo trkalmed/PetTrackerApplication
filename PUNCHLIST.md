@@ -610,6 +610,119 @@ the printed IP into the app's Pi Connection dialog.
 
 ---
 
+## Session — 2026-09-04 · the rig complete, and what the professor asked for
+
+The meeting went well. Two things came out of it: finish the thesis for review,
+and **demonstrate the GPS outdoors tracking a route** — reframed, sensibly, as a
+prototype for a large animal rather than a cat, since consumer GNSS cannot
+resolve a cat's movements and a walked track proves the system rather than the
+receiver.
+
+### Recording and drawing a route
+
+`--gps-interval` and `PETTRACKER_GPS_INTERVAL`. The interval was hard-coded at
+300 s and unreachable from run.py, so a fifteen-minute walk would have been
+three points. 300 still suits a Pi bolted to a floor; a walk wants two seconds.
+
+`TrackActivity` draws the run of fixes — tap "Pi located" on the dashboard.
+Drawn directly rather than through a maps SDK: that would mean an API key, a
+billing account and a network round trip to display something the app already
+holds, and it would make an offline demo depend on a CDN. Longitudes are scaled
+by cos(latitude) first, or an east-west walk reads 15% longer than a
+north-south one at this latitude, and one scale factor serves both axes so a
+route keeps its proportions.
+
+Distance discards steps under 3 m — a stationary receiver wanders as satellite
+geometry shifts, and summing that would have a Pi on a table walk kilometres
+overnight — while the anchor stays at the last *accepted* point, so a slow walk
+sampled quickly still accumulates.
+
+**The first walk worked**, over a phone hotspot, on a 4000 mAh power bank, cut
+short when the battery ran low. It also showed a flaw: long straight lines cut
+across the route, through streets and buildings. Those were not travel, they
+were the receiver losing lock and the drawing joining the two fixes with the
+same confident stroke it uses for measured ground. Gaps now draw dashed and
+faint and the legend counts them. The distance still includes them — the tracker
+did travel between those points; what is unknown is the shape.
+
+The gap threshold is adaptive: four times the median interval, ten-second floor.
+A constant cannot serve both a 2 s walk and a 300 s installation. Median rather
+than mean, because the gaps being looked for would drag a mean upwards and hide
+themselves.
+
+**Still needed:** the stats-card numbers from a walk — fixes, duration,
+distance, satellite range, gaps — for the measured-results table.
+
+### Everything else, in the house
+
+**Two cameras.** The Pi modelled exactly one, from SensorSet to /stream. It now
+holds an ordered map, `/stream?camera=<name>` picks one, /health reports them by
+name, and `--camera` takes a list — `usb,csi`. The first is primary: motion
+snapshots come from it, and /stream serves it when no name is given, so an older
+client is unaffected. An unknown name is a 404, not a fall back to the primary —
+showing the hall to a phone that asked for the kitchen is worse than an error.
+In the app the camera label becomes tappable once the Pi reports more than one,
+listing only cameras it says are up.
+
+**The bowl weight, live.** /health always carried `latest_weight_grams` and the
+app discarded it. The Food tab shows it now, polled every two seconds while the
+tab is open — the event poller's fifteen is right for history and far too slow
+for a number meant to be watched as food lands. It is never stored: everything
+else on that screen is history the Pi derived, this is what the hardware is
+saying this second.
+
+**Feeding is a confirmation, not a quantity.** The wheel meters in whole
+pockets, so grams typed on a phone were rounded to the nearest one before
+anything moved — the box asked for a precision the hardware does not have.
+/health now reports `portion_grams`, the app sends that, and the dialog asks
+only whether to run it. Still a confirmation rather than a bare button: this
+moves food in a room nobody is standing in.
+
+**The tare survives a restart.** The offset lived only in memory, and the unit
+restarts on failure and at boot, so every restart reported the bowl's own weight
+as food. Invisible until the live reading made it visible — 1196 g in an empty
+bowl. It is a measurement of this bowl on this cell rather than configuration,
+so it goes in a file the service writes, not in service.env beside the
+calibration factor. Written to `.part` and renamed: a truncated file would parse
+as a *wrong* offset rather than as no offset.
+
+### Faults found, and what they have in common
+
+**The servo was on the wrong header pin.** GPIO 18 is *physical pin 12*; pin 18
+is GPIO 24. An unowned GPIO floats, and a floating servo input clicks whether or
+not anything drives it — which reads exactly like a stalling motor. This
+produced a confident, wrong diagnosis of a dead servo, written into the code as
+fact and corrected in 9338b8d. The defaults change it prompted stands on its own
+merits: 0 degrees is exactly MIN_PULSE_US, and a feeder parks on construction.
+
+**Voltage drop, not the buck.** The servo worked beside the Pi and not in the
+kitchen. 12.1 V in and 5.0 V out, the servo fine, the wire at fault: five metres
+each way of dupont jumper is about 2 Ω, which is 1.4 V lost at a servo's stall
+current. Resolved for now by moving the feeder closer. **This is a real finding
+about the design, not a workaround:** the sensors can be metres from the Pi
+because they carry signals; the actuator cannot, because it carries current. The
+proper fix is to run the long cable at 12 V and convert beside the servo.
+
+**PipeWire had the camera.** A subsystem that worked headless for weeks broke
+the first time a monitor was attached: the desktop session's media stack claims
+V4L2 devices. Console boot alone did not fix it — PipeWire is socket-activated
+per user session and had to be masked.
+
+**And the CSI camera took /dev/video0.** With a ribbon camera connected the ISP
+pipeline brings up a dozen video nodes and claims the low numbers, so the webcam
+moved to /dev/video1. `--camera-device` had existed since the USB camera work
+and the unit never passed it.
+
+That last one is the fourth flag the unit has silently not been passing. The
+pattern is consistent: a flag is added to run.py, tested by hand, and the unit
+forgotten — so it works in bring-up and quietly does not in service.
+`test_service_unit.py` checks the unit's *contents*, but nothing checks that the
+**deployed** unit matches the repo, which is what bit the GPS walk. A
+`--check-deployment` comparing the running process's arguments against what the
+current unit would produce is perhaps fifteen minutes and would close the class.
+
+**Tests: 246 Pi, 73 app unit, 101 instrumented — 420 in all, passing.**
+
 ## Session — 2026-08-31 · the whole rig, in the house
 
 The first build with everything wired in its real position rather than on a

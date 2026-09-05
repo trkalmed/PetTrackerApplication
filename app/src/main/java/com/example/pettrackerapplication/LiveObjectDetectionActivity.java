@@ -133,22 +133,47 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         return new DetectionRecorder(this, petId, source);
     }
 
+    /**
+     * Guards the detector against being closed while a frame is inside it.
+     *
+     * {@link CocoObjectDetector} wraps native TensorFlow Lite memory. Closing it
+     * frees that memory immediately, and a worker thread part-way through
+     * {@code detect()} then reads it — a use-after-free, which arrives as a
+     * SIGSEGV in libtask_vision_jni rather than as a Java exception, so no
+     * amount of catching would have helped.
+     *
+     * This crashed on leaving the Live screen: onDestroy interrupted the stream
+     * thread and closed the detector on the next line, without waiting, while
+     * that thread was usually inside detect(). Interrupting does not stop native
+     * code — it only sets a flag the thread checks between frames.
+     */
+    private final Object detectorLock = new Object();
+    private volatile boolean detectorClosed = false;
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
 
         if (detectionRecorder != null) detectionRecorder.close();
 
-        piStreamRunning = false;
-        if (piStreamThread != null) {
-            piStreamThread.interrupt();
-        }
-
+        // Stop the producers *first*, and wait for them, so nothing is inside
+        // the detector by the time it is freed.
+        stopPiStream();
         if (cameraExecutor != null) {
             cameraExecutor.shutdownNow();
+            try {
+                cameraExecutor.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
-        if (cocoDetector != null) cocoDetector.close();
+        // Belt and braces: the waits above are bounded, and a frame that takes
+        // longer than the timeout must still not touch freed memory.
+        synchronized (detectorLock) {
+            detectorClosed = true;
+            if (cocoDetector != null) cocoDetector.close();
+        }
     }
 
 
@@ -296,9 +321,14 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         if (detectionBusy) return;
         detectionBusy = true;
         try {
-            List<Detection> detections = cocoDetector.detect(bitmap);
-            graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
-            if (detectionRecorder != null) detectionRecorder.onDetections(detections);
+            // Held for the whole call, so onDestroy cannot free the detector's
+            // native memory part-way through it. See detectorLock.
+            synchronized (detectorLock) {
+                if (detectorClosed || cocoDetector == null) return;
+                List<Detection> detections = cocoDetector.detect(bitmap);
+                graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+                if (detectionRecorder != null) detectionRecorder.onDetections(detections);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Detection failed", e);
         } finally {
@@ -368,9 +398,15 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
             bitmap = rotateUpright(bitmap, imageProxy.getImageInfo().getRotationDegrees());
 
             detectionBusy = true;
-            List<Detection> detections = cocoDetector.detect(bitmap);
-            graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
-            if (detectionRecorder != null) detectionRecorder.onDetections(detections);
+            // Same guard as the Pi path: CameraX's executor is shut down in
+            // onDestroy without waiting either, so this thread can also be
+            // inside native code when the detector is freed.
+            synchronized (detectorLock) {
+                if (detectorClosed || cocoDetector == null) return;
+                List<Detection> detections = cocoDetector.detect(bitmap);
+                graphicOverlay.setResults(detections, bitmap.getWidth(), bitmap.getHeight());
+                if (detectionRecorder != null) detectionRecorder.onDetections(detections);
+            }
             detectionBusy = false;
         } catch (Exception e) {
             Log.e(TAG, "Detection failed", e);

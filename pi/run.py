@@ -108,6 +108,34 @@ def _suggest_swapped_pins(args, scale, log) -> None:
         print(f"  PETTRACKER_SCALE_PINS={working[0]},{working[1]} in service.env.")
 
 
+def parse_sweep(spec):
+    """"50,180,50,0" -> [50.0, 180.0, 50.0, 0.0]; empty or None -> None.
+
+    Rejected loudly rather than silently ignored: a mistyped sweep that fell
+    back to the default would move the wheel differently from what the person
+    asked for, and the only symptom would be a feeder that meters wrongly.
+    """
+    if not spec or not spec.strip():
+        return None
+
+    angles = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            angle = float(part)
+        except ValueError:
+            raise ValueError(f"--paddle-sweep: '{part}' is not an angle")
+        if not 0 <= angle <= 180:
+            raise ValueError(f"--paddle-sweep: {angle} is outside 0-180")
+        angles.append(angle)
+
+    if len(angles) < 2:
+        raise ValueError("--paddle-sweep needs at least two angles")
+    return angles
+
+
 def build_feeder(args):
     """The feeder this rig has, with whatever numbers have been measured so far."""
     from pettracker.sensors.real import FEEDER_KINDS, PaddleFeeder, ServoFeeder
@@ -125,7 +153,8 @@ def build_feeder(args):
             dump_angle=(args.paddle_dump if args.paddle_dump is not None
                         else PaddleFeeder.DEFAULT_DUMP_ANGLE),
             grams_per_cycle=(args.paddle_grams if args.paddle_grams is not None
-                             else PaddleFeeder.DEFAULT_GRAMS_PER_CYCLE))
+                             else PaddleFeeder.DEFAULT_GRAMS_PER_CYCLE),
+            sweep=parse_sweep(args.paddle_sweep))
 
     return ServoFeeder(
         pin=args.servo_pin,
@@ -323,6 +352,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="angle the paddle wheel rests at")
     parser.add_argument("--paddle-dump", type=int, default=None,
                         help="angle it turns to, to empty a pocket")
+    parser.add_argument("--paddle-sweep", default=None,
+                        help="angles one cycle visits, in order, instead of a "
+                             "plain dump and return — e.g. 50,180,50,0. The "
+                             "last is where the wheel rests, so it must be a "
+                             "position that closes the hopper")
     parser.add_argument("--paddle-grams", type=float, default=None,
                         help="grams one pocket drops, measured by cycling ten "
                              "times into a bowl and dividing")

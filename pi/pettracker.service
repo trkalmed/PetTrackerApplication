@@ -69,6 +69,15 @@ Environment="PETTRACKER_PADDLE_DUMP=150"
 # and an overfed one. Measure it — ten cycles into a bowl, weighed, divided by
 # ten — and put the real number in service.env.
 Environment="PETTRACKER_PADDLE_GRAMS=5.0"
+# Angles one cycle visits, in order, instead of a plain dump and return. A
+# wheel that swings out and straight back can leave kibble bridged over the
+# pocket; walking it through several positions shakes the column loose. The
+# shape that works belongs to the hopper somebody built, so it is configuration
+# rather than a constant. Empty means the plain dump-and-return.
+#
+# The last angle is where the wheel rests, and resting is what closes the
+# hopper — so a sweep must end somewhere the pocket is shut.
+Environment="PETTRACKER_PADDLE_SWEEP="
 EnvironmentFile=-@DIR@/service.env
 
 # ${VAR}, not $VAR. systemd splits $VAR on whitespace, which would turn
@@ -90,7 +99,8 @@ ExecStart=/usr/bin/python3 run.py \
     --servo-ms-per-gram ${PETTRACKER_SERVO_MS_PER_GRAM} \
     --paddle-park ${PETTRACKER_PADDLE_PARK} \
     --paddle-dump ${PETTRACKER_PADDLE_DUMP} \
-    --paddle-grams ${PETTRACKER_PADDLE_GRAMS}
+    --paddle-grams ${PETTRACKER_PADDLE_GRAMS} \
+    --paddle-sweep ${PETTRACKER_PADDLE_SWEEP}
 
 # A sensor read that kills the process should not take the house's motion log
 # with it until someone notices. Five seconds is long enough that a genuinely

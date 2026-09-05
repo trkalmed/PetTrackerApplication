@@ -417,3 +417,83 @@ class RestingAnglesStayOffTheEndStops(unittest.TestCase):
         # advising about, or it advises nothing.
         self.assertGreater(ServoOutput.SAFE_MIN_ANGLE, 0)
         self.assertLess(ServoOutput.SAFE_MAX_ANGLE, 180)
+
+
+class SweepingThePaddle(unittest.TestCase):
+    """A cycle that walks several angles instead of dumping and returning.
+
+    A wheel that swings out and straight back can leave kibble bridged over the
+    pocket. Walking it through several positions shakes the column loose, and
+    the shape that works belongs to the hopper somebody built — so it is
+    configuration, not a constant.
+    """
+
+    def setUp(self):
+        self.servo = RecordingServo()
+
+    def _feeder(self, sweep):
+        return PaddleFeeder(park_angle=30, dump_angle=150, grams_per_cycle=10,
+                            servo=self.servo, travel_s=0.0, settle_s=0.0,
+                            sweep=sweep)
+
+    def test_a_cycle_visits_every_angle_in_order(self):
+        feeder = self._feeder([50, 180, 50, 0])
+        self.servo.angles.clear()
+
+        feeder.dispense(10)
+
+        # One cycle, then the rest position the finally guarantees. "released"
+        # is move_to letting go, so the servo is not holding against a stop.
+        self.assertEqual([50, 180, 50, 0, 0, "released"], self.servo.angles)
+
+    def test_each_pocket_repeats_the_whole_sweep(self):
+        feeder = self._feeder([50, 180, 50, 0])
+        self.servo.angles.clear()
+
+        feeder.dispense(20)          # two pockets at 10 g each
+
+        self.assertEqual([50, 180, 50, 0, 50, 180, 50, 0, 0, "released"],
+                         self.servo.angles)
+
+    def test_the_wheel_rests_at_the_last_angle(self):
+        # Resting is what closes the hopper, so the sweep's end is the park
+        # position — not the configured park angle, which the sweep replaces.
+        feeder = self._feeder([50, 180, 50, 0])
+
+        self.assertEqual(0, feeder.rest_angle)
+
+    def test_it_parks_there_on_construction_too(self):
+        # A hopper must be shut from the moment the service starts, not from
+        # the first dispense.
+        self._feeder([50, 180, 50, 0])
+
+        self.assertEqual([0, "released"], self.servo.angles)
+
+    def test_no_sweep_keeps_the_original_motion(self):
+        feeder = PaddleFeeder(park_angle=30, dump_angle=150, grams_per_cycle=10,
+                              servo=self.servo, travel_s=0.0, settle_s=0.0)
+        self.servo.angles.clear()
+
+        feeder.dispense(10)
+
+        self.assertEqual([150, 30, 30, "released"], self.servo.angles)
+
+    def test_a_wrong_sweep_is_refused_rather_than_ignored(self):
+        # Falling back to the default would move the wheel differently from
+        # what was asked for, and the only symptom would be wrong metering.
+        import run
+        for bad in ("50,banana", "50,200", "50", "0"):
+            with self.assertRaises(ValueError, msg=bad):
+                run.parse_sweep(bad)
+
+    def test_an_empty_setting_means_no_sweep(self):
+        import run
+        self.assertIsNone(run.parse_sweep(""))
+        self.assertIsNone(run.parse_sweep(None))
+        self.assertIsNone(run.parse_sweep("   "))
+
+    def test_a_sweep_parses_to_angles(self):
+        import run
+        self.assertEqual([50.0, 180.0, 50.0, 0.0],
+                         run.parse_sweep("50,180,50,0"))
+        self.assertEqual([50.0, 180.0], run.parse_sweep(" 50 , 180 "))

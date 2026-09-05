@@ -559,17 +559,31 @@ class PaddleFeeder(Feeder):
                  dump_angle: int = DEFAULT_DUMP_ANGLE,
                  grams_per_cycle: float = DEFAULT_GRAMS_PER_CYCLE,
                  servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None,
-                 settle_s: Optional[float] = None):
+                 settle_s: Optional[float] = None,
+                 sweep: Optional[List[float]] = None):
+        """
+        :param sweep: the angles one cycle visits, in order, instead of the
+            plain dump-and-return. A wheel that swings out and back can leave
+            kibble bridged over the pocket; walking it through several positions
+            shakes the column loose, and the shape that works is a property of
+            the hopper someone built rather than anything derivable — so it is
+            configuration, like the angles themselves.
+
+            The **last angle is where the wheel rests**, which is what closes
+            the hopper, so a sweep must end somewhere the pocket is shut.
+        """
         self._pin = pin
         self._park_angle = park_angle
         self._dump_angle = dump_angle
         self._grams_per_cycle = grams_per_cycle
         self._travel_s = ServoFeeder.TRAVEL_S if travel_s is None else travel_s
         self._settle_s = self.SETTLE_S if settle_s is None else settle_s
+        self._sweep = list(sweep) if sweep else None
+        self._rest_angle = self._sweep[-1] if self._sweep else park_angle
         self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
 
         if self._servo is not None:
-            self.move_to(park_angle)
+            self.move_to(self._rest_angle)
 
     def move_to(self, angle: float) -> None:
         """Turns the wheel to an angle and lets go once it has arrived."""
@@ -599,16 +613,23 @@ class PaddleFeeder(Feeder):
         cycles = self.cycles_for(grams)
         log.info("turning the paddle %d time(s) for %d g", cycles, grams)
 
+        sweep = self._sweep or [self._dump_angle, self._park_angle]
         try:
             for _ in range(cycles):
-                self._servo.set_angle(self._dump_angle)
-                time.sleep(self._travel_s + self._settle_s)
-                self._servo.set_angle(self._park_angle)
-                time.sleep(self._travel_s)
+                for index, angle in enumerate(sweep):
+                    self._servo.set_angle(angle)
+                    # The settle only belongs where the pocket is emptying: a
+                    # wheel that snaps straight back takes kibble with it. The
+                    # rest of a sweep is agitation, and pausing at every angle
+                    # would just make a dispense slow.
+                    dwell = self._travel_s
+                    if angle == max(sweep):
+                        dwell += self._settle_s
+                    time.sleep(dwell)
         finally:
-            # Parked whatever happened. A wheel abandoned at the dump position
-            # is an open hole in the bottom of the hopper.
-            self.move_to(self._park_angle)
+            # Parked whatever happened. A wheel abandoned mid-sweep is an open
+            # hole in the bottom of the hopper.
+            self.move_to(self._rest_angle)
 
     @property
     def grams_per_cycle(self) -> float:
@@ -617,6 +638,16 @@ class PaddleFeeder(Feeder):
     @property
     def park_angle(self) -> int:
         return self._park_angle
+
+    @property
+    def rest_angle(self) -> float:
+        """Where the wheel is left, which is what keeps the hopper shut.
+
+        The configured park angle normally, or the last angle of a sweep when
+        one is set — a sweep replaces the motion, so it also decides where the
+        motion ends.
+        """
+        return self._rest_angle
 
     @property
     def dump_angle(self) -> int:

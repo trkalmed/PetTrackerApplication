@@ -215,3 +215,32 @@ class UnitDefaultsMatchCodeDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheHoldFeederIsReachable(unittest.TestCase):
+    """The newest design has to be selectable the same way the others are.
+
+    Three feeder kinds have now been added to run.py, and each time the unit was
+    the thing that forgot. This asserts the third is reachable by changing one
+    variable, and that the travel time — which decides whether a servo is let go
+    before it has arrived — comes through with it.
+    """
+
+    def test_hold_is_reachable_by_changing_one_variable(self):
+        environment = unit_environment(read_unit())
+        environment["PETTRACKER_FEEDER"] = "hold"
+
+        import run
+        args = run.build_parser().parse_args(unit_arguments(environment))
+
+        self.assertEqual("hold", args.feeder)
+        from pettracker.sensors.real import FEEDER_KINDS
+        self.assertIn("hold", FEEDER_KINDS)
+
+    def test_the_travel_time_reaches_the_program(self):
+        import run
+        args = run.build_parser().parse_args(unit_arguments())
+
+        self.assertEqual(args.servo_travel,
+                         run.build_parser().get_default("servo_travel"))
+        self.assertGreater(args.servo_travel, 0)

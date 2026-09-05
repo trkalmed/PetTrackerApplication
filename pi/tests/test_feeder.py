@@ -530,8 +530,22 @@ class HoldingTheHopperOpen(unittest.TestCase):
     def test_dispensing_opens_and_stays_open(self):
         self.feeder.dispense(40)
 
-        self.assertEqual([180, "released"], self.servo.angles)
+        # No "released": a hopper held open is resisting the weight of the
+        # kibble above it, and a released servo gets shoved closed again. That
+        # presents as a servo which "does not turn fully" when in fact it
+        # turned and was pushed back.
+        self.assertEqual([180], self.servo.angles)
         self.assertTrue(self.feeder.is_open)
+
+    def test_closing_lets_go_again(self):
+        # Holding costs current and heat, and a closed hopper has nothing
+        # pressing on it, so the torque is only spent while it is needed.
+        self.feeder.dispense(40)
+        self.servo.angles.clear()
+
+        self.feeder.close_gate()
+
+        self.assertEqual([10, "released"], self.servo.angles)
 
     def test_closing_returns_to_the_closed_angle(self):
         self.feeder.dispense(40)

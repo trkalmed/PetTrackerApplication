@@ -151,7 +151,8 @@ def build_feeder(args):
             pin=args.servo_pin,
             open_angle=(args.servo_open if args.servo_open is not None else 180),
             closed_angle=(args.servo_closed if args.servo_closed is not None
-                          else 10))
+                          else 10),
+            travel_s=args.servo_travel)
 
     if args.feeder == "paddle":
         return PaddleFeeder(
@@ -353,6 +354,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--servo-ms-per-gram", type=float, default=None,
                         help="how long the gate must be open per gram, measured "
                              "by opening it for a known time and weighing what fell")
+    parser.add_argument("--servo-travel", type=float, default=0.5,
+                        help="seconds allowed for the servo to reach an angle "
+                             "before it is let go (default 0.5). A full swing "
+                             "under load takes longer than a small one, and a "
+                             "servo released mid-travel stops where it got to")
     parser.add_argument("--feeder", default="gate",
                         help="how the hopper meters food: gate (open for a "
                              "time), paddle (turn whole pockets), or hold "

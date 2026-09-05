@@ -1109,12 +1109,26 @@ class HoldFeeder(Feeder):
             # to be, and for a hopper that may be wide open.
             self.move_to(closed_angle)
 
-    def move_to(self, angle: float) -> None:
+    def move_to(self, angle: float, hold: bool = False) -> None:
+        """Turns to an angle, and optionally keeps holding it there.
+
+        Holding matters for this design and for no other. The gate and the
+        paddle let go once they have arrived, because nothing pushes back on
+        them. A hopper held open is resisting the weight of the kibble above
+        it: released, the column shoves it closed again, and the symptom is a
+        servo that "does not turn fully" when in fact it turned and was pushed
+        back.
+
+        The cost of holding is real — a servo under load draws current and
+        warms up — which is why it is only done while the hopper is open, and
+        why the auto-close backstop exists.
+        """
         if self._servo is None:
             return
         self._servo.set_angle(angle)
         time.sleep(self._travel_s)
-        self._servo.release()
+        if not hold:
+            self._servo.release()
 
     def dispense(self, grams: int = 0) -> None:
         """Opens, and leaves it open. ``grams`` is ignored by this design.
@@ -1127,7 +1141,7 @@ class HoldFeeder(Feeder):
         if self._servo is None:
             raise RuntimeError("feeder unavailable")
 
-        self.move_to(self._open_angle)
+        self.move_to(self._open_angle, hold=True)
         self._opened_at = self._clock()
         log.info("hopper open at %d degrees — waiting to be told to close",
                  self._open_angle)

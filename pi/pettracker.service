@@ -53,13 +53,23 @@ Environment="PETTRACKER_GPS_PORT=/dev/serial0"
 # mostly GPS. Carrying the Pi to record a route wants a few seconds instead —
 # at 300 a fifteen-minute walk is three points.
 Environment="PETTRACKER_GPS_INTERVAL=300"
-# How the hopper meters food: "gate" holds a flap open for a time, "paddle"
-# turns whole pockets. The paddle numbers are ignored by the gate and the gate
-# numbers by the paddle, so switching designs is this one variable and nothing
-# else. The defaults below are the same numbers the code falls back to, and
-# tests/test_service_unit.py fails if the two ever drift apart.
+# How the hopper meters food: "gate" holds a flap open for a computed time,
+# "paddle" turns whole pockets, "hold" opens and stays open until the app says
+# to close. Each design ignores the others' numbers, so switching is this one
+# variable and nothing else. The defaults below are the same numbers the code
+# falls back to, and tests/test_service_unit.py fails if the two ever drift.
+#
+# "hold" gives up the guarantee the other two have — their close is automatic,
+# and a hopper left open empties onto the floor. Its backstop is a time limit
+# in the code (HoldFeeder.AUTO_CLOSE_S), not a setting here, because it is a
+# safety net rather than a tuning knob.
 Environment="PETTRACKER_FEEDER=gate"
 Environment="PETTRACKER_SERVO_PIN=18"
+# Seconds allowed for the servo to reach an angle before it is let go. A full
+# swing under load takes longer than a small one, and a servo released
+# mid-travel simply stops where it got to — which looks like a servo that
+# "does not turn fully" and is in fact one that was not given time.
+Environment="PETTRACKER_SERVO_TRAVEL=0.5"
 Environment="PETTRACKER_SERVO_OPEN=90"
 Environment="PETTRACKER_SERVO_CLOSED=20"
 Environment="PETTRACKER_SERVO_MS_PER_GRAM=50.0"
@@ -94,6 +104,7 @@ ExecStart=/usr/bin/python3 run.py \
     --gps-interval ${PETTRACKER_GPS_INTERVAL} \
     --feeder ${PETTRACKER_FEEDER} \
     --servo-pin ${PETTRACKER_SERVO_PIN} \
+    --servo-travel ${PETTRACKER_SERVO_TRAVEL} \
     --servo-open ${PETTRACKER_SERVO_OPEN} \
     --servo-closed ${PETTRACKER_SERVO_CLOSED} \
     --servo-ms-per-gram ${PETTRACKER_SERVO_MS_PER_GRAM} \

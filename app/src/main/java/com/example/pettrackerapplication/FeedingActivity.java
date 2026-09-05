@@ -234,15 +234,14 @@ public class FeedingActivity extends ThemedActivity {
      * taken out of the bowl by hand.
      */
     private void confirmDispense() {
-        Double portion = lastHealth == null ? null : lastHealth.portionGrams;
-        String message = portion == null
-                ? getString(R.string.feed_confirm_message)
-                : getString(R.string.feed_confirm_message_portion,
-                        (int) Math.round(portion));
-
+        // The grams are deliberately not quoted. The Pi's configured figure is
+        // a guess until somebody measures a pocket with a full hopper, and a
+        // number on a confirmation reads as a promise — one the load cell is
+        // then very likely to contradict. What is certain is that the wheel
+        // turns once, so that is what the dialog says.
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.feed_confirm_title)
-                .setMessage(message)
+                .setMessage(R.string.feed_confirm_message)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.feed_action, (d, which) -> dispense(portionGrams()))
                 .show();

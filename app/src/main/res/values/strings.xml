@@ -198,7 +198,6 @@
     -->
     <string name="feed_confirm_title">Dispense a portion?</string>
     <string name="feed_confirm_message">The feeder will turn once and drop one portion into the bowl. The load cell then reports what actually landed.</string>
-    <string name="feed_confirm_message_portion">The feeder will turn once and drop about %1$d g into the bowl. The load cell then reports what actually landed.</string>
     <string name="feed_action">Dispense</string>
     <string name="feed_dispensing">Dispensing…</string>
     <string name="feed_sent">Feeder ran. Watching the bowl for what landed.</string>

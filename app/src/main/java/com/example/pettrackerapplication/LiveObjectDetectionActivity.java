@@ -37,6 +37,7 @@ import java.net.URL;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Executors;
 
 public class LiveObjectDetectionActivity extends ThemedActivity {
@@ -150,6 +151,15 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
     private final Object detectorLock = new Object();
     private volatile boolean detectorClosed = false;
 
+    /**
+     * Runs inference for the Pi stream, one frame at a time.
+     *
+     * Single-threaded on purpose: a pool would run several inferences at once
+     * on a phone with one useful accelerator, and produce results out of order
+     * for a view that only ever shows the newest.
+     */
+    private final ExecutorService detectionExecutor = Executors.newSingleThreadExecutor();
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -159,10 +169,16 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         // Stop the producers *first*, and wait for them, so nothing is inside
         // the detector by the time it is freed.
         stopPiStream();
+        detectionExecutor.shutdownNow();
+        try {
+            detectionExecutor.awaitTermination(500, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         if (cameraExecutor != null) {
             cameraExecutor.shutdownNow();
             try {
-                cameraExecutor.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                cameraExecutor.awaitTermination(500, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -289,7 +305,27 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
                             jpegBytes, 0, jpegBytes.length);
                     if (frame == null) continue;
                     runOnUiThread(() -> piStreamView.setImageBitmap(frame));
-                    analyzeFrameBitmap(frame);
+
+                    // Detection runs off this thread, and frames are dropped
+                    // while it is busy.
+                    //
+                    // It used to be called here, inline. Inference takes a few
+                    // hundred milliseconds and reading the stream takes almost
+                    // none, so the loop ran at the detector's pace: the Pi sent
+                    // ten frames a second, the phone displayed three, and the
+                    // socket buffered the rest — a "live" view falling further
+                    // behind the room the longer it was watched. detectionBusy
+                    // existed to prevent this and could never fire, because the
+                    // same thread cleared it before looping.
+                    //
+                    // Now the picture keeps up with the Pi and the detector
+                    // samples whatever it can. Boxes lag the image slightly,
+                    // which is the honest trade: a box is a statement about a
+                    // frame, and drawing every one late would make both wrong.
+                    if (!detectionBusy) {
+                        detectionBusy = true;
+                        detectionExecutor.execute(() -> analyzeFrameBitmap(frame));
+                    }
                 }
                 runOnUiThread(() -> tvStreamStatus.setText(R.string.stream_ended));
 
@@ -318,8 +354,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
      * thread (it uses postInvalidate() internally).
      */
     private void analyzeFrameBitmap(Bitmap bitmap) {
-        if (detectionBusy) return;
-        detectionBusy = true;
         try {
             // Held for the whole call, so onDestroy cannot free the detector's
             // native memory part-way through it. See detectorLock.

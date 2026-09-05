@@ -100,6 +100,12 @@ public class FeedingActivity extends ThemedActivity {
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        bowlWorker.shutdownNow();
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         bowlPoll.removeCallbacks(bowlTick);
@@ -134,6 +140,18 @@ public class FeedingActivity extends ThemedActivity {
     private final java.util.concurrent.atomic.AtomicBoolean bowlInFlight =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
+    /**
+     * Runs the health requests, reused rather than a thread per poll.
+     *
+     * At two seconds this fires thirty times a minute for as long as the Food
+     * tab is open. A fresh Thread each time means thirty stack allocations and
+     * thirty teardowns a minute for work that is almost entirely waiting on a
+     * socket — a real cost on a mid-range phone, and pointless when one thread
+     * can do all of it.
+     */
+    private final java.util.concurrent.ExecutorService bowlWorker =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
     private final Runnable bowlTick = new Runnable() {
         @Override
         public void run() {
@@ -166,7 +184,7 @@ public class FeedingActivity extends ThemedActivity {
 
         if (!bowlInFlight.compareAndSet(false, true)) return;
 
-        new Thread(() -> {
+        bowlWorker.execute(() -> {
             PiHealth health = null;
             try {
                 health = client.health();
@@ -187,7 +205,7 @@ public class FeedingActivity extends ThemedActivity {
 
                 renderBowl(answer);
             });
-        }).start();
+        });
     }
 
     /**

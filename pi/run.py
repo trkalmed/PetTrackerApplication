@@ -138,12 +138,20 @@ def parse_sweep(spec):
 
 def build_feeder(args):
     """The feeder this rig has, with whatever numbers have been measured so far."""
-    from pettracker.sensors.real import FEEDER_KINDS, PaddleFeeder, ServoFeeder
+    from pettracker.sensors.real import (FEEDER_KINDS, HoldFeeder, PaddleFeeder,
+                                         ServoFeeder)
 
     if args.feeder not in FEEDER_KINDS:
         raise ValueError(
             f"unknown feeder '{args.feeder}' (expected one of "
             f"{', '.join(FEEDER_KINDS)})")
+
+    if args.feeder == "hold":
+        return HoldFeeder(
+            pin=args.servo_pin,
+            open_angle=(args.servo_open if args.servo_open is not None else 180),
+            closed_angle=(args.servo_closed if args.servo_closed is not None
+                          else 10))
 
     if args.feeder == "paddle":
         return PaddleFeeder(
@@ -347,7 +355,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "by opening it for a known time and weighing what fell")
     parser.add_argument("--feeder", default="gate",
                         help="how the hopper meters food: gate (open for a "
-                             "time) or paddle (turn whole pockets)")
+                             "time), paddle (turn whole pockets), or hold "
+                             "(open until told to close, from the app)")
     parser.add_argument("--paddle-park", type=int, default=None,
                         help="angle the paddle wheel rests at")
     parser.add_argument("--paddle-dump", type=int, default=None,

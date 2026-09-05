@@ -109,6 +109,13 @@ class Monitor:
         self._poll_motion(now, now_ms)
         self._poll_location(now, now_ms)
 
+        # A hopper that stays open until told to close needs something watching
+        # for the close that never comes — a flat phone, a dropped connection, a
+        # pocket. Feeders that shut themselves have no tick and are skipped.
+        feeder_tick = getattr(self._sensors.feeder, "tick", None)
+        if feeder_tick is not None:
+            feeder_tick()
+
         if now - self._last_prune >= self._prune_interval:
             self._last_prune = now
             removed = self._store.prune(now_ms)

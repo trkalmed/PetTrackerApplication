@@ -106,6 +106,17 @@ public final class PiClient implements PiEventSource {
         post("/feed", body);
     }
 
+    /**
+     * Shuts a hopper that stays open until it is told to.
+     *
+     * Harmless against the metered feeders, which answer that they close
+     * themselves — so a screen may call this without first knowing which design
+     * is on the other end.
+     */
+    public void closeFeeder() throws IOException {
+        post("/close", new JSONObject());
+    }
+
     /** Zeroes the scale, so "empty bowl" reads as 0 g rather than the bowl. */
     public void tare() throws IOException {
         post("/tare", new JSONObject());

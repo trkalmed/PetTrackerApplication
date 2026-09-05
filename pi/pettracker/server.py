@@ -103,6 +103,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._feed()
         if route.path == "/tare":
             return self._tare()
+        if route.path == "/close":
+            return self._close_feeder()
         self._send_json({"error": "not found"}, 404)
 
     def _health(self) -> None:
@@ -119,6 +121,9 @@ class _Handler(BaseHTTPRequestHandler):
             # null for a design with no natural serving, and the client then
             # falls back to something sensible.
             "portion_grams": getattr(self.sensors.feeder, "grams_per_cycle", None),
+            # Only a hold feeder can be open between requests; the others shut
+            # themselves as part of dispensing, so False is the truth for them.
+            "feeder_open": bool(getattr(self.sensors.feeder, "is_open", False)),
         })
 
     def _events(self, query: dict) -> None:
@@ -153,6 +158,28 @@ class _Handler(BaseHTTPRequestHandler):
         except RuntimeError as e:
             return self._send_json({"error": str(e)}, 503)
         self._send_json(result)
+
+    def _close_feeder(self) -> None:
+        """Shuts a hopper that stays open until it is told to close.
+
+        Only the "hold" feeder has anything to do here. The gate and the paddle
+        close themselves as part of dispensing, so for those this is a no-op
+        rather than an error — a client that closes after every feed is doing
+        something harmless, not something wrong.
+        """
+        feeder = self.sensors.feeder
+        if not feeder.available:
+            return self._send_json({"error": "feeder unavailable"}, 503)
+
+        closer = getattr(feeder, "close_gate", None)
+        if closer is None:
+            return self._send_json({"ok": True, "note": "this feeder closes itself"})
+
+        try:
+            closer()
+        except RuntimeError as e:
+            return self._send_json({"error": str(e)}, 503)
+        self._send_json({"ok": True, "open": False})
 
     def _tare(self) -> None:
         self.monitor.tare()

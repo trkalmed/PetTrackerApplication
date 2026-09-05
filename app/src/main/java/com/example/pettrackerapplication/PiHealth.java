@@ -43,6 +43,14 @@ public final class PiHealth {
      */
     public final Double portionGrams;
 
+    /**
+     * Whether a hold-style hopper is currently open.
+     *
+     * Always false for the metered designs — they shut themselves as part of
+     * dispensing, so there is no moment between requests when they are open.
+     */
+    public final boolean feederOpen;
+
     /** Camera name to whether it is up, in the Pi's own order. */
     public final Map<String, Boolean> cameras;
 
@@ -59,7 +67,7 @@ public final class PiHealth {
                      boolean cameraAvailable, boolean locationAvailable,
                      Map<String, Boolean> motionSensors,
                      Map<String, Boolean> cameras, Double latestWeightGrams,
-                     Double portionGrams) {
+                     Double portionGrams, boolean feederOpen) {
         this.ok = ok;
         this.timeMillis = timeMillis;
         this.uptimeSeconds = uptimeSeconds;
@@ -72,6 +80,7 @@ public final class PiHealth {
         this.cameras = Collections.unmodifiableMap(cameras);
         this.latestWeightGrams = latestWeightGrams;
         this.portionGrams = portionGrams;
+        this.feederOpen = feederOpen;
     }
 
     public static PiHealth fromJson(JSONObject json) {
@@ -110,7 +119,8 @@ public final class PiHealth {
                 json.isNull("latest_weight_grams")
                         ? null : json.optDouble("latest_weight_grams"),
                 json.isNull("portion_grams")
-                        ? null : json.optDouble("portion_grams"));
+                        ? null : json.optDouble("portion_grams"),
+                json.optBoolean("feeder_open", false));
     }
 
     /**

@@ -186,7 +186,10 @@
     <string name="bowl_no_pi">No Pi paired. Add one in Settings.</string>
     <string name="bowl_uncalibrated">reading is not in grams — the scale is uncalibrated</string>
 
-    <string name="feed_now">Feed now</string>
+    <string name="feed_now">Open the hopper</string>
+    <string name="feeder_close">Close the hopper</string>
+    <string name="feeder_open_now">Open — food is falling. Close it when the bowl looks right.</string>
+    <string name="feeder_closing">Closing…</string>
     <string name="feeder_checking">Checking the feeder…</string>
     <string name="feeder_ready">Ready · the load cell reports what actually lands</string>
     <string name="feeder_unavailable">The Pi has no feeder connected</string>
@@ -197,7 +200,7 @@
       a precision the hardware does not have.
     -->
     <string name="feed_confirm_title">Dispense a portion?</string>
-    <string name="feed_confirm_message">The feeder will turn once and drop one portion into the bowl. The load cell then reports what actually landed.</string>
+    <string name="feed_confirm_message">The hopper will open and stay open until you close it. Watch the bowl weight and close it when there is enough.</string>
     <string name="feed_action">Dispense</string>
     <string name="feed_dispensing">Dispensing…</string>
     <string name="feed_sent">Feeder ran. Watching the bowl for what landed.</string>

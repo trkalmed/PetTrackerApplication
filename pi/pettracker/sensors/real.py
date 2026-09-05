@@ -1065,7 +1065,125 @@ class NoCamera(Camera):
 
 
 #: What --feeder accepts. A gate meters by time, a paddle by whole pockets.
-FEEDER_KINDS = ("gate", "paddle")
+class HoldFeeder(Feeder):
+    """A hopper the person opens and closes, rather than one that meters.
+
+    The other two designs decide for themselves when to stop: the gate holds
+    open for a computed time, the paddle turns whole pockets. This one turns to
+    the open angle and **stays there** until something tells it to close.
+
+    That is a deliberate removal of the safety the other two have. Their close
+    is in a ``finally`` precisely because a hopper left open empties onto the
+    floor, and a cat that finds the pile eats until it is sick. Here the close
+    is a separate request, so the guarantee is only as good as the person
+    watching — which is the right trade when someone wants to watch food fall
+    and stop it by eye, and the wrong one for anything unattended.
+
+    :data:`AUTO_CLOSE_S` is the backstop: not a timer that meters anything, just
+    a limit on how long the hopper can be open if the close never arrives —
+    because the failure it guards against is the phone going flat mid-feed.
+    """
+
+    #: Longest the hopper may stay open without being told to close. None
+    #: disables it entirely, which is a choice worth making deliberately.
+    AUTO_CLOSE_S = 120.0
+
+    def __init__(self, pin: int = 18,
+                 open_angle: int = 180,
+                 closed_angle: int = 10,
+                 servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None,
+                 auto_close_s: Optional[float] = AUTO_CLOSE_S,
+                 clock=time.monotonic):
+        self._pin = pin
+        self._open_angle = open_angle
+        self._closed_angle = closed_angle
+        self._travel_s = ServoFeeder.TRAVEL_S if travel_s is None else travel_s
+        self._auto_close_s = auto_close_s
+        self._clock = clock
+        self._opened_at: Optional[float] = None
+        self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
+
+        if self._servo is not None:
+            # Shut from the moment the service starts, not from the first
+            # request: a servo powered up mid-travel holds wherever it happens
+            # to be, and for a hopper that may be wide open.
+            self.move_to(closed_angle)
+
+    def move_to(self, angle: float) -> None:
+        if self._servo is None:
+            return
+        self._servo.set_angle(angle)
+        time.sleep(self._travel_s)
+        self._servo.release()
+
+    def dispense(self, grams: int = 0) -> None:
+        """Opens, and leaves it open. ``grams`` is ignored by this design.
+
+        Named ``dispense`` because it is what the Feeder contract calls the
+        act of releasing food, and because /feed reaches every feeder through
+        the same method. What differs is that this one does not decide when to
+        stop.
+        """
+        if self._servo is None:
+            raise RuntimeError("feeder unavailable")
+
+        self.move_to(self._open_angle)
+        self._opened_at = self._clock()
+        log.info("hopper open at %d degrees — waiting to be told to close",
+                 self._open_angle)
+
+    def close_gate(self) -> None:
+        """Returns to the closed angle. Safe to call when already closed."""
+        if self._servo is None:
+            raise RuntimeError("feeder unavailable")
+
+        self.move_to(self._closed_angle)
+        self._opened_at = None
+        log.info("hopper closed at %d degrees", self._closed_angle)
+
+    def tick(self) -> None:
+        """Closes the hopper if it has been open too long. Called by the monitor.
+
+        The backstop, and the reason it exists: the close comes from a phone,
+        and a phone runs out of battery, loses Wi-Fi, or is put in a pocket. A
+        hopper waiting for a request that will never arrive is the failure this
+        design is otherwise wide open to.
+        """
+        if self._auto_close_s is None or self._opened_at is None:
+            return
+        if self._clock() - self._opened_at < self._auto_close_s:
+            return
+
+        log.warning("hopper was open for %.0f s with no close — closing it",
+                    self._auto_close_s)
+        try:
+            self.close_gate()
+        except RuntimeError:
+            self._opened_at = None
+
+    @property
+    def is_open(self) -> bool:
+        return self._opened_at is not None
+
+    @property
+    def pin(self) -> int:
+        return self._pin
+
+    @property
+    def backend(self) -> str:
+        return self._servo.backend if self._servo is not None else "none"
+
+    @property
+    def available(self) -> bool:
+        return self._servo is not None
+
+    def close(self) -> None:
+        if self._servo is not None:
+            self._servo.close()
+            self._servo = None
+
+
+FEEDER_KINDS = ("gate", "paddle", "hold")
 
 
 #: What --camera accepts. One camera per service: the CSI and USB devices cannot

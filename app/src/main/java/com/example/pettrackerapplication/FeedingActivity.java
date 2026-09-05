@@ -200,8 +200,17 @@ public class FeedingActivity extends ThemedActivity {
 
                 boolean ready = answer != null && answer.feederAvailable;
                 btnFeedNow.setEnabled(ready);
-                tvFeedNowState.setText(ready
-                        ? R.string.feeder_ready : R.string.feeder_unavailable);
+
+                // A hopper that stays open until told to close turns this into
+                // a two-state control. Which state it is in is the Pi's answer,
+                // not something the phone remembers — the hopper can also be
+                // closed by the Pi's own backstop, and a phone that assumed it
+                // was still open would offer to close an already-closed hopper.
+                boolean open = answer != null && answer.feederOpen;
+                btnFeedNow.setText(open ? R.string.feeder_close : R.string.feed_now);
+                tvFeedNowState.setText(!ready ? getString(R.string.feeder_unavailable)
+                        : open ? getString(R.string.feeder_open_now)
+                               : getString(R.string.feeder_ready));
 
                 renderBowl(answer);
             });
@@ -252,6 +261,13 @@ public class FeedingActivity extends ThemedActivity {
      * taken out of the bowl by hand.
      */
     private void confirmDispense() {
+        // Closing needs no confirmation: it is the safe direction, and a
+        // hopper pouring onto the floor is not a moment to add a dialog to.
+        if (lastHealth != null && lastHealth.feederOpen) {
+            closeFeeder();
+            return;
+        }
+
         // The grams are deliberately not quoted. The Pi's configured figure is
         // a guess until somebody measures a pocket with a full hopper, and a
         // number on a confirmation reads as a promise — one the load cell is
@@ -263,6 +279,38 @@ public class FeedingActivity extends ThemedActivity {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.feed_action, (d, which) -> dispense(portionGrams()))
                 .show();
+    }
+
+    /** Shuts a hopper that is holding itself open. */
+    private void closeFeeder() {
+        PiClient client = PiClient.forSavedPi(this);
+        if (client == null) return;
+
+        btnFeedNow.setEnabled(false);
+        tvFeedNowState.setText(R.string.feeder_closing);
+
+        bowlWorker.execute(() -> {
+            String failure = null;
+            try {
+                client.closeFeeder();
+            } catch (IOException e) {
+                String message = e.getMessage();
+                failure = message == null || message.isEmpty()
+                        ? e.getClass().getSimpleName() : message;
+            }
+            final String outcome = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                btnFeedNow.setEnabled(true);
+                if (outcome != null) {
+                    Toast.makeText(this, getString(R.string.feed_failed, outcome),
+                            Toast.LENGTH_LONG).show();
+                }
+                // The next poll settles the label from the Pi's own answer
+                // rather than from an assumption made here.
+                refreshFeederAvailability();
+            });
+        });
     }
 
     /**

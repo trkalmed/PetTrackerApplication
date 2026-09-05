@@ -497,3 +497,113 @@ class SweepingThePaddle(unittest.TestCase):
         self.assertEqual([50.0, 180.0, 50.0, 0.0],
                          run.parse_sweep("50,180,50,0"))
         self.assertEqual([50.0, 180.0], run.parse_sweep(" 50 , 180 "))
+
+
+class HoldingTheHopperOpen(unittest.TestCase):
+    """A hopper the person opens and closes, instead of one that meters.
+
+    This design deliberately gives up the guarantee the other two have — their
+    close is in a finally because a hopper left open empties onto the floor.
+    Here the close is a separate request, so what is tested is the backstop:
+    the phone sending the open is the same phone that might go flat before
+    sending the close.
+    """
+
+    def setUp(self):
+        from pettracker.sensors.real import HoldFeeder
+        self.servo = RecordingServo()
+        self.now = 0.0
+        self.feeder = HoldFeeder(open_angle=180, closed_angle=10,
+                                 servo=self.servo, travel_s=0.0,
+                                 auto_close_s=120.0, clock=lambda: self.now)
+        self.servo.angles.clear()
+
+    def test_it_starts_closed(self):
+        servo = RecordingServo()
+        from pettracker.sensors.real import HoldFeeder
+        HoldFeeder(open_angle=180, closed_angle=10, servo=servo, travel_s=0.0)
+
+        # A servo powered up mid-travel holds wherever it happens to be, which
+        # for a hopper may be wide open.
+        self.assertEqual(10, servo.angles[0])
+
+    def test_dispensing_opens_and_stays_open(self):
+        self.feeder.dispense(40)
+
+        self.assertEqual([180, "released"], self.servo.angles)
+        self.assertTrue(self.feeder.is_open)
+
+    def test_closing_returns_to_the_closed_angle(self):
+        self.feeder.dispense(40)
+        self.servo.angles.clear()
+
+        self.feeder.close_gate()
+
+        self.assertEqual([10, "released"], self.servo.angles)
+        self.assertFalse(self.feeder.is_open)
+
+    def test_the_grams_are_ignored(self):
+        # This design does not meter. Asking for 5 g and 500 g are the same
+        # request, and pretending otherwise would put a number on a screen that
+        # nothing honours.
+        self.feeder.dispense(5)
+        first = list(self.servo.angles)
+        self.feeder.close_gate()
+        self.servo.angles.clear()
+
+        self.feeder.dispense(500)
+
+        self.assertEqual(first, self.servo.angles)
+
+    def test_it_stays_open_while_the_limit_has_not_passed(self):
+        self.feeder.dispense(40)
+        self.servo.angles.clear()
+
+        self.now = 119.0
+        self.feeder.tick()
+
+        self.assertEqual([], self.servo.angles)
+        self.assertTrue(self.feeder.is_open)
+
+    def test_it_closes_itself_if_the_close_never_arrives(self):
+        self.feeder.dispense(40)
+        self.servo.angles.clear()
+
+        self.now = 121.0
+        self.feeder.tick()
+
+        self.assertEqual([10, "released"], self.servo.angles)
+        self.assertFalse(self.feeder.is_open)
+
+    def test_a_closed_hopper_is_not_closed_again(self):
+        # tick() runs several times a second. Re-issuing the angle forever
+        # would hold the servo against its stop for as long as the service runs.
+        self.now = 500.0
+        self.feeder.tick()
+
+        self.assertEqual([], self.servo.angles)
+
+    def test_the_backstop_can_be_turned_off(self):
+        from pettracker.sensors.real import HoldFeeder
+        servo = RecordingServo()
+        feeder = HoldFeeder(open_angle=180, closed_angle=10, servo=servo,
+                            travel_s=0.0, auto_close_s=None,
+                            clock=lambda: self.now)
+        feeder.dispense(40)
+        servo.angles.clear()
+
+        self.now = 10_000.0
+        feeder.tick()
+
+        self.assertEqual([], servo.angles)
+        self.assertTrue(feeder.is_open)
+
+    def test_no_servo_means_a_refusal_rather_than_silence(self):
+        from pettracker.sensors.real import HoldFeeder
+        feeder = HoldFeeder(servo=None)
+
+        self.assertFalse(feeder.available)
+        with self.assertRaises(RuntimeError):
+            feeder.dispense(40)
+        with self.assertRaises(RuntimeError):
+            feeder.close_gate()

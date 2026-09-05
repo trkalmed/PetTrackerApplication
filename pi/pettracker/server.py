@@ -124,6 +124,10 @@ class _Handler(BaseHTTPRequestHandler):
             # Only a hold feeder can be open between requests; the others shut
             # themselves as part of dispensing, so False is the truth for them.
             "feeder_open": bool(getattr(self.sensors.feeder, "is_open", False)),
+            # Which design is running, so the app can word its own controls.
+            # "Open the hopper" and "Feed now" are different promises, and the
+            # phone cannot tell which is true without being told.
+            "feeder_kind": getattr(self.sensors.feeder, "kind", None),
         })
 
     def _events(self, query: dict) -> None:

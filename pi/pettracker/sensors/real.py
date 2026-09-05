@@ -471,6 +471,9 @@ class ServoFeeder(Feeder):
             # with a cost beyond a missed meal.
             self.move_to(self._closed_angle)
 
+    #: Matches the --feeder value that builds this class.
+    kind = "gate"
+
     def open_seconds(self, grams: int) -> float:
         """How long the gate is held open for a request of ``grams``.
 
@@ -633,6 +636,9 @@ class PaddleFeeder(Feeder):
             # Parked whatever happened. A wheel abandoned mid-sweep is an open
             # hole in the bottom of the hopper.
             self.move_to(self._rest_angle)
+
+    #: Matches the --feeder value that builds this class.
+    kind = "paddle"
 
     @property
     def grams_per_cycle(self) -> float:
@@ -1180,6 +1186,9 @@ class HoldFeeder(Feeder):
             self.close_gate()
         except RuntimeError:
             self._opened_at = None
+
+    #: Matches the --feeder value that builds this class.
+    kind = "hold"
 
     @property
     def is_open(self) -> bool:

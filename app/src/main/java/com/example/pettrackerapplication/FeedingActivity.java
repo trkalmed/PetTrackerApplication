@@ -206,8 +206,17 @@ public class FeedingActivity extends ThemedActivity {
                 // not something the phone remembers — the hopper can also be
                 // closed by the Pi's own backstop, and a phone that assumed it
                 // was still open would offer to close an already-closed hopper.
+                // Two designs, two different promises. A metering feeder drops
+                // a portion and shuts itself; a hold feeder leaves food falling
+                // until it is told to stop. Which one is running is the Pi's
+                // answer, not something the phone assumes — and the open state
+                // is read the same way, because the hopper can also be closed
+                // by the Pi's own backstop.
+                boolean holds = answer != null && answer.feederHoldsOpen();
                 boolean open = answer != null && answer.feederOpen;
-                btnFeedNow.setText(open ? R.string.feeder_close : R.string.feed_now);
+
+                btnFeedNow.setText(open ? R.string.feeder_close
+                        : holds ? R.string.feeder_open : R.string.feed_now);
                 tvFeedNowState.setText(!ready ? getString(R.string.feeder_unavailable)
                         : open ? getString(R.string.feeder_open_now)
                                : getString(R.string.feeder_ready));
@@ -273,9 +282,12 @@ public class FeedingActivity extends ThemedActivity {
         // number on a confirmation reads as a promise — one the load cell is
         // then very likely to contradict. What is certain is that the wheel
         // turns once, so that is what the dialog says.
+        boolean holds = lastHealth != null && lastHealth.feederHoldsOpen();
         new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.feed_confirm_title)
-                .setMessage(R.string.feed_confirm_message)
+                .setTitle(holds ? R.string.feed_confirm_title_hold
+                                : R.string.feed_confirm_title)
+                .setMessage(holds ? R.string.feed_confirm_message_hold
+                                  : R.string.feed_confirm_message)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.feed_action, (d, which) -> dispense(portionGrams()))
                 .show();

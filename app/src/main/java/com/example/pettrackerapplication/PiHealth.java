@@ -51,6 +51,16 @@ public final class PiHealth {
      */
     public final boolean feederOpen;
 
+    /**
+     * Which feeder design is running: "gate", "paddle", "hold", or null.
+     *
+     * The app words its own controls from this. "Open the hopper" and "Feed
+     * now" are different promises — one leaves food falling until you stop it,
+     * the other drops a portion and closes itself — and the phone has no way to
+     * tell which is true without being told.
+     */
+    public final String feederKind;
+
     /** Camera name to whether it is up, in the Pi's own order. */
     public final Map<String, Boolean> cameras;
 
@@ -67,7 +77,8 @@ public final class PiHealth {
                      boolean cameraAvailable, boolean locationAvailable,
                      Map<String, Boolean> motionSensors,
                      Map<String, Boolean> cameras, Double latestWeightGrams,
-                     Double portionGrams, boolean feederOpen) {
+                     Double portionGrams, boolean feederOpen,
+                     String feederKind) {
         this.ok = ok;
         this.timeMillis = timeMillis;
         this.uptimeSeconds = uptimeSeconds;
@@ -81,6 +92,7 @@ public final class PiHealth {
         this.latestWeightGrams = latestWeightGrams;
         this.portionGrams = portionGrams;
         this.feederOpen = feederOpen;
+        this.feederKind = feederKind;
     }
 
     public static PiHealth fromJson(JSONObject json) {
@@ -120,7 +132,8 @@ public final class PiHealth {
                         ? null : json.optDouble("latest_weight_grams"),
                 json.isNull("portion_grams")
                         ? null : json.optDouble("portion_grams"),
-                json.optBoolean("feeder_open", false));
+                json.optBoolean("feeder_open", false),
+                json.isNull("feeder_kind") ? null : json.optString("feeder_kind", null));
     }
 
     /**
@@ -135,6 +148,18 @@ public final class PiHealth {
         Map<String, Boolean> single = new LinkedHashMap<>();
         single.put("camera", cameraAvailable);
         return Collections.unmodifiableMap(single);
+    }
+
+    /**
+     * Whether this feeder stays open until told to close.
+     *
+     * True only for the "hold" design. A Pi too old to report its kind is
+     * treated as a metering feeder, which is what every Pi was before "hold"
+     * existed — and the safer assumption, since it means the app never offers
+     * to leave a hopper open on hardware that cannot be told to shut it.
+     */
+    public boolean feederHoldsOpen() {
+        return "hold".equals(feederKind);
     }
 
     /** True when at least one PIR was claimed — i.e. rooms can be expected. */

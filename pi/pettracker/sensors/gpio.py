@@ -436,8 +436,26 @@ class _RpiGpioServo(ServoOutput):
 _SERVO_BACKENDS = (_LgpioServo, _GpiozeroServo, _RpiGpioServo)
 
 
-def open_servo(pin: int) -> Optional[ServoOutput]:
-    """Claims ``pin`` for a servo, or returns None if no backend can."""
+def open_servo(pin: int,
+               min_pulse_us: Optional[int] = None,
+               max_pulse_us: Optional[int] = None) -> Optional[ServoOutput]:
+    """Claims ``pin`` for a servo, or returns None if no backend can.
+
+    :param min_pulse_us: pulse width for 0 degrees, overriding the default.
+    :param max_pulse_us: pulse width for 180 degrees, overriding the default.
+
+    The range is worth overriding because "180 degrees" is a fiction the
+    library maintains and the servo does not. The angle is mapped linearly onto
+    these two numbers and nothing measures what the horn actually did — so a
+    unit whose real travel at 2400 us is 120 degrees will stop there, and asking
+    for a larger angle cannot help because the request is already at the top of
+    the range. Widening it is the only lever that produces more rotation.
+
+    Widening it is also how a servo is driven into its own end stop, which is
+    why it is a deliberate setting rather than a generous default. Find the
+    value with --check-servo, a few tens of microseconds at a time, and stop at
+    the first sign of buzzing.
+    """
     errors = []
     for backend in _SERVO_BACKENDS:
         try:
@@ -445,7 +463,16 @@ def open_servo(pin: int) -> Optional[ServoOutput]:
         except Exception as e:
             errors.append(f"{backend.backend}: {e}")
             continue
-        log.info("servo on GPIO %d via %s", pin, claimed.backend)
+
+        # Instance attributes shadow the class constants that set_angle reads,
+        # so this needs no cooperation from the individual backends.
+        if min_pulse_us is not None:
+            claimed.MIN_PULSE_US = int(min_pulse_us)
+        if max_pulse_us is not None:
+            claimed.MAX_PULSE_US = int(max_pulse_us)
+
+        log.info("servo on GPIO %d via %s (%d-%d us)", pin, claimed.backend,
+                 claimed.MIN_PULSE_US, claimed.MAX_PULSE_US)
         return claimed
 
     log.warning("servo on GPIO %d unavailable (%s)", pin, "; ".join(errors))

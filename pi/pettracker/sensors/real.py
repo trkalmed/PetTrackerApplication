@@ -560,7 +560,9 @@ class PaddleFeeder(Feeder):
                  grams_per_cycle: float = DEFAULT_GRAMS_PER_CYCLE,
                  servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None,
                  settle_s: Optional[float] = None,
-                 sweep: Optional[List[float]] = None):
+                 sweep: Optional[List[float]] = None,
+                 min_pulse_us: Optional[int] = None,
+                 max_pulse_us: Optional[int] = None):
         """
         :param sweep: the angles one cycle visits, in order, instead of the
             plain dump-and-return. A wheel that swings out and back can leave
@@ -580,7 +582,8 @@ class PaddleFeeder(Feeder):
         self._settle_s = self.SETTLE_S if settle_s is None else settle_s
         self._sweep = list(sweep) if sweep else None
         self._rest_angle = self._sweep[-1] if self._sweep else park_angle
-        self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
+        self._servo = (open_servo(pin, min_pulse_us, max_pulse_us)
+                       if servo is _CLAIM_THE_PIN else servo)
 
         if self._servo is not None:
             self.move_to(self._rest_angle)
@@ -1093,7 +1096,9 @@ class HoldFeeder(Feeder):
                  closed_angle: int = 10,
                  servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None,
                  auto_close_s: Optional[float] = AUTO_CLOSE_S,
-                 clock=time.monotonic):
+                 clock=time.monotonic,
+                 min_pulse_us: Optional[int] = None,
+                 max_pulse_us: Optional[int] = None):
         self._pin = pin
         self._open_angle = open_angle
         self._closed_angle = closed_angle
@@ -1101,7 +1106,8 @@ class HoldFeeder(Feeder):
         self._auto_close_s = auto_close_s
         self._clock = clock
         self._opened_at: Optional[float] = None
-        self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
+        self._servo = (open_servo(pin, min_pulse_us, max_pulse_us)
+                       if servo is _CLAIM_THE_PIN else servo)
 
         if self._servo is not None:
             # Shut from the moment the service starts, not from the first

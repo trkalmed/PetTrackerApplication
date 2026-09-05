@@ -152,7 +152,9 @@ def build_feeder(args):
             open_angle=(args.servo_open if args.servo_open is not None else 180),
             closed_angle=(args.servo_closed if args.servo_closed is not None
                           else 10),
-            travel_s=args.servo_travel)
+            travel_s=args.servo_travel,
+            min_pulse_us=args.servo_pulse_min,
+            max_pulse_us=args.servo_pulse_max)
 
     if args.feeder == "paddle":
         return PaddleFeeder(
@@ -163,7 +165,9 @@ def build_feeder(args):
                         else PaddleFeeder.DEFAULT_DUMP_ANGLE),
             grams_per_cycle=(args.paddle_grams if args.paddle_grams is not None
                              else PaddleFeeder.DEFAULT_GRAMS_PER_CYCLE),
-            sweep=parse_sweep(args.paddle_sweep))
+            sweep=parse_sweep(args.paddle_sweep),
+            min_pulse_us=args.servo_pulse_min,
+            max_pulse_us=args.servo_pulse_max)
 
     return ServoFeeder(
         pin=args.servo_pin,
@@ -354,6 +358,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--servo-ms-per-gram", type=float, default=None,
                         help="how long the gate must be open per gram, measured "
                              "by opening it for a known time and weighing what fell")
+    parser.add_argument("--servo-pulse-min", type=int, default=None,
+                        help="pulse width in microseconds for 0 degrees "
+                             "(default 500)")
+    parser.add_argument("--servo-pulse-max", type=int, default=None,
+                        help="pulse width in microseconds for 180 degrees "
+                             "(default 2400). Widen this when a servo stops "
+                             "short of where it is told: the angle is mapped "
+                             "onto this range, so a bigger angle cannot reach "
+                             "past it. Go up in small steps and stop at the "
+                             "first buzz — past its travel a servo grinds "
+                             "against its own stop")
     parser.add_argument("--servo-travel", type=float, default=0.5,
                         help="seconds allowed for the servo to reach an angle "
                              "before it is let go (default 0.5). A full swing "

@@ -621,3 +621,64 @@ class HoldingTheHopperOpen(unittest.TestCase):
             feeder.dispense(40)
         with self.assertRaises(RuntimeError):
             feeder.close_gate()
+
+
+class WideningTheServosTravel(unittest.TestCase):
+    """The pulse range, which is the only lever that produces more rotation.
+
+    "180 degrees" is a fiction the library maintains and the servo does not.
+    An angle is mapped linearly onto MIN_PULSE_US..MAX_PULSE_US and nothing
+    measures what the horn actually did, so a unit whose real travel at 2400 us
+    is 120 degrees stops there — and asking for a bigger angle cannot help,
+    because the request is already at the top of the range.
+    """
+
+    class Probe(ServoOutput):
+        def __init__(self):
+            self.pulses = []
+
+        def set_pulse_us(self, microseconds):
+            self.pulses.append(microseconds)
+
+    def test_the_default_range_is_unchanged(self):
+        probe = self.Probe()
+        probe.set_angle(180)
+
+        self.assertEqual(ServoOutput.MAX_PULSE_US, probe.pulses[0])
+
+    def test_a_wider_range_sends_a_longer_pulse_for_the_same_angle(self):
+        probe = self.Probe()
+        probe.MAX_PULSE_US = 2600
+
+        probe.set_angle(180)
+
+        # The same request, more travel. This is what "turn further" means
+        # once the angle is already at its maximum.
+        self.assertEqual(2600, probe.pulses[0])
+
+    def test_the_range_is_per_instance(self):
+        # One servo widened must not widen every other servo in the process —
+        # instance attributes shadowing class constants is the mechanism, and
+        # getting it backwards would move the load cell's pins as a side effect.
+        widened = self.Probe()
+        widened.MAX_PULSE_US = 2600
+        ordinary = self.Probe()
+
+        widened.set_angle(180)
+        ordinary.set_angle(180)
+
+        self.assertEqual(2600, widened.pulses[0])
+        self.assertEqual(ServoOutput.MAX_PULSE_US, ordinary.pulses[0])
+
+    def test_angles_still_map_across_whatever_range_is_set(self):
+        probe = self.Probe()
+        probe.MIN_PULSE_US = 600
+        probe.MAX_PULSE_US = 2600
+
+        probe.set_angle(0)
+        probe.set_angle(90)
+        probe.set_angle(180)
+
+        self.assertEqual(600, probe.pulses[0])
+        self.assertEqual(1600, probe.pulses[1])
+        self.assertEqual(2600, probe.pulses[2])

@@ -70,6 +70,13 @@ Environment="PETTRACKER_SERVO_PIN=18"
 # mid-travel simply stops where it got to — which looks like a servo that
 # "does not turn fully" and is in fact one that was not given time.
 Environment="PETTRACKER_SERVO_TRAVEL=0.5"
+# The pulse widths 0 and 180 degrees map onto. Worth changing only when a servo
+# stops short of where it is told: the angle is mapped onto this range, so a
+# bigger angle cannot reach past it, and widening is the only thing that
+# produces more rotation. It is also how a servo is driven into its own end
+# stop — go up in small steps with --check-servo and stop at the first buzz.
+Environment="PETTRACKER_SERVO_PULSE_MIN=500"
+Environment="PETTRACKER_SERVO_PULSE_MAX=2400"
 Environment="PETTRACKER_SERVO_OPEN=90"
 Environment="PETTRACKER_SERVO_CLOSED=20"
 Environment="PETTRACKER_SERVO_MS_PER_GRAM=50.0"
@@ -105,6 +112,8 @@ ExecStart=/usr/bin/python3 run.py \
     --feeder ${PETTRACKER_FEEDER} \
     --servo-pin ${PETTRACKER_SERVO_PIN} \
     --servo-travel ${PETTRACKER_SERVO_TRAVEL} \
+    --servo-pulse-min ${PETTRACKER_SERVO_PULSE_MIN} \
+    --servo-pulse-max ${PETTRACKER_SERVO_PULSE_MAX} \
     --servo-open ${PETTRACKER_SERVO_OPEN} \
     --servo-closed ${PETTRACKER_SERVO_CLOSED} \
     --servo-ms-per-gram ${PETTRACKER_SERVO_MS_PER_GRAM} \

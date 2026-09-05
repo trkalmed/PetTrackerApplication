@@ -316,6 +316,19 @@ class ServoOutput:
     MIN_PULSE_US = 500
     MAX_PULSE_US = 2400
 
+    #: What the drivers themselves will accept, whatever is configured above.
+    #:
+    #: lgpio's tx_servo refuses anything outside 500-2500 us and raises, which
+    #: is a poor way to find out: the exception comes out of the middle of a
+    #: servo move, and in the service that means a dispense abandoned part-way
+    #: with the hopper wherever it happened to be. So a configured range is
+    #: checked when it is set, and clamped again at the driver as a last resort.
+    #:
+    #: 2500 is also roughly where servos stop responding at all, so this is
+    #: close to a physical limit rather than an arbitrary software one.
+    HARD_MIN_PULSE_US = 500
+    HARD_MAX_PULSE_US = 2500
+
     #: The range a *resting* angle should stay inside.
     #:
     #: Not enforced — a bring-up session needs to be able to ask for anything,
@@ -366,7 +379,15 @@ class _LgpioServo(ServoOutput):
         # tx_servo is timed in the library rather than by Python, so the pulse
         # does not jitter when the interpreter is busy. Software PWM does, and
         # a jittering pulse is what makes cheap servos buzz and creep.
-        self._lgpio.tx_servo(self._handle, self._pin, int(microseconds))
+        #
+        # Clamped because tx_servo raises on anything outside 500-2500, and an
+        # exception here comes out of the middle of a move — in the service
+        # that is a dispense abandoned with the hopper part-open. A servo that
+        # travels slightly less far is much the better failure.
+        pulse = int(microseconds)
+        if pulse:
+            pulse = max(self.HARD_MIN_PULSE_US, min(self.HARD_MAX_PULSE_US, pulse))
+        self._lgpio.tx_servo(self._handle, self._pin, pulse)
 
     def close(self) -> None:
         try:
@@ -456,6 +477,21 @@ def open_servo(pin: int,
     value with --check-servo, a few tens of microseconds at a time, and stop at
     the first sign of buzzing.
     """
+    for name, value in (("--servo-pulse-min", min_pulse_us),
+                        ("--servo-pulse-max", max_pulse_us)):
+        if value is None:
+            continue
+        if not (ServoOutput.HARD_MIN_PULSE_US <= int(value)
+                <= ServoOutput.HARD_MAX_PULSE_US):
+            raise ValueError(
+                f"{name}: {int(value)} us is outside what the driver accepts "
+                f"({ServoOutput.HARD_MIN_PULSE_US}-"
+                f"{ServoOutput.HARD_MAX_PULSE_US}). That ceiling is lgpio's, "
+                f"and it is close to where servos stop responding anyway — a "
+                f"servo that still falls short at "
+                f"{ServoOutput.HARD_MAX_PULSE_US} us has reached its own "
+                f"mechanical limit, not a software one.")
+
     errors = []
     for backend in _SERVO_BACKENDS:
         try:

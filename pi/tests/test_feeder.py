@@ -682,3 +682,57 @@ class WideningTheServosTravel(unittest.TestCase):
         self.assertEqual(600, probe.pulses[0])
         self.assertEqual(1600, probe.pulses[1])
         self.assertEqual(2600, probe.pulses[2])
+
+
+class PulseWidthsTheDriverWillAccept(unittest.TestCase):
+    """A configured range outside the driver's limits is refused, not raised.
+
+    lgpio's tx_servo rejects anything outside 500-2500 us by raising, and it
+    raises from inside a servo move — so in the service the exception comes out
+    of the middle of a dispense, leaving the hopper wherever it had got to. The
+    setting is checked when it is applied instead.
+    """
+
+    def test_a_range_inside_the_limits_is_accepted(self):
+        from pettracker.sensors.gpio import ServoOutput, open_servo
+
+        # No servo hardware here, so this returns None — what matters is that
+        # it got far enough to return at all rather than refusing the range.
+        open_servo(18, ServoOutput.HARD_MIN_PULSE_US, ServoOutput.HARD_MAX_PULSE_US)
+
+    def test_too_wide_a_range_is_refused_with_an_explanation(self):
+        from pettracker.sensors.gpio import open_servo
+
+        with self.assertRaises(ValueError) as caught:
+            open_servo(18, 500, 2600)
+
+        # The message has to say whose limit it is, or the next step is to go
+        # looking for a servo fault that is not there.
+        self.assertIn("2500", str(caught.exception))
+
+    def test_too_narrow_a_minimum_is_refused(self):
+        from pettracker.sensors.gpio import open_servo
+
+        with self.assertRaises(ValueError):
+            open_servo(18, 400, 2400)
+
+    def test_the_driver_clamps_as_a_last_resort(self):
+        # Belt and braces for anything that sets the range directly rather than
+        # through open_servo.
+        from pettracker.sensors.gpio import ServoOutput
+
+        sent = []
+
+        class Probe(ServoOutput):
+            def set_pulse_us(inner, microseconds):
+                pulse = int(microseconds)
+                if pulse:
+                    pulse = max(inner.HARD_MIN_PULSE_US,
+                                min(inner.HARD_MAX_PULSE_US, pulse))
+                sent.append(pulse)
+
+        probe = Probe()
+        probe.MAX_PULSE_US = 3000
+        probe.set_angle(180)
+
+        self.assertEqual(ServoOutput.HARD_MAX_PULSE_US, sent[0])

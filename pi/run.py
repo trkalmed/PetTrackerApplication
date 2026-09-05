@@ -366,9 +366,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "(default 2400). Widen this when a servo stops "
                              "short of where it is told: the angle is mapped "
                              "onto this range, so a bigger angle cannot reach "
-                             "past it. Go up in small steps and stop at the "
-                             "first buzz — past its travel a servo grinds "
-                             "against its own stop")
+                             "past it. The driver accepts 500-2500; go up in "
+                             "small steps and stop at the first buzz, because "
+                             "past its travel a servo grinds against its own "
+                             "stop")
     parser.add_argument("--servo-travel", type=float, default=0.5,
                         help="seconds allowed for the servo to reach an angle "
                              "before it is let go (default 0.5). A full swing "

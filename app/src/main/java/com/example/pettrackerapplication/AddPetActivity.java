@@ -218,14 +218,69 @@ public class AddPetActivity extends ThemedActivity {
         setSegmentationLoadingState(false);
 
         Bitmap foreground = result.getForegroundBitmap();
-        if (foreground != null) {
+        if (foreground != null && hasVisibleSubject(foreground)) {
             segmentedBitmap = foreground;
             imgPreview.setImageBitmap(foreground);
         } else {
+            // The preview still holds the original, loaded when the picker
+            // returned, and segmentedBitmap stays null — so save() copies the
+            // photo as it was taken.
             Toast.makeText(this,
                     getString(R.string.no_subject_found_original_photo_will),
                     Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * True if the cut-out actually contains something.
+     *
+     * "No subject" does not arrive as null. The segmenter hands back a bitmap of
+     * the full frame with every non-subject pixel made transparent, and when it
+     * recognises nothing that is a bitmap which is transparent everywhere —
+     * correctly sized, correctly formatted, and completely invisible. Accepting
+     * it put an empty PNG in the database as the pet's photo, so the preview
+     * went blank the moment segmentation finished and every screen afterwards
+     * showed a photo that was there and could not be seen.
+     *
+     * A photograph is sampled rather than read: a grid of a few thousand pixels
+     * is enough to tell "a cat" from "nothing at all", and reading twelve
+     * megapixels on the main thread to learn the same fact is not.
+     */
+    static boolean hasVisibleSubject(Bitmap bitmap) {
+        final int samplesPerAxis = 64;
+        // A hair-thin outline or a faint edge is not a subject; alpha has to be
+        // solid enough to be a pixel of an animal.
+        final int minAlpha = 32;
+        // One part in a hundred. A cat fills a good deal more of a frame than
+        // that, and anything below it is the segmenter having found nothing
+        // while returning something.
+        final double minVisibleFraction = 0.01;
+
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        if (width <= 0 || height <= 0) return false;
+
+        if (!bitmap.hasAlpha()) {
+            // No alpha channel means nothing was cut away, so there is nothing
+            // to be empty.
+            return true;
+        }
+
+        int rowStep = Math.max(1, height / samplesPerAxis);
+        int colStep = Math.max(1, width / samplesPerAxis);
+
+        int[] row = new int[width];
+        int sampled = 0;
+        int visible = 0;
+        for (int y = 0; y < height; y += rowStep) {
+            bitmap.getPixels(row, 0, width, 0, y, width, 1);
+            for (int x = 0; x < width; x += colStep) {
+                sampled++;
+                if (((row[x] >>> 24) & 0xFF) >= minAlpha) visible++;
+            }
+        }
+
+        return sampled > 0 && (double) visible / sampled >= minVisibleFraction;
     }
 
     private void setSegmentationLoadingState(boolean loading) {
@@ -353,6 +408,12 @@ public class AddPetActivity extends ThemedActivity {
                         existingPet.getLastSeen(),   // not ours to reset
                         ownerId);
                 updated.setId(existingPet.getId());
+                // Set on the Food tab, not on this form. The update replaces the
+                // whole row, so anything this screen does not carry over is
+                // erased — renaming a pet was silently resetting its daily
+                // target back to the default, which then read as a number
+                // somebody had chosen.
+                updated.setDailyFoodGrams(existingPet.getDailyFoodGrams());
                 db.petDao().update(updated);
             } else {
                 db.petDao().insert(new Pet(

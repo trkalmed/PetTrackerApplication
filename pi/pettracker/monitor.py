@@ -217,12 +217,16 @@ class Monitor:
         unplugged, a driver that returns nothing, a full SD card — none of those
         should cost the motion event, which is the reading that actually
         matters. The event simply arrives without a picture.
+
+        Which camera depends on the room: a camera in the kitchen cannot show
+        what moved in the bathroom, so a room it does not cover gets an event
+        with no picture rather than somewhere else's.
         """
         if self._snapshots is None:
             return None
 
-        camera = self._sensors.camera
-        if not camera.available:
+        camera = self._sensors.camera_for_room(room)
+        if camera is None or not camera.available:
             return None
 
         try:

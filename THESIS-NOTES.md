@@ -232,10 +232,14 @@ Concrete instances:
 - Asking a phone for grams was removed once the feeder metered in whole pockets:
   the box invited a precision the hardware does not have. The Pi reports what a
   portion is and the app only asks whether to dispense it.
-- The **live bowl weight is never stored**. Everything else on that screen is
-  history the Pi derived and the phone kept; this is what the hardware says this
-  second, read from /health and discarded. The meal record is a measurement
-  someone can cite; the live number is not.
+- A **snapshot only comes from a camera that can see the room**. The ribbon
+  camera is in the kitchen and every PIR was photographed with it, so a sighting
+  in the bathroom arrived captioned "BedRoom/Bathroom" with a picture of the
+  kitchen. The strongest instance of the principle in the project, because it
+  inverts the usual cost: an empty card says "the sensor fired and there is no
+  picture", while that card said "here is what happened in the bathroom" and
+  showed somewhere else. A wrong picture is not a smaller version of a missing
+  one — it is worse than nothing, because it is believed.
 - The **daily food target belongs to the pet**, not to the app. It was a constant
   300 g for every animal — a plausible day for an average adult cat and
   meaningless for any particular one — so it is now a nullable column, and the
@@ -256,11 +260,11 @@ or worse, moved to "now", which would invent a meal that never happened.
 
 ## 8. Testing and verification
 
-**451 automated tests**, in three suites with different purposes:
+**470 automated tests**, in three suites with different purposes:
 
 | Suite | Count | Runs on | Covers |
 |---|---|---|---|
-| Pi | 274 | Any machine, no hardware | Protocols, parsing, event store, three feeder designs, cameras, HTTP, the systemd unit |
+| Pi | 293 | Any machine, no hardware | Protocols, parsing, event store, three feeder designs, cameras, HTTP, the systemd unit |
 | Android unit (JVM) | 73 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
 | Android instrumented | 104 | A real phone | Room migrations *and their registration*, repository, sync, layouts, theming |
 

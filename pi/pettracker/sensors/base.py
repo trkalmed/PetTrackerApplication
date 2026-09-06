@@ -12,7 +12,7 @@ which parts are actually live.
 
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 class Scale(ABC):
@@ -122,6 +122,7 @@ class SensorSet:
         camera: Camera,
         location: Optional[LocationSensor] = None,
         cameras: Optional["OrderedDict[str, Camera]"] = None,
+        camera_rooms: Optional[Dict[str, str]] = None,
     ):
         """
         :param camera: the primary camera. Motion snapshots come from this one,
@@ -129,6 +130,8 @@ class SensorSet:
         :param cameras: every camera by name, in the order they were configured.
             A rig with one camera passes nothing here and behaves as it always
             did; the name is only needed once there is a choice to make.
+        :param camera_rooms: which camera watches which room, as room -> camera
+            name. See :meth:`set_camera_rooms`.
         """
         self.scale = scale
         self.motion_sensors = motion_sensors
@@ -142,6 +145,59 @@ class SensorSet:
             self.cameras = OrderedDict()
             if camera is not None:
                 self.cameras["camera"] = camera
+
+        self.camera_rooms: Dict[str, str] = {}
+        if camera_rooms:
+            self.set_camera_rooms(camera_rooms)
+
+    def set_camera_rooms(self, mapping: Dict[str, str]) -> None:
+        """Records which camera is pointed at which room.
+
+        A camera is bolted to one place. The rig has one in the kitchen, and
+        every PIR in the house was getting a picture from it — so a sighting in
+        the bathroom arrived at the phone with a photograph of the kitchen
+        attached, timestamped and captioned with the bathroom's name. That is
+        worse than no photograph: an empty card says "the sensor fired and there
+        is no picture", while that one says "here is what happened in the
+        bathroom" and shows a different room entirely.
+
+        Both names are checked against what this rig actually has, because the
+        failure of a typo is silent in the direction that matters — a room that
+        matches nothing simply stops producing pictures, and nobody notices
+        until they go looking for a sighting that has none.
+
+        :param mapping: room name -> camera name. Rooms left out get no
+            snapshot. Several rooms may name the same camera; one room cannot
+            have two.
+        """
+        for room, name in mapping.items():
+            if name not in self.cameras:
+                raise ValueError(
+                    f"camera '{name}' is not configured for room '{room}' "
+                    f"(this rig has: {', '.join(self.cameras) or 'none'})")
+        known = {s.room for s in self.motion_sensors}
+        for room in mapping:
+            if known and room not in known:
+                raise ValueError(
+                    f"no motion sensor watches '{room}' "
+                    f"(this rig has: {', '.join(sorted(known))})")
+        self.camera_rooms = dict(mapping)
+
+    def camera_for_room(self, room: str) -> Optional[Camera]:
+        """The camera that can see ``room``, or None if none can.
+
+        With no mapping configured this is the primary camera, which is the
+        behaviour every single-camera rig has always had: one camera, one room
+        worth photographing, nothing to choose between. The moment a mapping
+        exists the rig has said where its cameras point, and a room it does not
+        mention is a room nothing is watching.
+        """
+        if not self.camera_rooms:
+            return self.camera
+        name = self.camera_rooms.get(room)
+        if name is None:
+            return None
+        return self.cameras.get(name)
 
     def camera_named(self, name: Optional[str]) -> Optional[Camera]:
         """The camera by name, or the primary one when nothing is named.
@@ -163,6 +219,10 @@ class SensorSet:
             # map below is what a client with a choice to offer should read.
             "camera": any(c.available for c in self.cameras.values()),
             "cameras": {name: c.available for name, c in self.cameras.items()},
+            # Where those cameras point, so the mapping can be checked from the
+            # phone. Empty means none was configured and the primary camera
+            # answers for every room.
+            "camera_rooms": dict(self.camera_rooms),
             "location": self.location.available if self.location else False,
             "motion": {s.room: s.available for s in self.motion_sensors},
         }

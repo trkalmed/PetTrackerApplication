@@ -136,6 +136,41 @@ def parse_sweep(spec):
     return angles
 
 
+def parse_camera_rooms(spec):
+    """"csi=Kitchen,usb=Hall" -> {"Kitchen": "csi", "Hall": "usb"}.
+
+    Empty or None gives None, meaning nothing was said about where the cameras
+    point and the primary one answers for every room — the old behaviour, kept
+    for rigs whose single camera watches the only room worth photographing.
+
+    Written camera-first because that is how the rig reads: one camera is bolted
+    up, and it sees these rooms. Stored room-first because that is how it is
+    asked: a PIR fires in a room, and the question is which camera can see it.
+    """
+    if not spec or not spec.strip():
+        return None
+
+    mapping = {}
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError(
+                f"--camera-rooms: '{part}' is not camera=room")
+        name, room = part.split("=", 1)
+        name, room = name.strip(), room.strip()
+        if not name or not room:
+            raise ValueError(
+                f"--camera-rooms: '{part}' is not camera=room")
+        if room in mapping:
+            raise ValueError(
+                f"--camera-rooms: room '{room}' is given two cameras")
+        mapping[room] = name
+
+    return mapping or None
+
+
 def build_feeder(args):
     """The feeder this rig has, with whatever numbers have been measured so far."""
     from pettracker.sensors.real import (FEEDER_KINDS, HoldFeeder, PaddleFeeder,
@@ -321,6 +356,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "snapshots and for /stream with no camera named")
     parser.add_argument("--camera-device", type=int, default=0,
                         help="which /dev/videoN, for --camera usb (default 0)")
+    parser.add_argument("--camera-rooms", default="",
+                        help="which camera watches which room, as "
+                             "camera=room pairs: \"csi=Kitchen\". A room not "
+                             "named here gets motion events with no picture, "
+                             "rather than a picture of somewhere else. Empty "
+                             "means the primary camera answers for every room")
     parser.add_argument("--snapshot-dir", default="snapshots",
                         help="where motion snapshots are written (default ./snapshots)")
     parser.add_argument("--no-snapshots", action="store_true",
@@ -466,6 +507,21 @@ def main() -> int:
         except ValueError as e:
             log.error("%s", e)
             return 2
+
+    # After the sensors exist, because both halves of the mapping are checked
+    # against what this rig actually has — a camera it was not given, or a room
+    # no PIR watches, is a configuration error worth exiting for rather than a
+    # room that quietly never produces a picture.
+    try:
+        camera_rooms = parse_camera_rooms(args.camera_rooms)
+        if camera_rooms:
+            sensors.set_camera_rooms(camera_rooms)
+            for room, name in sorted(camera_rooms.items()):
+                log.info("%s is watched by the %s camera", room, name)
+    except ValueError as e:
+        log.error("%s", e)
+        sensors.close()
+        return 2
 
     store = EventStore(args.db)
 

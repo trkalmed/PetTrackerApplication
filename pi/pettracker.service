@@ -43,6 +43,14 @@ Environment="PETTRACKER_CAMERA=usb"
 # and the symptom of getting it wrong is "could not open video device 0" on a
 # camera that is plugged in and working.
 Environment="PETTRACKER_CAMERA_DEVICE=0"
+# Which camera can see which room, as camera=room pairs. A camera is bolted to
+# one place, so a room it cannot see gets a motion event with no picture; left
+# empty, the primary camera answers for every room, which is right only on a rig
+# where one camera watches the one room that matters. A rig with the ribbon
+# camera in the kitchen wants:
+#   Environment="PETTRACKER_CAMERA_ROOMS=csi=Kitchen"
+# and every name must match PETTRACKER_CAMERA and PETTRACKER_ROOMS exactly.
+Environment="PETTRACKER_CAMERA_ROOMS="
 Environment="PETTRACKER_SCALE_PINS=5,6"
 # 1.0 means uncalibrated, and every weight is then raw counts wearing a gram
 # label. Run --calibrate-scale and put the real number in service.env.
@@ -105,6 +113,7 @@ ExecStart=/usr/bin/python3 run.py \
     --pir-pins ${PETTRACKER_PIR_PINS} \
     --camera ${PETTRACKER_CAMERA} \
     --camera-device ${PETTRACKER_CAMERA_DEVICE} \
+    --camera-rooms ${PETTRACKER_CAMERA_ROOMS} \
     --scale-pins ${PETTRACKER_SCALE_PINS} \
     --scale-factor ${PETTRACKER_SCALE_FACTOR} \
     --gps-port ${PETTRACKER_GPS_PORT} \

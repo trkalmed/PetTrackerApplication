@@ -706,6 +706,24 @@ Which is precisely the pet whose target somebody wants to set.
    never read off the track screen, so §11 of the notes still has no row for
    tracking.
 
+### Caught while setting up the motion video — a camera in the wrong room
+
+Every PIR was photographed with the primary camera. The ribbon camera is in the
+kitchen, so a sighting in the bathroom reached the phone captioned
+"BedRoom/Bathroom" with a picture of the kitchen attached — the event true, the
+picture of somewhere else, and nothing on the card admitting the difference. It
+is the project's own rule broken in the one place it is hardest to notice: an
+empty card says "the sensor fired and there is no picture", while that one said
+"here is what happened in the bathroom".
+
+Fixed with `--camera-rooms csi=Kitchen` — camera=room pairs, checked at startup
+against the cameras this rig has and the rooms its PIRs watch, because a typo
+here fails silently in the direction where a room simply stops producing
+pictures. A room the mapping leaves out gets the sighting with no snapshot, which
+the app already renders as "no picture for this one". Left empty, the primary
+camera answers for every room, so single-camera rigs are unchanged. 19 tests;
+four of them fail against the old behaviour.
+
 ## Session — 2026-09-04 · the rig complete, and what the professor asked for
 
 The meeting went well. Two things came out of it: finish the thesis for review,

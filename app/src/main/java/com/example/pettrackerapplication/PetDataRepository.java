@@ -183,6 +183,18 @@ public final class PetDataRepository {
         return db.trackerFixDao().insert(fix);
     }
 
+    /**
+     * Sets this pet's daily food target, or clears it back to the default.
+     *
+     * @param grams a positive number of grams, or null to use the default
+     */
+    public void setDailyFoodGrams(long petId, String ownerId, Integer grams) {
+        Pet pet = db.petDao().getPetById(petId, ownerId);
+        if (pet == null) return;
+        pet.setDailyFoodGrams(grams != null && grams > 0 ? grams : null);
+        db.petDao().update(pet);
+    }
+
     /** Convenience for the common case: the load cell saw food leave the bowl. */
     public long recordMealEaten(long petId, int grams, String source) {
         return recordFeeding(petId, System.currentTimeMillis(), grams,
@@ -210,6 +222,11 @@ public final class PetDataRepository {
 
         long petId = pet.getId();
         DayRange today = DayRange.today();
+
+        Integer target = pet.getDailyFoodGrams();
+        if (target != null && target > 0) {
+            stats.gramsTarget = target;
+        }
 
         readFeeding(stats, petId, today);
         readDetections(stats, petId, today);

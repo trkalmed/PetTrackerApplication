@@ -47,6 +47,16 @@ public class FeedingActivity extends ThemedActivity {
      */
     private static final double EMPTY_BAND_G = 2.0;
 
+    /**
+     * Largest daily target the dialog will accept.
+     *
+     * Not a nutritional limit — the app has no business having an opinion on
+     * that. It is a typo guard: 3000 g of dry food is several times any cat's
+     * body weight, so a number above it is a slipped finger rather than an
+     * intention, and accepting it would leave a progress ring that never moves.
+     */
+    private static final int MAX_DAILY_GRAMS = 3000;
+
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
     private MaterialButton btnFeedNow;
     private TextView       tvBowlGrams, tvBowlState;
@@ -293,6 +303,68 @@ public class FeedingActivity extends ThemedActivity {
                 .show();
     }
 
+    /**
+     * Asks for this pet's daily food target.
+     *
+     * The dashboard measured every animal against a constant 300 g. That is a
+     * plausible day for an average adult cat and meaningless for any particular
+     * one, so it is now the default rather than the rule, and the real number
+     * lives on the pet — following it to whichever phone shows it, and deleted
+     * along with it.
+     */
+    private void askDailyTarget(int current) {
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(current));
+        input.setSelectAllOnFocus(true);
+
+        int pad = Math.round(24 * getResources().getDisplayMetrics().density);
+        android.widget.FrameLayout wrapper = new android.widget.FrameLayout(this);
+        wrapper.setPadding(pad, pad / 2, pad, 0);
+        wrapper.addView(input);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.daily_target_title)
+                .setMessage(R.string.daily_target_message)
+                .setView(wrapper)
+                .setNegativeButton(R.string.action_cancel, null)
+                .setNeutralButton(R.string.daily_target_reset,
+                        (d, which) -> saveDailyTarget(null))
+                .setPositiveButton(R.string.action_save, (d, which) -> {
+                    int grams;
+                    try {
+                        grams = Integer.parseInt(input.getText().toString().trim());
+                    } catch (NumberFormatException e) {
+                        grams = -1;
+                    }
+                    if (grams < 1 || grams > MAX_DAILY_GRAMS) {
+                        Toast.makeText(this, getString(R.string.daily_target_invalid,
+                                MAX_DAILY_GRAMS), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    saveDailyTarget(grams);
+                })
+                .show();
+    }
+
+    /** @param grams null to go back to the default */
+    private void saveDailyTarget(Integer grams) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
+        String ownerId = user.getUid();
+        long petId = Prefs.getActivePetId(this);
+        if (petId <= 0) return;
+
+        new Thread(() -> {
+            new PetDataRepository(getApplicationContext())
+                    .setDailyFoodGrams(petId, ownerId, grams);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                load();
+            });
+        }).start();
+    }
+
     /** Shuts a hopper that is holding itself open. */
     private void closeFeeder() {
         PiClient client = PiClient.forSavedPi(this);
@@ -442,6 +514,10 @@ public class FeedingActivity extends ThemedActivity {
         barToday.setProgress(pct);
         tvTodayGrams.setText(getString(R.string.grams_of_target,
                 s.gramsEaten, s.gramsTarget));
+        // Tapping the figure edits the target. Discoverable where the number
+        // already is, rather than buried in Settings — it belongs to the pet,
+        // and this is the screen about that pet's food.
+        tvTodayGrams.setOnClickListener(v -> askDailyTarget(s.gramsTarget));
         tvTodayMealCount.setText(getResources().getQuantityString(
                 R.plurals.meal_count, s.meals.size(), s.meals.size()));
         tagTodayState.setText(pct >= 100 ? R.string.target_met : R.string.on_track);

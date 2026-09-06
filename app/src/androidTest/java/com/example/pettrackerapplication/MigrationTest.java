@@ -242,6 +242,42 @@ public class MigrationTest {
     }
 
     @Test
+    public void migrate6To7_schemaMatchesTheExportedVersion7() throws IOException {
+        helper.createDatabase(TEST_DB, 6).close();
+
+        helper.runMigrationsAndValidate(TEST_DB, 7, true, AppDatabase.MIGRATION_6_7);
+    }
+
+    /**
+     * Pets that predate the column keep the default rather than a target of zero.
+     *
+     * The column is nullable for exactly this reason: a NOT NULL DEFAULT 0 would
+     * migrate every existing pet to a target of nothing, and a progress ring
+     * measured against zero is a division nobody wants to render.
+     */
+    @Test
+    public void migrate6To7_existingPetsHaveNoTargetRatherThanZero() throws IOException {
+        SupportSQLiteDatabase db = helper.createDatabase(TEST_DB, 6);
+
+        ContentValues pet = new ContentValues();
+        pet.put("id", 5L);
+        pet.put("name", "Nutmeg");
+        pet.put("ownerId", "owner-1");
+        db.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+        db.close();
+
+        SupportSQLiteDatabase migrated =
+                helper.runMigrationsAndValidate(TEST_DB, 7, true, AppDatabase.MIGRATION_6_7);
+
+        try (Cursor c = migrated.query(
+                "SELECT name, dailyFoodGrams FROM pets WHERE id = 5")) {
+            assertTrue("the pet should have survived", c.moveToFirst());
+            assertEquals("Nutmeg", c.getString(0));
+            assertTrue("no target set is null, not 0", c.isNull(1));
+        }
+    }
+
+    @Test
     public void migrate2To3_newTablesAreUsable() throws IOException {
         helper.createDatabase(TEST_DB, 2).close();
         SupportSQLiteDatabase db =

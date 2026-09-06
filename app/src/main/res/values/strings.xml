@@ -56,6 +56,15 @@
     <string name="feeding">Feeding</string>
     <string name="food">Food</string>
     <string name="food_today">FOOD TODAY</string>
+    <!--
+      The daily target belongs to the pet, not to the app. 300 g is a plausible
+      day for an average adult cat and meaningless for any particular one, so
+      the wording offers it as a starting point rather than as advice.
+    -->
+    <string name="daily_target_title">Daily food target</string>
+    <string name="daily_target_message">Grams this pet should eat in a day. The ring on this screen is measured against it. Ask a vet for the right figure — the app has no way to know it.</string>
+    <string name="daily_target_reset">Use default</string>
+    <string name="daily_target_invalid">Enter a number of grams between 1 and %1$d.</string>
     <string name="general">General</string>
     <string name="get_help_or_send_feedback">Get help or send feedback</string>
     <string name="history">History</string>

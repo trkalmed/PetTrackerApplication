@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 @Database(
         entities = {Pet.class, FeedingEvent.class, DetectionEvent.class, RoomEvent.class,
                 TrackerFix.class},
-        version = 6,
+        version = 7,
         exportSchema = true)
 public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase INSTANCE;
@@ -195,6 +195,25 @@ public abstract class AppDatabase extends RoomDatabase {
             }
         }
     }
+
+    /**
+     * A daily food target that belongs to the pet.
+     *
+     * It was a constant on the dashboard, the same 300 g for every animal. A
+     * Bengal and an elderly indoor cat want different numbers, and the figure
+     * should follow the pet rather than the phone it was typed on — which also
+     * means it survives a reinstall and is deleted with its pet.
+     *
+     * Nullable, so every pet that existed before this column keeps rendering
+     * against the default rather than suddenly having a target of zero.
+     */
+    static final Migration MIGRATION_6_7 = new Migration(6, 7) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL(
+                    "ALTER TABLE `pets` ADD COLUMN `dailyFoodGrams` INTEGER");
+        }
+    };
 
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {

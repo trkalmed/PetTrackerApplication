@@ -27,9 +27,25 @@ public class DashboardStats {
         public RoomStay(String room, int minutes) { this.room = room; this.minutes = minutes; }
     }
 
+    /**
+     * Used until somebody sets a target for the pet.
+     *
+     * A plausible day for an average adult cat on dry food, and deliberately
+     * not presented as advice: the app has no idea what any particular animal
+     * needs, which is exactly why the number is editable.
+     */
+    public static final int DEFAULT_DAILY_GRAMS = 300;
+
     // Feeder
     public Integer gramsEaten;              // null = no feeder paired
-    public int gramsTarget = 300;
+    /**
+     * The daily target this pet is measured against.
+     *
+     * Comes from the pet when one has been set, and from
+     * {@link #DEFAULT_DAILY_GRAMS} otherwise — so a pet nobody has configured
+     * still renders a sensible ring rather than dividing by zero.
+     */
+    public int gramsTarget = DEFAULT_DAILY_GRAMS;
     public List<Meal> meals = new ArrayList<>();
 
     // Room motion sensors

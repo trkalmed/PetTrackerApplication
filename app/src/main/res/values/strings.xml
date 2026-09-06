@@ -61,6 +61,7 @@
       day for an average adult cat and meaningless for any particular one, so
       the wording offers it as a starting point rather than as advice.
     -->
+    <string name="daily_target_button">Daily target: %1$d g · change</string>
     <string name="daily_target_title">Daily food target</string>
     <string name="daily_target_message">Grams this pet should eat in a day. The ring on this screen is measured against it. Ask a vet for the right figure — the app has no way to know it.</string>
     <string name="daily_target_reset">Use default</string>

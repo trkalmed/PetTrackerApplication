@@ -58,7 +58,7 @@ public class FeedingActivity extends ThemedActivity {
     private static final int MAX_DAILY_GRAMS = 3000;
 
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
-    private MaterialButton btnFeedNow;
+    private MaterialButton btnFeedNow, btnDailyTarget;
     private TextView       tvBowlGrams, tvBowlState;
 
     /** The most recent /health, for the portion size the confirm dialog names. */
@@ -91,6 +91,7 @@ public class FeedingActivity extends ThemedActivity {
         tvFeedNowState = findViewById(R.id.tvFeedNowState);
         tvBowlGrams    = findViewById(R.id.tvBowlGrams);
         tvBowlState    = findViewById(R.id.tvBowlState);
+        btnDailyTarget = findViewById(R.id.btnDailyTarget);
         btnFeedNow.setOnClickListener(v -> confirmDispense());
 
         setupBottomNavigation();
@@ -495,6 +496,12 @@ public class FeedingActivity extends ThemedActivity {
     private void render(DashboardStats s) {
         mealList.removeAllViews();
 
+        // Set before the "no feeder paired" branch returns: a pet with no
+        // readings yet still has a target, and that is exactly when somebody
+        // wants to set it.
+        btnDailyTarget.setText(getString(R.string.daily_target_button, s.gramsTarget));
+        btnDailyTarget.setOnClickListener(v -> askDailyTarget(s.gramsTarget));
+
         if (s.gramsEaten == null) {
             emptyFeeder.setVisibility(View.VISIBLE);
             mealList.setVisibility(View.GONE);
@@ -514,10 +521,6 @@ public class FeedingActivity extends ThemedActivity {
         barToday.setProgress(pct);
         tvTodayGrams.setText(getString(R.string.grams_of_target,
                 s.gramsEaten, s.gramsTarget));
-        // Tapping the figure edits the target. Discoverable where the number
-        // already is, rather than buried in Settings — it belongs to the pet,
-        // and this is the screen about that pet's food.
-        tvTodayGrams.setOnClickListener(v -> askDailyTarget(s.gramsTarget));
         tvTodayMealCount.setText(getResources().getQuantityString(
                 R.plurals.meal_count, s.meals.size(), s.meals.size()));
         tagTodayState.setText(pct >= 100 ? R.string.target_met : R.string.on_track);

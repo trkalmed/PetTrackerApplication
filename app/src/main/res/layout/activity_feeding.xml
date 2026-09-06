@@ -122,6 +122,23 @@
                         android:progress="0"
                         android:progressBackgroundTint="@color/divider"
                         android:progressTint="@color/primary" />
+
+                    <!--
+                      An explicit control rather than a tappable number. The
+                      target was editable by tapping the grams figure, which
+                      nothing on screen suggested and which did not exist at all
+                      until the feeder had recorded something — so on a fresh
+                      pet it was unreachable.
+                    -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDailyTarget"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginStart="-8dp"
+                        android:textSize="12sp"
+                        tools:text="Daily target: 300 g · change" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

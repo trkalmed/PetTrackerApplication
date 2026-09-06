@@ -610,6 +610,102 @@ the printed IP into the app's Pi Connection dialog.
 
 ---
 
+## Session — 2026-09-05/06 · ready to film
+
+The rig runs the whole day now. `/health` in its current state:
+
+```
+scale ✓ (tared)   feeder ✓ (paddle)   usb ✓   csi ✓
+motion: Kitchen ✓  BedRoom/Bathroom ✓  Living Room / Hall ✓
+location ✗ — GPS unplugged indoors
+```
+
+### Built
+
+**Both cameras at once.** The Pi held exactly one from SensorSet through to
+/stream; it now holds an ordered map, `/stream?camera=<name>` picks one, and
+`--camera usb,csi` configures both. The first named is primary — snapshots come
+from it, and /stream serves it unnamed — so an older client is unaffected. An
+unknown name is a 404 rather than a fall back: showing the hall to a phone that
+asked for the kitchen is worse than an error. In the app the camera label
+becomes tappable once the Pi reports more than one.
+
+**The bowl weight, live.** /health always carried it and the app discarded it.
+The Food tab shows it, polled every two seconds while the tab is open, and never
+stores it — everything else there is history the Pi derived, this is what the
+hardware says now.
+
+**The tare survives a restart.** It lived in memory only, so every restart
+reported the bowl's own weight as food. Invisible until the live reading made it
+visible at 1196 g in an empty bowl.
+
+**Feeding became a confirmation.** The wheel meters in whole pockets, so grams
+typed on a phone were rounded before anything moved. /health reports
+`portion_grams` and `feeder_kind`, and the app words its own controls from them
+— "Feed now" for a metering design, "Open the hopper" for the hold design.
+
+**A hold feeder**, added when the sweep angles were fighting the wheel: opens and
+stays open until told to close, with `POST /close` and a 120 s backstop for the
+close that never comes. Currently unused — the rig is back on `paddle` — but it
+is there and tested.
+
+**A per-pet daily food target**, schema 6 → 7. It was a constant 300 g for every
+animal.
+
+### Performance
+
+**The live view was running at the detector's pace.** Inference ran inline on the
+stream reader thread, so the Pi sent ten frames a second, the phone displayed
+about three, and the socket buffered the rest — a view falling further behind
+the room the longer it was watched. `detectionBusy` existed to prevent exactly
+that and could never fire, because the same thread cleared it before looping.
+Frames now go to a single-thread executor and are dropped while it is busy.
+
+Also: the bowl poll spawned a Thread every two seconds for work that is almost
+entirely waiting on a socket.
+
+### Four faults, and what they share
+
+**A native crash on leaving the Live screen.** onDestroy interrupted the stream
+thread and freed the TFLite detector on the next line, without waiting, while
+that thread was inside detect(). A use-after-free, arriving as a SIGSEGV rather
+than an exception, so no amount of catching would have helped. Interrupting does
+not stop native code — it sets a flag the thread reads between frames.
+
+**The servo would not turn fully.** Two compounding causes: `move_to` released
+the servo as soon as `travel_s` elapsed, which is right for a gate and wrong for
+a hopper held against the weight of kibble; and the angle is mapped onto
+500-2400 us, so asking for a larger angle cannot help once the request is
+already at the top. `--servo-pulse-max` exposes the range — but lgpio refuses
+anything past 2500, and a servo still falling short there has met its own
+mechanical limit rather than a software one.
+
+**Every install crashed on launch.** MIGRATION_6_7 was written, schema-validated,
+and never added to `addMigrations()`. The suite stayed green because
+MigrationTest hands each migration straight to `runMigrationsAndValidate` — which
+proves the SQL and nothing about whether anything runs it — while the repository
+tests delete the database and never migrate at all. Between them they covered
+every migration and none of the registration. **This is the best test-design
+lesson the project has produced** and belongs in the write-up: a suite can be
+comprehensively green and blind to a whole category, because every test took the
+same shortcut around the thing that broke.
+
+**A control nobody could find.** The daily target was editable by tapping the
+grams figure — no affordance, and the listener was attached after the "no feeder
+paired" early return, so on a pet with no readings it did not exist at all.
+Which is precisely the pet whose target somebody wants to set.
+
+**Tests: 274 Pi, 73 app unit, 104 instrumented — 451, passing.**
+
+### Left undone, and neither blocks the video
+
+1. `PETTRACKER_PADDLE_GRAMS` is still the placeholder 5.0. One press turns the
+   wheel once, which is the demo shot, so it only matters for a larger request —
+   40 g would turn it eight times. Needs one measurement with a full hopper.
+2. The recorded walk's stats — fixes, duration, distance, satellites, gaps — were
+   never read off the track screen, so §11 of the notes still has no row for
+   tracking.
+
 ## Session — 2026-09-04 · the rig complete, and what the professor asked for
 
 The meeting went well. Two things came out of it: finish the thesis for review,

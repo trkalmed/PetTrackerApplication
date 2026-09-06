@@ -68,7 +68,7 @@ short.
 Two halves joined by one HTTP contract. Neither knows anything about the other
 beyond that contract.
 
-**Pi side** — Python, ~4,700 lines, **standard library only, no dependencies.**
+**Pi side** — Python, ~5,300 lines, **standard library only, no dependencies.**
 That is a deliberate constraint, not an accident of scope: a sensor node that
 must survive an OS reinstall and run unattended is worth more when it cannot
 break through a dependency it did not choose to upgrade.
@@ -79,7 +79,7 @@ Modules: `server.py` (HTTP), `store.py` (SQLite event buffer), `monitor.py`
 `base.py` (interfaces), `real.py` (hardware), `fake.py` (simulation),
 `gpio.py` (backend abstraction), `camera.py` (auto-recovery wrapper).
 
-**App side** — Java/Android, ~6,500 lines across 45 classes and 13 layouts.
+**App side** — Java/Android, ~7,700 lines across 48 classes and 15 layouts.
 Room (SQLite) for local storage, Firebase Authentication, Glide for images,
 CameraX plus TensorFlow Lite for on-device detection.
 
@@ -123,10 +123,12 @@ Pages are capped at 500 events; a single feed request is capped at 500 g.
 source. WAL journal mode, because sensor threads write while the HTTP thread
 reads. 30-day retention.
 
-**App:** Room database, **version 6**, five tables — `pets`, `feeding_events`,
+**App:** Room database, **version 7**, five tables — `pets`, `feeding_events`,
 `detection_events`, `room_events`, `tracker_fixes`. Four hand-written
-migrations (2→3, 3→4, 4→5, 5→6), each validated against an exported schema JSON
-by an instrumented test. Destructive fallback is permitted **only** from version
+migrations (2→3 … 6→7), each validated against an exported schema JSON by an
+instrumented test — and one further test that opens an old database the way the
+app opens it, because validating a migration proves the SQL and proves nothing
+about whether anything runs it. Destructive fallback is permitted **only** from version
 1, which predates schema export; every later version ships a real migration so
 a schema change cannot silently destroy a user's pets.
 
@@ -230,6 +232,17 @@ Concrete instances:
 - Asking a phone for grams was removed once the feeder metered in whole pockets:
   the box invited a precision the hardware does not have. The Pi reports what a
   portion is and the app only asks whether to dispense it.
+- The **live bowl weight is never stored**. Everything else on that screen is
+  history the Pi derived and the phone kept; this is what the hardware says this
+  second, read from /health and discarded. The meal record is a measurement
+  someone can cite; the live number is not.
+- The **daily food target belongs to the pet**, not to the app. It was a constant
+  300 g for every animal — a plausible day for an average adult cat and
+  meaningless for any particular one — so it is now a nullable column, and the
+  dialog says to ask a vet because the app has no way to know.
+- The **app words its feeder controls from what the Pi reports**. "Feed now" and
+  "Open the hopper" are different promises, and the phone cannot tell which is
+  true without being told, so /health carries the feeder's design.
 - A route's **breaks in coverage are drawn as breaks**. Joining across a lost
   fix with the same stroke as measured ground was the one place the drawing
   claimed more than the data supported.
@@ -243,13 +256,13 @@ or worse, moved to "now", which would invent a meal that never happened.
 
 ## 8. Testing and verification
 
-**420 automated tests**, in three suites with different purposes:
+**451 automated tests**, in three suites with different purposes:
 
 | Suite | Count | Runs on | Covers |
 |---|---|---|---|
-| Pi | 246 | Any machine, no hardware | Protocols, parsing, event store, feeders, cameras, HTTP, the systemd unit |
+| Pi | 274 | Any machine, no hardware | Protocols, parsing, event store, three feeder designs, cameras, HTTP, the systemd unit |
 | Android unit (JVM) | 73 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
-| Android instrumented | 101 | A real phone | Room migrations, repository, sync, layouts, theming |
+| Android instrumented | 104 | A real phone | Room migrations *and their registration*, repository, sync, layouts, theming |
 
 **Fakes as first-class citizens.** `sensors/fake.py` lets the whole service run
 with `--fake`, so the app can be developed against a simulated rig and the tests
@@ -344,7 +357,37 @@ changes with every rewiring is evidence about the wiring, not about the
 component**, and a diagnosis should not be recorded as fact in a place that
 outlives the conversation that produced it.
 
-**8. The failure mode of a camera that worked yesterday.** Only one process may
+**8. A green test suite that was blind to a whole category.** A database
+migration was written, schema-validated by a passing test, and never registered
+with the database builder. Every existing installation crashed on launch. The
+suite stayed green because the migration tests hand each migration *directly* to
+the validator — proving the SQL is correct and proving nothing about whether
+anything ever runs it — while the repository tests delete the database first and
+so are always created fresh at the current version, never migrating at all.
+Between them they covered every migration and none of the registration. The fix
+was a test that opens an old database the way the application opens it. **This is
+the strongest test-design result the project produced**: a suite can be
+comprehensive and still blind, when every test takes the same shortcut around
+the thing that breaks.
+
+**9. A use-after-free that arrived as a signal, not an exception.** Leaving the
+live-detection screen killed the application. The teardown interrupted the
+frame-producing thread and freed the TensorFlow Lite detector on the next line
+without waiting, while that thread was usually inside inference — and closing a
+TFLite detector frees native memory immediately. It surfaced as SIGSEGV in the
+JNI library rather than a Java exception, so no amount of exception handling
+would have helped. The generalisable point: **interrupting a thread does not stop
+native code** — it sets a flag the thread reads between units of work, which is
+no help when the unit of work is the problem.
+
+**10. A control nobody could find.** A newly added setting was editable by
+tapping a number that gave no indication it was tappable, and the handler was
+attached after an early return for the empty state — so on exactly the object
+whose setting a user would want to change, it did not exist at all. Worth a
+sentence in a usability discussion: a feature is not delivered when the code
+path exists, but when someone can find it without being told where it is.
+
+**11. The failure mode of a camera that worked yesterday.** Only one process may
 hold a CSI camera. A second copy of the service — including one started by hand
 next to the systemd one — takes the camera and produces a fault that looks like
 hardware. Handled by `ReopeningCamera`, which retries at a rate limit after
@@ -385,9 +428,11 @@ Numbers produced by the real system. Use these rather than estimates.
 | CSI camera | **20/20 frames, 18.4 fps** | `--check-camera` |
 | Motion sensors | 3 of 3 firing, correct rooms | `--check-motion` |
 | Route recorded on foot | Yes — over a phone hotspot, on battery | TrackActivity |
-| Automated tests | **420** (246 + 73 + 101) | All passing |
-| Codebase | 7,306 lines Java, 4,941 Python | 48 classes, 14 layouts |
-| Development span | 2026-04-29 → 2026-09-04 | 65 commits |
+| Two cameras concurrently | USB + CSI, switchable in the app | /health, /stream |
+| Live bowl weight | 2 s refresh while the screen is open | /health |
+| Automated tests | **451** (274 + 73 + 104) | All passing |
+| Codebase | 7,663 lines Java, 5,285 Python | 48 classes, 15 layouts |
+| Development span | 2026-04-29 → 2026-09-06 | 77 commits |
 
 **A calibration methodology note worth including.** The first calibration used a
 phone of assumed weight; the second used a 600 ml water bottle. The second was

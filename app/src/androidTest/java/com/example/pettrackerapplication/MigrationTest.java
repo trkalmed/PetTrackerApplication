@@ -1,15 +1,19 @@
 package com.example.pettrackerapplication;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.Cursor;
 
 import androidx.room.testing.MigrationTestHelper;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.core.app.ApplicationProvider;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Rule;
@@ -239,6 +243,51 @@ public class MigrationTest {
             assertTrue(c.moveToFirst());
             assertEquals(0, c.getInt(0));
         }
+    }
+
+    /**
+     * The real database, opened the real way, over the real upgrade path.
+     *
+     * Every other test here hands the migration to runMigrationsAndValidate,
+     * which proves the SQL is right and proves nothing about whether anything
+     * ever runs it. The repository tests delete the database first, so they get
+     * a fresh one at the current version and never migrate either.
+     *
+     * That gap shipped: MIGRATION_6_7 was written, tested, and never added to
+     * addMigrations(). Every existing install crashed on launch with "A
+     * migration from 6 to 7 was required but not found", while the whole suite
+     * stayed green — because nothing opened a database that predated the
+     * current version through {@link AppDatabase#getInstance}.
+     *
+     * This does exactly that, from the oldest version that must survive.
+     */
+    @Test
+    public void everyMigrationIsActuallyRegisteredWithTheBuilder() throws IOException {
+        Context context = ApplicationProvider.getApplicationContext();
+        AppDatabase.closeForTests();
+        context.deleteDatabase("pets_db");
+
+        // Version 2 is the schema-export baseline: the oldest install that is
+        // expected to upgrade rather than be wiped.
+        SupportSQLiteDatabase old = helper.createDatabase("pets_db", 2);
+        ContentValues pet = new ContentValues();
+        pet.put("id", 9L);
+        pet.put("name", "Nutmeg");
+        pet.put("ownerId", "owner-1");
+        old.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
+        old.close();
+
+        // Opened the way the app opens it. A missing migration throws here.
+        AppDatabase.closeForTests();
+        AppDatabase db = AppDatabase.getInstance(context);
+        Pet survivor = db.petDao().getPetById(9L, "owner-1");
+
+        assertNotNull("the pet should have survived every migration", survivor);
+        assertEquals("Nutmeg", survivor.getName());
+        assertNull("a pet from before the column has no target", survivor.getDailyFoodGrams());
+
+        AppDatabase.closeForTests();
+        context.deleteDatabase("pets_db");
     }
 
     @Test

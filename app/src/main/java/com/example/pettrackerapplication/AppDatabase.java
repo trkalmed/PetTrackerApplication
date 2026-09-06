@@ -224,7 +224,7 @@ public abstract class AppDatabase extends RoomDatabase {
                                     AppDatabase.class,
                                     "pets_db")
                             .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                                    MIGRATION_5_6)
+                                    MIGRATION_5_6, MIGRATION_6_7)
                             // Version 1 predates schema export, so there is no
                             // baseline to migrate it from — wiping is the only
                             // option there. Every later version must ship a real

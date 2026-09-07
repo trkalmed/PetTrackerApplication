@@ -260,13 +260,13 @@ or worse, moved to "now", which would invent a meal that never happened.
 
 ## 8. Testing and verification
 
-**470 automated tests**, in three suites with different purposes:
+**477 automated tests**, in three suites with different purposes:
 
 | Suite | Count | Runs on | Covers |
 |---|---|---|---|
 | Pi | 293 | Any machine, no hardware | Protocols, parsing, event store, three feeder designs, cameras, HTTP, the systemd unit |
 | Android unit (JVM) | 73 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
-| Android instrumented | 104 | A real phone | Room migrations *and their registration*, repository, sync, layouts, theming |
+| Android instrumented | 111 | A real phone | Room migrations *and their registration*, repository, sync, layouts, theming |
 
 **Fakes as first-class citizens.** `sensors/fake.py` lets the whole service run
 with `--fake`, so the app can be developed against a simulated rig and the tests
@@ -396,6 +396,28 @@ hold a CSI camera. A second copy of the service — including one started by han
 next to the systemd one — takes the camera and produces a fault that looks like
 hardware. Handled by `ReopeningCamera`, which retries at a rate limit after
 three consecutive failures rather than hammering the device.
+
+**12. A null check that passed an empty thing.** Pet photos are run through ML
+Kit subject segmentation to cut the animal out of its background. The code
+guarded the result with `!= null`, which is the wrong question: "no subject
+found" is not returned as null but as a bitmap the size of the original with
+every non-subject pixel made transparent — so a frame the model recognised
+nothing in came back correctly sized, correctly typed, and invisible. It passed
+the guard, replaced the preview the instant the spinner cleared, and was written
+to the database as a PNG that loads without error and shows nothing on any
+screen. The generalisable lesson: **an API's empty result and its absent result
+are different values, and a null check only tests for one of them.** The fix
+samples about four thousand pixels of the cut-out for opacity, because reading
+twelve megapixels on the main thread to answer "is anything there" is a second
+defect.
+
+**13. A whole-row update that erased a field it never knew about.** Editing a
+pet rebuilt the row from the form and wrote it back. A daily food target added
+later is set on a different screen, so it was not on that form, so renaming a
+pet silently reset it to the default — which then read on the Food tab as a
+number somebody had chosen. Worth writing up beside incident 12: both are
+faults of *scope*, where code that looks locally correct is wrong because of
+something outside the frame it was written in.
 
 ---
 

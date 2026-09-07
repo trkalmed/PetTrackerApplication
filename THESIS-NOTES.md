@@ -430,7 +430,27 @@ merits is not evidence that it addressed the reported fault.** The empty-cut-out
 guard was written, tested and committed as the cause of the invisible photos. It
 was not the cause. The tint was.
 
-**14. A whole-row update that erased a field it never knew about.** Editing a
+**14. A calibration that disagreed with itself, and what settled it.** Re-running
+the calibration with a 1.5 L water bottle produced 291.43 counts per gram against
+the 385.66 already on the rig — a third of the sensitivity apparently gone. A
+load cell does not lose sensitivity between sessions, and it certainly does not
+lose a *different* amount each time: a second run with the bottle full implied
+306.6. Three references, three answers.
+
+The span was consistent across runs, so the counts were trustworthy and the
+declared mass was not. The test was to slide the bottle across the plate without
+lifting it: the reading changed. That is corner-load error — a bar cell measures
+beam deflection, so an off-centre or overhanging mass registers short, and a tall
+1.5 L bottle on a small catch plate is close to the worst case for it. The
+600 ml bottle that produced 385.66 sat squarely in the middle.
+
+Two things worth taking from it. **A disagreement between measurements is itself
+a measurement**: the spread pointed at placement, because a genuine change in the
+cell would have been one consistent wrong number rather than three different
+ones. And **a calibration factor describes a fixture, not a component** — the
+figure is only valid for loads presented the way the bowl presents them.
+
+**15. A whole-row update that erased a field it never knew about.** Editing a
 pet rebuilt the row from the form and wrote it back. A daily food target added
 later is set on a different screen, so it was not on that form, so renaming a
 pet silently reset it to the default — which then read on the Food tab as a
@@ -543,6 +563,13 @@ that must be kept current.
   prototype; it is a real limitation and should be named as one.
 - **Single-pet focus.** The data model supports many, but the sync attributes
   readings to one active pet.
+- **The scale is position-sensitive.** A bar load cell measures the bending of a
+  beam, so the same mass reads differently depending on where it sits on the
+  plate — confirmed by observation: moving a bottle without lifting it changes
+  the number. The calibration factor is therefore a property of *the fixture and
+  a centred load*, not of the cell alone. It matters little in use, where a bowl
+  sits in one place and kibble spreads across it, but it makes a large
+  off-centre object useless as a calibration reference.
 - **`PETTRACKER_PADDLE_GRAMS` is still a placeholder** at the time of writing —
   grams-per-pocket must be measured with a full hopper, because the column of
   kibble above the wheel is what fills the pocket.

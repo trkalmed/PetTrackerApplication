@@ -237,6 +237,7 @@ public class Petmenu extends ThemedActivity {
         if (photoUri != null && !photoUri.isEmpty()) {
             imgPetPhoto.setScaleType(ImageView.ScaleType.CENTER_CROP);
             imgPetPhoto.setPadding(0, 0, 0, 0);
+            PhotoTint.clearFor(imgPetPhoto);
             Glide.with(this)
                     .load(Uri.parse(photoUri))
                     .centerCrop()
@@ -250,6 +251,7 @@ public class Petmenu extends ThemedActivity {
             imgPetPhoto.setScaleType(ImageView.ScaleType.FIT_CENTER);
             imgPetPhoto.setPadding(dp(72), dp(72), dp(72), dp(72));
             imgPetPhoto.setImageResource(R.drawable.ic_pets_24);
+            PhotoTint.restore(imgPetPhoto, R.color.accent_2);
         }
     }
 
@@ -425,6 +427,10 @@ public class Petmenu extends ThemedActivity {
 
                 String photoUri = pet.getPhotoUri();
                 if (photoUri != null && !photoUri.isEmpty()) {
+                    // Rows are recycled, so both branches have to set the tint —
+                    // leaving it to the layout means whichever pet was in this
+                    // row before decides how the next one is painted.
+                    PhotoTint.clearFor(imgPet);
                     Glide.with(itemView.getContext())
                             .load(Uri.parse(photoUri))
                             .centerCrop()
@@ -433,6 +439,7 @@ public class Petmenu extends ThemedActivity {
                 } else {
                     Glide.with(itemView.getContext()).clear(imgPet);
                     imgPet.setImageResource(R.drawable.ic_pets_24);
+                    PhotoTint.restore(imgPet, R.color.primary);
                 }
 
                 itemView.setOnClickListener(v -> {

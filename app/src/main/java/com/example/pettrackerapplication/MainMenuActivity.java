@@ -231,6 +231,10 @@ public class MainMenuActivity extends ThemedActivity {
             // Glide, not setImageURI — the latter decodes the full bitmap on the
             // main thread and drops frames on a phone-camera photo.
             imgPetAvatar.setColorFilter(null);
+            // Separate from the colour filter above and not cleared by it: the
+            // layout's app:tint is an image tint list, and it was painting the
+            // photograph the placeholder's colour.
+            PhotoTint.clearFor(imgPetAvatar);
             imgPetAvatar.setPadding(0, 0, 0, 0);
             Glide.with(this)
                     .load(Uri.parse(photoUri))
@@ -241,6 +245,8 @@ public class MainMenuActivity extends ThemedActivity {
             // Reset, or a previous pet's photo lingers after the photo is cleared.
             Glide.with(this).clear(imgPetAvatar);
             imgPetAvatar.setImageResource(R.drawable.ic_pets_24);
+            // The paw's fill is transparent, so without the tint it is invisible.
+            PhotoTint.restore(imgPetAvatar, R.color.accent_2_dark);
             imgPetAvatar.setColorFilter(ContextCompat.getColor(this, R.color.accent_2_dark));
             imgPetAvatar.setPadding(dp(13), dp(13), dp(13), dp(13));
         }

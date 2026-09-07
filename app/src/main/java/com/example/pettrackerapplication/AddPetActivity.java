@@ -89,6 +89,7 @@ public class AddPetActivity extends ThemedActivity {
                     if (uri != null) {
                         selectedImageUri = uri;
                         segmentedBitmap  = null;
+                        PhotoTint.clearFor(imgPreview);
                         Glide.with(this).load(uri).centerCrop().into(imgPreview);
                         runSubjectSegmentation(uri);
                     }
@@ -176,6 +177,7 @@ public class AddPetActivity extends ThemedActivity {
         if (photoUri != null && !photoUri.isEmpty()) {
             // Keep the saved photo unless the user picks a new one. Not assigned
             // to selectedImageUri: that field means "a new pick to process".
+            PhotoTint.clearFor(imgPreview);
             Glide.with(this).load(Uri.parse(photoUri)).centerCrop().into(imgPreview);
         }
     }

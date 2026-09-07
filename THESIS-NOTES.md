@@ -397,21 +397,40 @@ next to the systemd one — takes the camera and produces a fault that looks lik
 hardware. Handled by `ReopeningCamera`, which retries at a rate limit after
 three consecutive failures rather than hammering the device.
 
-**12. A null check that passed an empty thing.** Pet photos are run through ML
-Kit subject segmentation to cut the animal out of its background. The code
-guarded the result with `!= null`, which is the wrong question: "no subject
-found" is not returned as null but as a bitmap the size of the original with
-every non-subject pixel made transparent — so a frame the model recognised
-nothing in came back correctly sized, correctly typed, and invisible. It passed
-the guard, replaced the preview the instant the spinner cleared, and was written
-to the database as a PNG that loads without error and shows nothing on any
-screen. The generalisable lesson: **an API's empty result and its absent result
-are different values, and a null check only tests for one of them.** The fix
-samples about four thousand pixels of the cut-out for opacity, because reading
-twelve megapixels on the main thread to answer "is anything there" is a second
-defect.
+**12. A photograph painted the colour of its own placeholder.** Uploaded pet
+photos "did not show". They were loading perfectly: every view that displays a
+pet also shows a paw icon when there is none, the paw is a vector whose fill is
+transparent and which is drawn entirely by the layout's `app:tint`, and a tint
+belongs to the *view*, not to the drawable it currently holds. So the tint was
+applied to the photograph too — the cat's outline came through exactly, with
+every pixel of it flattened to one colour. On a dark theme that is a dark green
+silhouette on a dark green card, which is indistinguishable from an image that
+failed to load. Four views had the same attribute for the same reason.
 
-**13. A whole-row update that erased a field it never knew about.** Editing a
+Two things make this worth writing up. First, **the symptom named the wrong
+component**: "the photo does not show" points at loading, storage and file
+permissions, and the fault was in painting. Second, it was found by *looking* —
+a screenshot showed a correct silhouette, and a silhouette is not what a broken
+image looks like. The shape was the evidence: it proved the pixels had arrived.
+
+**13. A null check that passed an empty thing** — found while investigating 12,
+and a real defect, though not the one being chased. ML Kit's subject segmentation
+does not return null for "no subject found"; it returns a bitmap the size of the
+original with every non-subject pixel made transparent, so a frame it recognises
+nothing in comes back correctly sized, correctly typed and invisible. The guard
+was `!= null`, which is the wrong question, and an empty cut-out would have been
+saved as the pet's photo. The lesson: **an API's empty result and its absent
+result are different values, and a null check only tests for one of them.** The
+fix samples about four thousand pixels for opacity rather than reading twelve
+megapixels on the main thread to answer "is anything there".
+
+Worth stating plainly in a methodology chapter, because it happened twice in this
+project (see also the servo in incident 7): **a fix that is defensible on its own
+merits is not evidence that it addressed the reported fault.** The empty-cut-out
+guard was written, tested and committed as the cause of the invisible photos. It
+was not the cause. The tint was.
+
+**14. A whole-row update that erased a field it never knew about.** Editing a
 pet rebuilt the row from the form and wrote it back. A daily food target added
 later is set on a different screen, so it was not on that form, so renaming a
 pet silently reset it to the default — which then read on the Food tab as a

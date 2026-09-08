@@ -1,6 +1,7 @@
 package com.example.pettrackerapplication;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -227,6 +228,98 @@ public class GeoTest {
         assertEquals(0, Geo.mostRecentRunStart(null));
         assertEquals(0, Geo.mostRecentRunStart(new long[0]));
         assertEquals(0, Geo.mostRecentRunStart(new long[]{1_788_000_000_000L}));
+    }
+
+    // ── A fix the receiver could not place ──────────────────────────────────
+    //
+    // A break in coverage used to mean silence. On a measured 1351.6 m walk the
+    // receiver never went quiet: in one built-up street it kept reporting every
+    // two seconds from three or four satellites while the positions scattered,
+    // which added 11.7% of distance that was never walked and produced a legend
+    // saying the route had no breaks at all.
+
+    @Test
+    public void aScatterFromThreeSatellitesIsNotDistanceWalked() {
+        // Walking north at 1 m/s, except for ten fixes in the middle taken from
+        // three satellites and thrown 40 m sideways.
+        double metre = 1.0 / DEGREE_OF_LATITUDE_M;
+        int n = 60;
+        double[] lats = new double[n];
+        double[] lons = new double[n];
+        long[] stamps = new long[n];
+        int[] sats = new int[n];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < n; i++) {
+            boolean degraded = i >= 25 && i < 35;
+            lats[i] = 32.0 + i * 2 * metre;
+            lons[i] = 35.0 + (degraded ? (i % 2 == 0 ? 40 : -40) * metre : 0);
+            stamps[i] = now + i * 2_000L;
+            sats[i] = degraded ? 3 : 12;
+        }
+
+        double rated = Geo.routeLengthMetres(lats, lons, stamps, sats);
+        double unrated = Geo.routeLengthMetres(lats, lons, stamps);
+
+        assertTrue("the scatter must not be counted as walking: " + rated,
+                rated < 140);
+        assertTrue("without the counts it is counted: " + unrated, unrated > 400);
+    }
+
+    @Test
+    public void aWalkThroughGoodReceptionIsUnaffected() {
+        double metre = 1.0 / DEGREE_OF_LATITUDE_M;
+        double[] lats = new double[40];
+        double[] lons = new double[40];
+        long[] stamps = new long[40];
+        int[] sats = new int[40];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 40; i++) {
+            lats[i] = 32.0 + i * 2 * metre;
+            lons[i] = 35.0;
+            stamps[i] = now + i * 2_000L;
+            sats[i] = 11;
+        }
+
+        assertEquals(Geo.routeLengthMetres(lats, lons, stamps),
+                Geo.routeLengthMetres(lats, lons, stamps, sats), 0.001);
+    }
+
+    @Test
+    public void sixSatellitesIsTrustedAndFiveIsNot() {
+        // Four is the bare minimum for a three-dimensional fix; six leaves two
+        // spare. Stated as a test because the number is a judgement, and a
+        // judgement that changes silently is worse than one that fails a test.
+        assertTrue(Geo.isTrusted(6));
+        assertTrue(Geo.isTrusted(12));
+        assertFalse(Geo.isTrusted(5));
+        assertFalse(Geo.isTrusted(3));
+        assertFalse(Geo.isTrusted(0));
+    }
+
+    @Test
+    public void aRunOfPoorFixesIsOneBreakNotTen() {
+        long[] stamps = steady(60, 2_000);
+        int[] sats = new int[60];
+        for (int i = 0; i < 60; i++) sats[i] = (i >= 25 && i < 35) ? 3 : 12;
+
+        assertEquals(1, Geo.countGaps(stamps, sats));
+    }
+
+    @Test
+    public void twoSeparateStretchesOfPoorReceptionAreTwoBreaks() {
+        long[] stamps = steady(60, 2_000);
+        int[] sats = new int[60];
+        for (int i = 0; i < 60; i++) {
+            sats[i] = ((i >= 10 && i < 15) || (i >= 40 && i < 45)) ? 4 : 12;
+        }
+
+        assertEquals(2, Geo.countGaps(stamps, sats));
+    }
+
+    @Test
+    public void withoutSatelliteCountsNothingChanges() {
+        long[] stamps = steady(100, 2_000, 40);
+        assertEquals(Geo.countGaps(stamps), Geo.countGaps(stamps, null));
     }
 
     private static long[] steady(int count, long stepMillis, int... gapAt) {

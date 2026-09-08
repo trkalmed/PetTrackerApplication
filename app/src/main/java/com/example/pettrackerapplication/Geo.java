@@ -74,15 +74,70 @@ public final class Geo {
      */
     public static double routeLengthMetres(double[] lats, double[] lons,
                                            long[] timestampsMillis) {
+        return routeLengthMetres(lats, lons, timestampsMillis, null);
+    }
+
+    /**
+     * How many satellites a fix needs before its position is measured from.
+     *
+     * Four is the minimum for a three-dimensional fix at all; six leaves two
+     * spare, which is where the position stops wandering. Chosen on that
+     * reasoning rather than on results: on a route measured at 1351.6 m,
+     * requiring eight fitted better (+0.3% against +2.7%), and a threshold
+     * picked because it matches one walk is not evidence, it is fitting.
+     *
+     * A count, and not a speed limit, on purpose. Rejecting steps faster than
+     * a person walks fits this data even better — but it assumes something
+     * about the animal, and a tracker for animals should not quietly discard a
+     * dog for running. The satellite count is the receiver's own statement
+     * about how well it knows where it is, which is a fact about the
+     * measurement instead of an assumption about the subject.
+     */
+    public static final int MIN_SATELLITES = 6;
+
+    /** Whether a fix from this many satellites is worth measuring from. */
+    public static boolean isTrusted(int satellites) {
+        return satellites >= MIN_SATELLITES;
+    }
+
+    /**
+     * The same again, also declining to measure from a fix the receiver was
+     * unsure of.
+     *
+     * A break in coverage was defined by silence: fixes stopped arriving. A
+     * receiver losing sky view in a built-up street does something else — it
+     * keeps reporting, every two seconds, from three or four satellites, and
+     * the positions scatter over tens of metres while the tracker walks in a
+     * straight line. On a measured walk that added 11.7% of phantom distance,
+     * and reported no gaps at all, because nothing had gone quiet.
+     *
+     * So confidence is treated the same way as silence. A stretch the receiver
+     * could not place is not measured, and the drawing shows it broken.
+     *
+     * @param satellites one per fix, or null to measure from all of them
+     */
+    public static double routeLengthMetres(double[] lats, double[] lons,
+                                           long[] timestampsMillis,
+                                           int[] satellites) {
         if (lats == null || lons == null) return 0;
         int n = Math.min(lats.length, lons.length);
 
         boolean timed = timestampsMillis != null && timestampsMillis.length >= n;
+        boolean rated = satellites != null && satellites.length >= n;
         long threshold = timed ? gapThresholdMillis(timestampsMillis) : 0;
 
         double total = 0;
         int from = 0;
-        for (int to = 1; to < n; to++) {
+        while (rated && from < n && !isTrusted(satellites[from])) from++;
+
+        for (int to = from + 1; to < n; to++) {
+            if (rated && !isTrusted(satellites[to])) {
+                // Reported, but from too few satellites to say where. Skipped
+                // without moving the anchor: the next trusted fix is measured
+                // from the last trusted one, so a stretch of poor reception
+                // costs its own scatter and not the ground either side of it.
+                continue;
+            }
             if (timed && timestampsMillis[to] - timestampsMillis[from] > threshold) {
                 // Across a gap. Not measured, and the anchor moves so the
                 // distance resumes from the far side rather than carrying the
@@ -197,11 +252,33 @@ public final class Geo {
      * the difference is not obvious at a glance on a busy drawing.
      */
     public static int countGaps(long[] timestampsMillis) {
+        return countGaps(timestampsMillis, null);
+    }
+
+    /**
+     * The same, counting a stretch the receiver could not place as a break too.
+     *
+     * The legend says how many breaks the route contains, and a walk through a
+     * built-up street where the fix degraded without ever stopping used to
+     * report none. The reader was told the line was continuous while part of
+     * it was scatter.
+     *
+     * A run of poor fixes is one break, not one per fix.
+     */
+    public static int countGaps(long[] timestampsMillis, int[] satellites) {
         if (timestampsMillis == null || timestampsMillis.length < 2) return 0;
 
         long threshold = gapThresholdMillis(timestampsMillis);
+        boolean rated = satellites != null && satellites.length >= timestampsMillis.length;
+
         int gaps = 0;
+        boolean inDegraded = false;
         for (int i = 1; i < timestampsMillis.length; i++) {
+            if (rated && !isTrusted(satellites[i])) {
+                if (!inDegraded) { gaps++; inDegraded = true; }
+                continue;
+            }
+            inDegraded = false;
             if (timestampsMillis[i] - timestampsMillis[i - 1] > threshold) gaps++;
         }
         return gaps;

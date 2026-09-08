@@ -133,24 +133,26 @@ public class TrackActivity extends ThemedActivity {
 
         double[] lats = new double[count];
         double[] lons = new double[count];
+        int[] sats = new int[count];
         int minSatellites = Integer.MAX_VALUE;
         int maxSatellites = 0;
         for (int i = 0; i < count; i++) {
             TrackerFix fix = fixes.get(i);
             lats[i] = fix.getLatitude();
             lons[i] = fix.getLongitude();
+            sats[i] = fix.getSatellites();
             minSatellites = Math.min(minSatellites, fix.getSatellites());
             maxSatellites = Math.max(maxSatellites, fix.getSatellites());
         }
 
         long[] stamps = new long[count];
         for (int i = 0; i < count; i++) stamps[i] = fixes.get(i).getTimestampMillis();
-        int gaps = Geo.countGaps(stamps);
+        int gaps = Geo.countGaps(stamps, sats);
         tvTrackLegend.setText(gaps == 0
                 ? getString(R.string.track_legend)
                 : getResources().getQuantityString(R.plurals.track_legend_gaps, gaps, gaps));
 
-        double metres = Geo.routeLengthMetres(lats, lons, stamps);
+        double metres = Geo.routeLengthMetres(lats, lons, stamps, sats);
         tvTrackDistance.setText(metres >= 1000
                 ? getString(R.string.track_distance_km, metres / 1000)
                 : getString(R.string.track_distance_m, Math.round(metres)));

@@ -50,16 +50,21 @@ public class TrackView extends View {
 
     private final List<double[]> points = new ArrayList<>();   // {lat, lon}
     private final List<Long> times = new ArrayList<>();        // epoch millis
+    private final List<Integer> sats = new ArrayList<>();      // satellites per fix
 
     /**
      * Segments where the receiver stopped reporting, drawn as a broken line.
      *
      * Joining across a gap with the same confident stroke as the rest claims a
      * path nothing measured — the straight lines cutting across the first
-     * walk's route were all of this kind. The distance still counts them,
-     * because the tracker genuinely travelled between those two points; what
-     * is unknown is the shape of the route it took, and a dashed line says
-     * exactly that.
+     * walk's route were all of this kind. What is unknown is the shape of the
+     * route between them, and a dashed line says exactly that.
+     *
+     * Two things are drawn this way, because they are the same claim. The
+     * receiver going quiet is one. The receiver staying talkative while it
+     * stops knowing where it is — three satellites, a fix every two seconds,
+     * positions scattered over tens of metres — is the other, and it is the
+     * one that used to pass for a measured route.
      */
     private final Paint gapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -96,10 +101,12 @@ public class TrackView extends View {
     public void setFixes(List<TrackerFix> fixes) {
         points.clear();
         times.clear();
+        sats.clear();
         if (fixes != null) {
             for (TrackerFix fix : fixes) {
                 points.add(new double[]{fix.getLatitude(), fix.getLongitude()});
                 times.add(fix.getTimestampMillis());
+                sats.add(fix.getSatellites());
             }
         }
         invalidate();
@@ -167,11 +174,13 @@ public class TrackView extends View {
             if (i == 0) {
                 path.moveTo(x, y);
                 firstX = x; firstY = y;
-            } else if (times.get(i) - times.get(i - 1) > gapThreshold) {
-                // The receiver stopped reporting between these two fixes. It
-                // did travel from one to the other, so the distance still
-                // counts — but the path it took is unknown, and drawing it as
-                // a confident line is the one way this picture can lie.
+            } else if (!Geo.isTrusted(sats.get(i)) || !Geo.isTrusted(sats.get(i - 1))
+                    || times.get(i) - times.get(i - 1) > gapThreshold) {
+                // Either the receiver stopped reporting between these two
+                // fixes, or it reported from too few satellites to be placed.
+                // The tracker travelled from one to the other either way; the
+                // path it took is unknown, and drawing it as a confident line
+                // is the one way this picture can lie.
                 gapPath.moveTo(lastX, lastY);
                 gapPath.lineTo(x, y);
                 path.moveTo(x, y);

@@ -458,6 +458,26 @@ number somebody had chosen. Worth writing up beside incident 12: both are
 faults of *scope*, where code that looks locally correct is wrong because of
 something outside the frame it was written in.
 
+**16. A break in coverage that was not silent.** The route drawing and the
+distance both defined a gap as fixes failing to arrive. On a walk surveyed at
+1351.6 m the receiver never stopped: in one built-up street it kept reporting
+every two seconds from three or four satellites while the positions scattered
+over tens of metres. The screen therefore reported no breaks at all and a
+distance 11.7% too long — the two statements agreeing with each other and both
+wrong, because both asked about cadence and the failure was in confidence.
+
+The correction is the more interesting half. Four candidate rules were compared
+against the surveyed length: a 5 m/s speed limit (+0.9%), requiring eight
+satellites (+0.3%), both together (+0.0%), and requiring six satellites (+2.7%).
+**The worst-fitting of the four was adopted.** A speed limit encodes an
+assumption about the subject, and a tracker built for animals should not discard
+a dog for running; a satellite count is the receiver's own statement about how
+well it knows where it is. And eight fits this walk better only because this
+walk is what it was chosen against — four satellites is the minimum for a 3D fix
+and six leaves two spare, which is a reason that exists independently of the
+data. Worth stating plainly in an evaluation chapter: **choosing the threshold
+that minimises error on your only measurement is fitting, not validation.**
+
 ---
 
 ## 10. Deployment
@@ -492,12 +512,15 @@ Numbers produced by the real system. Use these rather than estimates.
 | GPS fix | **12 satellites**, 32.00964, 35.76567 | `--check-gps` |
 | CSI camera | **20/20 frames, 18.4 fps** | `--check-camera` |
 | Motion sensors | 3 of 3 firing, correct rooms | `--check-motion` |
-| Route recorded on foot | Yes — over a phone hotspot, on battery | TrackActivity |
+| Route recorded on foot | **612 fixes, 20.7 min, 2.0 s interval** | 8 Sep, hotspot, battery |
+| Route length, measured | **1389 m** against **1351.6 m** surveyed (**+2.7%**) | Google Maps trace, 675.81 m each way |
+| GNSS degradation, observed | satellites 12 → 3 for ~60 s, **no interruption in cadence** | 8 Sep walk, 18:33 |
+| Phantom distance from that | **+11.7%** before filtering, +2.7% after | Rule comparison against the surveyed route |
 | Two cameras concurrently | USB + CSI, switchable in the app | /health, /stream |
 | Live bowl weight | 2 s refresh while the screen is open | /health |
-| Automated tests | **451** (274 + 73 + 104) | All passing |
+| Automated tests | **491** (293 + 87 + 111) | All passing |
 | Codebase | 7,663 lines Java, 5,285 Python | 48 classes, 15 layouts |
-| Development span | 2026-04-29 → 2026-09-06 | 77 commits |
+| Development span | 2026-04-29 → 2026-09-08 | 84 commits |
 
 **A calibration methodology note worth including.** The first calibration used a
 phone of assumed weight; the second used a 600 ml water bottle. The second was

@@ -89,6 +89,15 @@ public class TrackActivity extends ThemedActivity {
             return;
         }
 
+        // One outing, not everything ever recorded. The query returns the last
+        // N fixes whenever they happened, which is a count and not a run: a
+        // week of readings taken at a desk arrived on this screen joined to
+        // yesterday's walk and summarised as a single 194-hour journey.
+        long[] all = new long[fixes.size()];
+        for (int i = 0; i < all.length; i++) all[i] = fixes.get(i).getTimestampMillis();
+        int runStart = Geo.mostRecentRunStart(all);
+        if (runStart > 0) fixes = fixes.subList(runStart, fixes.size());
+
         trackView.setVisibility(View.VISIBLE);
         tvTrackEmpty.setVisibility(View.GONE);
         tvTrackLegend.setVisibility(fixes.size() > 1 ? View.VISIBLE : View.GONE);
@@ -121,7 +130,7 @@ public class TrackActivity extends ThemedActivity {
                 ? getString(R.string.track_legend)
                 : getResources().getQuantityString(R.plurals.track_legend_gaps, gaps, gaps));
 
-        double metres = Geo.routeLengthMetres(lats, lons);
+        double metres = Geo.routeLengthMetres(lats, lons, stamps);
         tvTrackDistance.setText(metres >= 1000
                 ? getString(R.string.track_distance_km, metres / 1000)
                 : getString(R.string.track_distance_m, Math.round(metres)));

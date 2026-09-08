@@ -53,12 +53,43 @@ public final class Geo {
      * see the constant for why that matters more than it sounds.
      */
     public static double routeLengthMetres(double[] lats, double[] lons) {
+        return routeLengthMetres(lats, lons, null);
+    }
+
+    /**
+     * The same, but refusing to measure across a break in coverage.
+     *
+     * The drawing already declines to join two fixes separated by a gap,
+     * because the straight line between them crosses ground nothing observed.
+     * Without the timestamps the distance had no way to make the same
+     * refusal, so it counted every one of those lines — and a screen that
+     * draws a break while quietly adding its length to the total is stating
+     * two different things about the same pair of points.
+     *
+     * The visible cost of that: a track screen reporting 782 m for eight days
+     * of separate outings, most of it the jump from where the tracker sat on
+     * one day to where it was switched on the next.
+     *
+     * @param timestampsMillis one per fix, or null to measure straight through
+     */
+    public static double routeLengthMetres(double[] lats, double[] lons,
+                                           long[] timestampsMillis) {
         if (lats == null || lons == null) return 0;
         int n = Math.min(lats.length, lons.length);
+
+        boolean timed = timestampsMillis != null && timestampsMillis.length >= n;
+        long threshold = timed ? gapThresholdMillis(timestampsMillis) : 0;
 
         double total = 0;
         int from = 0;
         for (int to = 1; to < n; to++) {
+            if (timed && timestampsMillis[to] - timestampsMillis[from] > threshold) {
+                // Across a gap. Not measured, and the anchor moves so the
+                // distance resumes from the far side rather than carrying the
+                // unmeasured jump into the next step.
+                from = to;
+                continue;
+            }
             double step = distanceMetres(lats[from], lons[from], lats[to], lons[to]);
             if (step < MIN_STEP_M) {
                 // Not movement. Keep the earlier point as the anchor, so a slow
@@ -71,6 +102,44 @@ public final class Geo {
         }
         return total;
     }
+
+    /**
+     * Where the most recent outing starts, in a list of fixes that may hold many.
+     *
+     * A tracker is switched on, carried, and switched off; days later it is
+     * switched on again. Those are separate journeys, and the only thing that
+     * separates them in the data is a long silence. Reading a fixed number of
+     * recent fixes and calling the result a run merges them: the track screen
+     * summarised eight days as "783 fixes over 194 h 35" and drew the walk
+     * joined to a week of readings taken at a desk.
+     *
+     * Deliberately much longer than {@link #gapThresholdMillis}. That answers
+     * "did the receiver lose the sky for a moment", which happens inside one
+     * walk and should not split it; this answers "is this the same outing at
+     * all", and an hour of silence means it is not.
+     *
+     * @return the index of the first fix of the trailing run; 0 if they are all
+     *         one run, which is the normal case for a single recorded walk
+     */
+    public static int mostRecentRunStart(long[] timestampsMillis) {
+        if (timestampsMillis == null || timestampsMillis.length < 2) return 0;
+
+        for (int i = timestampsMillis.length - 1; i > 0; i--) {
+            if (timestampsMillis[i] - timestampsMillis[i - 1] > SESSION_GAP_MS) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * The silence that separates one outing from the next.
+     *
+     * An hour: long enough that a walk interrupted by a coffee stop, or by a
+     * receiver that lost lock in a built-up street, stays one walk; short
+     * enough that yesterday's route is not welded onto today's.
+     */
+    private static final long SESSION_GAP_MS = 60L * 60_000L;
 
     /** No run of fixes is treated as continuous across a gap shorter than this. */
     private static final long MIN_GAP_MS = 10_000;

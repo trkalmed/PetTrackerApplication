@@ -118,6 +118,117 @@ public class GeoTest {
     // The first real walk produced several of these.
 
     /** Timestamps at a steady interval, with optional gaps injected. */
+    // ── What the distance must refuse to measure ────────────────────────────
+    //
+    // The drawing already declines to join two fixes separated by a break in
+    // coverage, because the line between them crosses ground nothing observed.
+    // The distance had no timestamps and so made no such refusal, and a screen
+    // that draws a break while adding its length to the total is saying two
+    // different things about the same pair of points.
+
+    @Test
+    public void distanceIsNotMeasuredAcrossABreakInCoverage() {
+        // Two clusters 1 km apart, each walked a few metres, with ten minutes
+        // of silence in between: about 6 m of travel was observed and the
+        // kilometre was not.
+        double metre = 1.0 / DEGREE_OF_LATITUDE_M;
+        double[] lats = new double[8];
+        double[] lons = new double[8];
+        long[] stamps = new long[8];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 8; i++) {
+            boolean second = i >= 4;
+            lats[i] = 32.0 + (second ? 1000 : 0) * metre + (i % 4) * 4 * metre;
+            lons[i] = 35.0;
+            stamps[i] = now + i * 2_000L + (second ? 600_000L : 0);
+        }
+
+        double timed = Geo.routeLengthMetres(lats, lons, stamps);
+        double untimed = Geo.routeLengthMetres(lats, lons);
+
+        assertTrue("the unmeasured kilometre must not be counted: " + timed,
+                timed < 100);
+        assertTrue("without timestamps it is still counted: " + untimed,
+                untimed > 900);
+    }
+
+    @Test
+    public void aWalkWithNoBreaksMeasuresTheSameEitherWay() {
+        double metre = 1.0 / DEGREE_OF_LATITUDE_M;
+        double[] lats = new double[50];
+        double[] lons = new double[50];
+        long[] stamps = new long[50];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 50; i++) {
+            lats[i] = 32.0 + i * 2 * metre;
+            lons[i] = 35.0;
+            stamps[i] = now + i * 2_000L;
+        }
+
+        assertEquals(Geo.routeLengthMetres(lats, lons),
+                Geo.routeLengthMetres(lats, lons, stamps), 0.001);
+    }
+
+    @Test
+    public void distanceFallsBackToUntimedWhenTheStampsDoNotMatch() {
+        double[] lats = {32.0, 32.001};
+        double[] lons = {35.0, 35.0};
+
+        // Fewer stamps than fixes is a programming error, not a coverage gap.
+        // Measuring straight through is the safer of the two wrong answers:
+        // reporting zero would look like a tracker that never moved.
+        assertTrue(Geo.routeLengthMetres(lats, lons, new long[]{1L}) > 100);
+    }
+
+    // ── One outing, not everything ever recorded ────────────────────────────
+
+    @Test
+    public void oneContinuousWalkIsAllOneRun() {
+        assertEquals(0, Geo.mostRecentRunStart(steady(200, 2_000)));
+    }
+
+    @Test
+    public void yesterdaysWalkIsNotPartOfTodays() {
+        long[] stamps = new long[20];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 10; i++) stamps[i] = now + i * 2_000L;
+        for (int i = 10; i < 20; i++) stamps[i] = now + 86_400_000L + i * 2_000L;
+
+        assertEquals(10, Geo.mostRecentRunStart(stamps));
+    }
+
+    @Test
+    public void losingTheSkyForAMinuteDoesNotEndTheWalk() {
+        // The receiver goes quiet behind a building. That is a break in
+        // coverage inside one walk, and splitting the run there would throw
+        // away everything before it.
+        long[] stamps = new long[20];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 10; i++) stamps[i] = now + i * 2_000L;
+        for (int i = 10; i < 20; i++) stamps[i] = now + 60_000L + i * 2_000L;
+
+        assertEquals(0, Geo.mostRecentRunStart(stamps));
+    }
+
+    @Test
+    public void onlyTheLastBreakEndsTheRun() {
+        // Three outings. The run is the third, not everything after the first.
+        long[] stamps = new long[30];
+        long now = 1_788_000_000_000L;
+        for (int i = 0; i < 10; i++) stamps[i] = now + i * 2_000L;
+        for (int i = 10; i < 20; i++) stamps[i] = now + 86_400_000L + i * 2_000L;
+        for (int i = 20; i < 30; i++) stamps[i] = now + 172_800_000L + i * 2_000L;
+
+        assertEquals(20, Geo.mostRecentRunStart(stamps));
+    }
+
+    @Test
+    public void aRunStartIsSafeOnEmptyInput() {
+        assertEquals(0, Geo.mostRecentRunStart(null));
+        assertEquals(0, Geo.mostRecentRunStart(new long[0]));
+        assertEquals(0, Geo.mostRecentRunStart(new long[]{1_788_000_000_000L}));
+    }
+
     private static long[] steady(int count, long stepMillis, int... gapAt) {
         long[] out = new long[count];
         long now = 1_788_000_000_000L;

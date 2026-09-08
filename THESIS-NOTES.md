@@ -518,6 +518,7 @@ Numbers produced by the real system. Use these rather than estimates.
 | Phantom distance from that | **+11.7%** before filtering, +2.7% after | Rule comparison against the surveyed route |
 | Two cameras concurrently | USB + CSI, switchable in the app | /health, /stream |
 | Live bowl weight | 2 s refresh while the screen is open | /health |
+| Paddle pocket | **10–15 g per turn**, varying with the head of kibble | Weighed dispenses at different hopper levels |
 | Automated tests | **491** (293 + 87 + 111) | All passing |
 | Codebase | 7,663 lines Java, 5,285 Python | 48 classes, 15 layouts |
 | Development span | 2026-04-29 → 2026-09-08 | 84 commits |
@@ -593,9 +594,13 @@ that must be kept current.
   a centred load*, not of the cell alone. It matters little in use, where a bowl
   sits in one place and kibble spreads across it, but it makes a large
   off-centre object useless as a calibration reference.
-- **`PETTRACKER_PADDLE_GRAMS` is still a placeholder** at the time of writing —
-  grams-per-pocket must be measured with a full hopper, because the column of
-  kibble above the wheel is what fills the pocket.
+- **The paddle pocket is a range, not a constant.** Measured at 10–15 g per
+  turn depending on how full the hopper is: the column of kibble above the
+  wheel is what packs the pocket, so a full hopper meters heavier than one
+  nearly empty. The configured 12.5 g is the middle of that range and is
+  therefore accurate to about ±20% at best. This is a property of the
+  mechanism, not a calibration that more care would fix — which is precisely
+  why the load cell, and not the servo, is what the system reports as a meal.
 
 ---
 
@@ -607,7 +612,9 @@ unverified, and a thesis that asserts it can be faulted on the evidence.
 - Do **not** say the system identifies *which* pet was seen. It does not.
 - Do **not** present the GPS coordinates as the animal's location.
 - Do **not** describe the detection count as a daily total.
-- Do **not** claim the feeder knows how much it dispensed.
+- Do **not** claim the feeder knows how much it dispensed. The pocket was
+  measured at 10–15 g and that spread is the mechanism's own; quoting 12.5 g as
+  a delivered amount states a precision the hardware does not have.
 - Do **not** cite dispense requests as consumption; only load-cell-derived meals
   are measurements.
 - Do **not** claim battery, power-draw, latency or accuracy figures — none were

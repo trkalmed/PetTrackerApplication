@@ -545,9 +545,16 @@ class PaddleFeeder(Feeder):
     DEFAULT_PARK_ANGLE = 30
     DEFAULT_DUMP_ANGLE = 150
 
-    #: Until it is measured. Deliberately small, so a wrong value under-feeds
-    #: rather than emptying the hopper.
-    DEFAULT_GRAMS_PER_CYCLE = 5.0
+    #: Measured on the rig this was built for: a pocket drops 10-15 g, depending
+    #: on how full the hopper is, because the column of kibble above the wheel is
+    #: what packs the pocket. 12.5 is the middle of that, and is therefore right
+    #: to about ±20% at best.
+    #:
+    #: The spread belongs to the mechanism and no amount of care removes it,
+    #: which is exactly why the load cell and not the servo is what reports a
+    #: meal. Re-measure for a different kibble: the pocket's volume is fixed and
+    #: its mass is not.
+    DEFAULT_GRAMS_PER_CYCLE = 12.5
 
     #: Pause at the dump position, for the pocket to actually empty. Kibble
     #: does not fall instantly and a wheel that snaps back takes some with it.

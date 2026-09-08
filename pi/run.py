@@ -431,7 +431,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "position that closes the hopper")
     parser.add_argument("--paddle-grams", type=float, default=None,
                         help="grams one pocket drops, measured by cycling ten "
-                             "times into a bowl and dividing")
+                             "times into a bowl and dividing. Varies with the "
+                             "head of kibble above the wheel — 10-15 g on the "
+                             "rig this was built for — so it is a portion "
+                             "size, not a delivered amount")
     parser.add_argument("--check-servo", action="store_true",
                         help="move the servo to angles you type, to find the open "
                              "and closed positions for a gate")

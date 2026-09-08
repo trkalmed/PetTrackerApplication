@@ -90,10 +90,15 @@ Environment="PETTRACKER_SERVO_CLOSED=20"
 Environment="PETTRACKER_SERVO_MS_PER_GRAM=50.0"
 Environment="PETTRACKER_PADDLE_PARK=30"
 Environment="PETTRACKER_PADDLE_DUMP=150"
-# 5 g a pocket is a guess, and a guess here is the difference between a fed cat
-# and an overfed one. Measure it — ten cycles into a bowl, weighed, divided by
-# ten — and put the real number in service.env.
-Environment="PETTRACKER_PADDLE_GRAMS=5.0"
+# Measured on this rig: a pocket drops 10-15 g, depending on how full the hopper
+# is. The column of kibble above the wheel is what packs the pocket, so a full
+# hopper meters heavier than one nearly empty, and no single number is right for
+# both. 12.5 is the middle of the measured range and is accurate to about ±20%.
+#
+# That spread is the mechanism's, not a calibration error, and it is the reason
+# the load cell rather than the servo is what reports a meal. Re-measure on a
+# different kibble — pocket volume is fixed, and grams per pocket is not.
+Environment="PETTRACKER_PADDLE_GRAMS=12.5"
 # Angles one cycle visits, in order, instead of a plain dump and return. A
 # wheel that swings out and straight back can leave kibble bridged over the
 # pocket; walking it through several positions shakes the column loose. The

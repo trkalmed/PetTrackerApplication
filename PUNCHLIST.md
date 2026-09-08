@@ -9,8 +9,9 @@ calibrated at 385.66 counts/g, and a paddle-wheel feeder the app can run from
 the Food tab. Confirmed end to end on a TECNO CI7n against the rig on
 2026-08-30: GPS, load cell and feeder all behaving as intended from the app.
 
-Open: `PETTRACKER_PADDLE_GRAMS` still needs measuring with a full hopper, #11
-cloud sync (held), #20, #26. 2026-08-30.
+Open: #11 cloud sync (held), #20, #26. Everything measurable has been measured
+— the paddle pocket at 10-15 g and the walk at 1389 m against 1351.6 m surveyed
+closed the last two. 2026-09-08.
 
 ---
 
@@ -695,16 +696,18 @@ grams figure — no affordance, and the listener was attached after the "no feed
 paired" early return, so on a pet with no readings it did not exist at all.
 Which is precisely the pet whose target somebody wants to set.
 
-**Tests: 274 Pi, 73 app unit, 104 instrumented — 451, passing.**
+**Tests: 293 Pi, 87 app unit, 111 instrumented — 491, passing.**
 
 ### Left undone, and neither blocks the video
 
-1. `PETTRACKER_PADDLE_GRAMS` is still the placeholder 5.0. One press turns the
-   wheel once, which is the demo shot, so it only matters for a larger request —
-   40 g would turn it eight times. Needs one measurement with a full hopper.
-2. The recorded walk's stats — fixes, duration, distance, satellites, gaps — were
-   never read off the track screen, so §11 of the notes still has no row for
-   tracking.
+1. ~~`PETTRACKER_PADDLE_GRAMS` is still the placeholder 5.0.~~ Measured
+   2026-09-08: **10-15 g a pocket**, depending on how full the hopper is. Set to
+   12.5, the middle of that range, with the spread recorded as a property of the
+   mechanism rather than a calibration still to be tightened.
+2. ~~The recorded walk's stats were never read off the track screen.~~ Done, and
+   better than intended: the 8 September walk was surveyed on a map at 675.81 m
+   each way, which turned the tracking row from a description into a measurement
+   with a known error.
 
 ### Caught while setting up the motion video — a camera in the wrong room
 
@@ -1044,11 +1047,11 @@ coming from the PIRs, where it actually comes from. Offered, not yet taken up.
 2. **The paddle wheel** — built, and dispensing from the phone. It turns on
    GPIO 18 off an LM2596 set to 5.0 V with its ground tied to a Pi ground, and
    the Food tab's "Feed now" button drives it through `POST /feed`.
-   One thing left, and it is a measurement rather than a build:
-   `PETTRACKER_PADDLE_GRAMS` still holds the placeholder 5.0. The design is one
-   pocket per portion — load the normal portion and ask for exactly that — which
-   needs the variable set to the portion size, or a request for 40 g turns the
-   wheel eight times.
+   The pocket has since been measured at 10-15 g depending on hopper level, and
+   `PETTRACKER_PADDLE_GRAMS` set to 12.5. The design is one pocket per portion —
+   load the normal portion and ask for exactly that — so the figure is a portion
+   size and never a delivered amount; a request for 40 g simply turns the wheel
+   three times.
 3. ~~The CSI camera.~~ Done: `PiCamera.read_jpeg` captures through picamera2,
    verified at 20/20 frames and 18.4 fps. Two cameras, two rooms — the USB one
    over the feeder in the kitchen, the CSI one over the hall — is the plan; a

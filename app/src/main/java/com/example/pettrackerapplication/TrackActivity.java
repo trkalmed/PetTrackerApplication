@@ -34,6 +34,7 @@ public class TrackActivity extends ThemedActivity {
     private static final int MAX_FIXES = 8000;
 
     private TrackView trackView;
+    private PiSync.Poller piPoller;
     private TextView tvTrackEmpty, tvTrackPoints, tvTrackDistance,
             tvTrackSatellites, tvTrackLatest, tvTrackLegend;
 
@@ -52,12 +53,31 @@ public class TrackActivity extends ThemedActivity {
 
         findViewById(R.id.btnBack).setOnClickListener(
                 v -> getOnBackPressedDispatcher().onBackPressed());
+
+        piPoller = new PiSync.Poller(this, this::onSynced);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         load();
+        // The route is the one screen where the reading arriving is the whole
+        // point — watching a walk extend is different evidence from opening a
+        // finished one. Same poller the dashboard uses, so the Pi is asked no
+        // more often than anywhere else.
+        piPoller.start();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        piPoller.stop();
+    }
+
+    /** A sync finished. Redrawing only matters if it brought new fixes. */
+    private void onSynced(PiEventSync.Result result) {
+        if (isFinishing() || isDestroyed()) return;
+        if (result.storedAnything()) load();
     }
 
     private void load() {

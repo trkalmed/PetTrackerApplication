@@ -8,6 +8,11 @@ Facts here were read out of the repository and out of real hardware sessions.
 Where a number is measured it says so. Where something is untested it says that
 too — see §14, which exists to stop the write-up claiming more than was built.
 
+**Complete as of 2026-09-08.** Every value in §11 is measured; nothing in the
+system is still carrying a placeholder. The two figures that had been missing —
+grams per paddle pocket, and route length against an independent reference —
+were the last, and both are now in §11 with the method that produced them.
+
 ---
 
 ## 1. What the system actually is
@@ -260,12 +265,12 @@ or worse, moved to "now", which would invent a meal that never happened.
 
 ## 8. Testing and verification
 
-**477 automated tests**, in three suites with different purposes:
+**491 automated tests**, in three suites with different purposes:
 
 | Suite | Count | Runs on | Covers |
 |---|---|---|---|
 | Pi | 293 | Any machine, no hardware | Protocols, parsing, event store, three feeder designs, cameras, HTTP, the systemd unit |
-| Android unit (JVM) | 73 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
+| Android unit (JVM) | 87 | Laptop | Wire format, HTTP client, date windows, MJPEG parsing, route geometry |
 | Android instrumented | 111 | A real phone | Room migrations *and their registration*, repository, sync, layouts, theming |
 
 **Fakes as first-class citizens.** `sensors/fake.py` lets the whole service run
@@ -617,8 +622,12 @@ unverified, and a thesis that asserts it can be faulted on the evidence.
   a delivered amount states a precision the hardware does not have.
 - Do **not** cite dispense requests as consumption; only load-cell-derived meals
   are measurements.
-- Do **not** claim battery, power-draw, latency or accuracy figures — none were
-  measured. §11 is the complete list of measured values.
+- Do **not** claim battery, power-draw or latency figures — none were measured.
+  §11 is the complete list of measured values.
+- **One accuracy figure exists and it is narrow.** Route length was measured
+  against a surveyed 1351.6 m and came to +2.7%, on one walk, in one place, with
+  one receiver. It is not a positional accuracy, not a figure for the system as
+  a whole, and not a claim that a second walk would repeat it.
 - Do **not** describe multi-camera-per-room as implemented. It is deferred.
 - Do **not** claim cloud sync exists.
 - Do **not** report the instrumented suite as always having passed on hardware;
@@ -638,7 +647,8 @@ unverified, and a thesis that asserts it can be faulted on the evidence.
 | Implementation — mobile client | §3, §5, §7 |
 | Signal processing / interpretation | §6 |
 | Testing & verification | §8, §9.4, §9.5 |
-| Results | §11 |
+| Evaluation method | §9.14 and §9.16 — both are worked examples of validating a measurement against an independent reference, and of what happens when you fit a threshold to it instead |
+| Results | §11, and §9.14 and §9.16 for how two of those numbers were arrived at |
 | Discussion | §7, §9, §12 |
 | Limitations & future work | §12, §13 |
 | Appendices | §4 (wire format), §10 (configuration), §2 (pinout) |

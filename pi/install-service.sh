@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-#
 # Installs the Pet Tracker service so it starts at boot and restarts if it dies.
-#
-#     ./install-service.sh
-#
-# Run it from the directory it lives in, as the user the service should run as
-# — that user's home holds the event database, and it is the one already in the
-# gpio and video groups. It will ask for sudo when it writes the unit file.
-#
-# Safe to run again after pulling new code: it rewrites the unit and restarts.
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-# SUDO_USER first, so running this under sudo installs the service for the
-# person who typed it rather than for root, whose home has none of this in it.
+# Install for the user who ran sudo, not for root.
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
 UNIT=/etc/systemd/system/pettracker.service
 
@@ -27,19 +17,13 @@ echo "Installing pettracker.service"
 echo "  user      : $SERVICE_USER"
 echo "  directory : $DIR"
 
-# Anything started by hand is about to be replaced by a copy that restarts
-# itself, and two of them would fight over port 8080.
+# Stop any copy started by hand, so two do not fight over port 8080.
 if pgrep -f "python3 run.py" > /dev/null; then
     echo "  stopping the copy started by hand"
     pkill -f "python3 run.py" || true
 fi
 
-# The carriage-return strip is not decoration. This file is edited on Windows
-# and copied here with scp, which is a byte-for-byte transfer, so CRLF line
-# endings survive the trip. systemd then reads PETTRACKER_CAMERA as "usb" with a
-# carriage return on the end, and the service exits 2 complaining about a camera
-# called usb — with the offending character invisible everywhere you would look
-# for it, systemctl status included.
+# Strip carriage returns: systemd would read them as part of each value.
 sed "s|@USER@|$SERVICE_USER|g; s|@DIR@|$DIR|g; s/\r$//" "$DIR/pettracker.service" \
     | sudo tee "$UNIT" > /dev/null
 
@@ -52,7 +36,7 @@ echo
 echo "Logs   : journalctl -u pettracker -f"
 echo "Restart: sudo systemctl restart pettracker"
 echo "Options: put any of these in $DIR/service.env, then restart."
-echo "         The unit lists them with their defaults and why they matter."
+echo "         The unit lists them with their defaults; README.md explains them."
 echo
 echo "         rooms and sensors  PETTRACKER_ROOMS PETTRACKER_PIR_PINS"
 echo "                            PETTRACKER_CAMERA PETTRACKER_GPS_PORT"

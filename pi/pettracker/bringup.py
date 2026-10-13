@@ -1,19 +1,4 @@
-"""Watching a sensor with your own eyes, before trusting the event log.
-
-/health answers "did the library claim the pin". That is not the same question
-as "is the sensor wired the right way round and pointing at the right room", and
-only the second one is worth anything once the app starts drawing charts from
-it. A PIR whose OUT pin is on the wrong GPIO is indistinguishable, in the event
-log, from a cat that never goes in the hall.
-
-So: a live view. Wave at one sensor, watch exactly one line light up, and read
-its room name. If the wrong name lights up, the pins are swapped; if none does,
-the wiring or the pot is wrong. Two minutes here saves an evening of reading
-`/events` and guessing.
-
-No dependencies, and it runs against the fakes too (``--fake --check-motion``),
-which is a fair way to see what a working rig is supposed to look like.
-"""
+"""Live sensor checks used while wiring the rig."""
 
 import sys
 import time
@@ -25,8 +10,6 @@ from .sensors.base import MotionSensor
 
 
 class _Watch:
-    """One sensor's live state, plus the statistics that make wiring obvious."""
-
     def __init__(self, sensor: MotionSensor, clock=time.monotonic):
         self.sensor = sensor
         self._clock = clock
@@ -52,20 +35,14 @@ class _Watch:
         return float(getattr(self.sensor, "warmup_remaining_s", 0.0))
 
     def tick(self) -> None:
-        # read_raw shows the pin during warm-up, when "is this wire connected"
-        # is the only question that matters. Fakes have no such thing.
         reader = getattr(self.sensor, "read_raw", self.sensor.poll)
         high = bool(reader())
 
-        # Count rising edges, not polls: at 5 Hz a three-second PIR hold is
-        # fifteen polls and one wave of a hand. The edge count is the one that
-        # matches what you just did.
         if high and not self.high:
             self.triggers += 1
             self.last_trigger_at = self._clock()
         self.high = high
 
-        # Let the sensor advance its own warm-up state alongside.
         if reader is not self.sensor.poll:
             self.sensor.poll()
 
@@ -80,8 +57,6 @@ class _Watch:
         return f"{self._clock() - self.last_trigger_at:.0f}s ago"
 
 
-#: Enough sentences that "no satellites yet" stops being about patience. At
-#: roughly six a second, this is a couple of minutes of listening.
 MANY_SENTENCES = 500
 
 _HEADER = f"  {'room':<16}{'pin':>4}  {'backend':<10}{'state':^7}{'fired':>6}   last"
@@ -101,12 +76,6 @@ def check_motion(sensors: Sequence[MotionSensor],
                  interval_s: float = 0.2,
                  out=None,
                  clock=time.monotonic) -> List[_Watch]:
-    """Prints every motion sensor's state until interrupted, then summarises.
-
-    :param duration_s: stop after this long. None means run until Ctrl-C, which
-        is the normal way to use it while standing at the rig.
-    :returns: the watches, so a test (or a caller) can assert on what fired.
-    """
     out = out or sys.stdout
     watches = [_Watch(s, clock=clock) for s in sensors]
 
@@ -121,8 +90,6 @@ def check_motion(sensors: Sequence[MotionSensor],
         print("", file=out)
 
     interactive = getattr(out, "isatty", lambda: False)()
-    # A terminal that cannot encode ● would crash the tool on its first repaint,
-    # and SSH-ing in from a Windows console is exactly when someone runs this.
     on, off = ("●", "·") if _unicode_ok(out) else ("#", ".")
     started = clock()
 
@@ -132,8 +99,6 @@ def check_motion(sensors: Sequence[MotionSensor],
                 watch.tick()
 
             if interactive:
-                # Repaint in place: cursor up N lines, then rewrite them. Plain
-                # ANSI, so it works over SSH, which is where this gets used.
                 out.write(f"\033[{len(watches)}A")
             for watch in watches:
                 state = f"  {on if watch.high else off}  "
@@ -177,16 +142,6 @@ def _summarise(watches: Sequence[_Watch], out) -> None:
 
 def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0.5,
                 out=None, clock=time.monotonic) -> None:
-    """Prints what the load cell is reading, live.
-
-    The counterpart to :func:`check_motion` for the bowl. A load cell gives you
-    no sign of life at all until something interprets it — no click, no LED — so
-    the first question is simply whether the numbers move when you press on it.
-
-    Raw counts are shown alongside grams because they are the honest reading:
-    grams are counts divided by a factor somebody measured, and if that factor
-    is wrong the grams are wrong in a way only the counts reveal.
-    """
     out = out or sys.stdout
 
     if not scale.available:
@@ -221,8 +176,6 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
             if raw is None and grams is None:
                 chip = getattr(scale, "chip", None)
                 why = chip.diagnose() if hasattr(chip, "diagnose") else "no reading"
-                # Said once, not twice a second. It is a paragraph, and the
-                # in-place repaint smears anything wider than the terminal.
                 if why != explained:
                     explained = why
                     if interactive:
@@ -247,14 +200,6 @@ def check_scale(scale, duration_s: Optional[float] = None, interval_s: float = 0
 
 
 def _report_clock_speed(scale, out) -> None:
-    """Says how fast this Pi can actually clock the amplifier.
-
-    The HX711 powers itself down if the clock line stays high for more than
-    60 microseconds, and a Python GPIO library can spend that long setting a
-    pin. When it does, every reading comes back as zeros and looks exactly like
-    a disconnected sensor — so the number is worth showing before the readings
-    rather than after a long hunt for a loose wire.
-    """
     chip = getattr(scale, "chip", None)
     if chip is None or not hasattr(chip, "clock_high_seconds"):
         return
@@ -284,20 +229,10 @@ def _report_clock_speed(scale, out) -> None:
 
 
 def _explain_readings(seen, out) -> None:
-    """Says what a suspicious set of readings usually means.
-
-    A load cell has no way of telling you it is unhappy, so every fault arrives
-    as a number. These three cover nearly all of them, and each sends you
-    somewhere different — which is the whole value of saying it rather than
-    printing the number and leaving you to it.
-    """
     if not seen:
         return
 
     if all(value == 0 for value in seen):
-        # An HX711 with no power, or a DT line that is not connected, leaves the
-        # input low. Low reads as ready, and then as twenty-four zero bits. It is
-        # not a weight of zero; it is no amplifier at all.
         print("Every reading was exactly 0, which a working amplifier does not do —",
               file=out)
         print("even an empty bowl wanders by a few counts. The data line is stuck",
@@ -327,14 +262,6 @@ def _explain_readings(seen, out) -> None:
 
 
 def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:
-    """Walks through finding the calibration factor, and returns it.
-
-    Counts per gram cannot be derived, looked up or guessed — they depend on the
-    cell, the amplifier and how the bowl sits on it. The only way is to weigh
-    something whose weight you already know, which is what this does.
-
-    :returns: the factor, or None if it could not be measured
-    """
     out = out or sys.stdout
 
     if not getattr(scale, "claimed", scale.available):
@@ -393,16 +320,6 @@ def calibrate_scale(scale, out=None, ask=input) -> Optional[float]:
 
 def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 1.0,
               out=None, clock=time.monotonic) -> None:
-    """Prints what the GPS is saying, sentence by sentence.
-
-    The reason this exists rather than "watch /health": a module with no fix and
-    a module with no wiring produce the same silence from read_fix(). The
-    sentences tell them apart instantly — a GPS indoors talks constantly and
-    knows nothing, which is a working GPS, and the only thing it needs is sky.
-
-    Satellite counts are worth watching for the same reason. Going from 0 to 3
-    to 7 over a few minutes is a cold start doing exactly what it should.
-    """
     out = out or sys.stdout
 
     if not hasattr(location, "read_sentences"):
@@ -435,12 +352,8 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
                         best_satellites = max(best_satellites,
                                               position.get("satellites", 0))
                     elif sentence.startswith(("$GPGGA", "$GNGGA")):
-                        # A GGA with no fix still carries the satellite count in
-                        # the same place, and watching it climb is the whole
-                        # story of a cold start.
                         best_satellites = max(best_satellites,
                                               _satellites_in(sentence))
-                # Truncated: some sentences are long and the point is the flow.
                 print(f"  {sentence[:78]}", file=out)
             time.sleep(interval_s)
     except KeyboardInterrupt:
@@ -448,8 +361,6 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
 
     print("\nSummary:", file=out)
     if frame_errors:
-        # The module saying its own receiver is unhappy, which reads like a
-        # fault and is not one for this service.
         print("  The module reported frame errors and disabled its RX line.",
               file=out)
         print("  That is its *receive* side, which matters only for sending it",
@@ -479,9 +390,6 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
         print(f"  fine — but no fix yet ({best_satellites} satellites seen).", file=out)
 
         if seen >= MANY_SENTENCES and best_satellites == 0:
-            # Not a sky problem. A working antenna under a roof still shows
-            # satellites at low signal; a flat zero across thousands of
-            # sentences means nothing is reaching the receiver at all.
             print("  Zero satellites across that many sentences is not a poor", file=out)
             print("  view of the sky — a bad view still shows satellites weakly.",
                   file=out)
@@ -497,7 +405,6 @@ def check_gps(location, duration_s: Optional[float] = None, interval_s: float = 
 
 
 def _satellites_in(sentence: str) -> int:
-    """The satellite count from a GGA that has no fix. 0 if it cannot be read."""
     fields = sentence.split("*")[0].split(",")
     try:
         return int(fields[7]) if len(fields) > 7 and fields[7] else 0
@@ -505,19 +412,11 @@ def _satellites_in(sentence: str) -> int:
         return 0
 
 
-#: Bits in vcgencmd's throttled word. The Pi sets the first while the 5 V rail
-#: is sagging, and latches the second for the rest of the boot so a dip that
-#: lasted a millisecond is still visible afterwards.
 UNDERVOLTAGE_NOW = 0x1
 UNDERVOLTAGE_SINCE_BOOT = 0x10000
 
 
 def read_throttled(runner=None) -> Optional[int]:
-    """The Pi's own account of its power supply, or None if it cannot be asked.
-
-    vcgencmd is Pi-only and absent on a laptop, which is not an error — it just
-    means this particular check has nothing to say.
-    """
     import subprocess
 
     runner = runner or (lambda: subprocess.run(
@@ -537,17 +436,6 @@ def read_throttled(runner=None) -> Optional[int]:
 
 
 def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
-    """Walks a servo through angles you type, so a gate can be built around it.
-
-    The two numbers a hopper needs — the angle at which the gate is shut and the
-    angle at which it is open — are properties of how the horn happened to mount
-    and where the gate fouls. They cannot be derived, only found by moving the
-    servo and looking at it, which is what this does.
-
-    Worth knowing while you watch: a servo horn only fits at roughly 20-degree
-    increments, so if the useful travel lands awkwardly, pulling the horn off
-    and refitting it one spline over is usually easier than living with it.
-    """
     out = out or sys.stdout
 
     if not feeder.available:
@@ -602,8 +490,6 @@ def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
             continue
 
         if not 0 <= angle <= 180:
-            # Past the ends of travel the servo grinds against its own stop,
-            # which sounds like a servo working hard and is not.
             print("    Outside 0-180. The servo would push against its own stop.",
                   file=out)
             continue
@@ -628,8 +514,6 @@ def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
     after = throttled()
     print(file=out)
     if after is None or before is None:
-        # Saying nothing would read as "the supply was fine", which is a
-        # different claim from "nobody checked".
         print("Could not ask this machine about its supply — vcgencmd is a", file=out)
         print("Raspberry Pi tool and is not answering here, so nothing above", file=out)
         print("says anything about the 5V rail.", file=out)
@@ -651,27 +535,12 @@ def check_servo(feeder, out=None, ask=input, throttled=read_throttled) -> None:
             print("attaching anything to the horn.", file=out)
 
 
-#: The two markers every JPEG starts and ends with. A camera that returns
-#: something which is not a JPEG produces a stream the app cannot decode, and
-#: the app's failure looks like a network problem rather than a camera one.
 JPEG_START = b"\xff\xd8"
 JPEG_END = b"\xff\xd9"
 
 
 def check_camera(camera, frames: int = 20, out=None, save_to=None,
                  clock=time.monotonic) -> None:
-    """Grabs frames and reports what actually came back.
-
-    /health says whether the device opened. That is a weaker claim than it
-    sounds: a camera can open, hold the device so nothing else can have it, and
-    return nothing at all. This asks for real frames and reports the three
-    things that decide whether the app will be able to show them — that they
-    arrive, that they are JPEGs, and how fast.
-
-    :param save_to: writes the last frame here, so it can be looked at. Seeing
-        the picture is the only way to catch a camera that works perfectly and
-        is pointing at the ceiling.
-    """
     out = out or sys.stdout
 
     if not camera.available:
@@ -725,7 +594,6 @@ def check_camera(camera, frames: int = 20, out=None, save_to=None,
         print("  motion do not care.", file=out)
 
     if len(set(sizes)) == 1:
-        # Every JPEG the same length means a fixed test pattern, not a scene.
         print("  Every frame was exactly the same size, which a real scene does", file=out)
         print("  not do. The camera may be returning a test pattern — check the", file=out)
         print("  lens cap and the ribbon.", file=out)

@@ -1,13 +1,3 @@
-"""The PIR path: the sensor itself, its configuration, and the bring-up view.
-
-These are the parts that decide whether a correctly wired sensor produces
-correct events, and every one of them can be wrong in a way that still looks
-like working software: a warm-up that is not honoured buries real motion under a
-minute of phantom triggers, a room list and a pin list of different lengths
-quietly drops the last room, and a bring-up display that counts polls instead of
-edges reports fifteen triggers when you waved once.
-"""
-
 import io
 import logging
 import os
@@ -28,9 +18,6 @@ from pettracker.sensors.real import (
 
 
 def setUpModule():
-    # These tests deliberately build sensors on a machine with no GPIO, and the
-    # sensor layer says so at WARNING. That is the right level on a Pi and noise
-    # in a test run.
     logging.disable(logging.CRITICAL)
 
 
@@ -39,8 +26,6 @@ def tearDownModule():
 
 
 class FakePin:
-    """Stands in for a claimed GPIO. The level is set by the test."""
-
     backend = "test"
 
     def __init__(self, high: bool = False):
@@ -80,8 +65,6 @@ class WarmUpTest(unittest.TestCase):
         self.pin.high = True
         self.clock.advance(10)
 
-        # An HC-SR501 fires more or less constantly while it settles. Those
-        # pulses are the sensor, not an animal.
         self.assertFalse(self.sensor.poll())
 
     def test_warm_up_pulses_are_discarded_not_queued(self):
@@ -89,7 +72,6 @@ class WarmUpTest(unittest.TestCase):
         self.clock.advance(10)
         self.sensor.poll()
 
-        # Gone quiet, and now warm: nothing from the warm-up may resurface.
         self.pin.high = False
         self.clock.advance(60)
         self.assertFalse(self.sensor.poll())
@@ -101,15 +83,12 @@ class WarmUpTest(unittest.TestCase):
         self.assertTrue(self.sensor.poll())
 
     def test_the_raw_pin_is_readable_during_warm_up(self):
-        # "Is this wire connected" has to be answerable in the first minute, or
-        # bringing a sensor up costs sixty seconds per attempt.
         self.pin.high = True
 
         self.assertTrue(self.sensor.read_raw())
         self.assertFalse(self.sensor.poll())
 
     def test_warm_up_can_be_waived(self):
-        # Restarting the service does not re-power the sensor.
         sensor = GpioMotionSensor(
             "Kitchen", 17, warmup_s=0.0, clock=self.clock, pin_input=self.pin)
         self.pin.high = True
@@ -125,14 +104,10 @@ class WarmUpTest(unittest.TestCase):
 
 
 class UnavailableSensorTest(unittest.TestCase):
-    """A sensor with no GPIO backend must be inert, never fatal."""
-
     def setUp(self):
         self.sensor = GpioMotionSensor("Hall", 22, warmup_s=0.0, pin_input=None)
 
     def test_reports_itself_unavailable(self):
-        # This is what /health shows, and what says the pin was never claimed
-        # rather than that the room is empty.
         self.assertFalse(self.sensor.available)
 
     def test_polling_is_quiet_rather_than_an_error(self):
@@ -151,7 +126,6 @@ class ReadFailureTest(unittest.TestCase):
         pin.raises = OSError("GPIO busy")
         sensor = GpioMotionSensor("Kitchen", 17, warmup_s=0.0, pin_input=pin)
 
-        # A wire pulled out mid-run stops the readings, not the service.
         self.assertFalse(sensor.poll())
 
 
@@ -164,8 +138,6 @@ class CloseTest(unittest.TestCase):
         sensor.close()
         sensor.close()
 
-        # A claimed GPIO stays claimed: not releasing it makes the next run of
-        # the service look like a wiring fault.
         self.assertTrue(pin.closed)
         self.assertFalse(sensor.available)
 
@@ -180,14 +152,11 @@ class PinConfigurationTest(unittest.TestCase):
             parse_pins("17,twenty-seven")
 
     def test_rejects_pins_that_are_not_usable_header_pins(self):
-        # 0 and 1 are the ID EEPROM; claiming them is a bad day.
         for spec in ("0", "1", "28"):
             with self.assertRaises(ValueError):
                 parse_pins(spec)
 
     def test_rejects_a_pin_list_that_does_not_match_the_rooms(self):
-        # zip() would silently drop the third room, and "Study" would then never
-        # report for reasons no log would explain.
         with self.assertRaises(ValueError):
             pin_map(["Kitchen", "Hall", "Study"], [17, 27])
 
@@ -203,16 +172,9 @@ class PinConfigurationTest(unittest.TestCase):
         sensors = build_motion_sensors(["Kitchen", "Hall"], [17, 27])
 
         try:
-            # Deliberately says nothing about `available`: on a laptop no
-            # backend can claim a pin, and on a Pi every backend can. What has
-            # to hold either way is that the service starts and each room keeps
-            # the pin it was given — an earlier version of this test asserted
-            # the laptop answer and failed the first time it met real hardware.
             self.assertEqual(["Kitchen", "Hall"], [s.room for s in sensors])
             self.assertEqual([17, 27], [s.pin for s in sensors])
         finally:
-            # On a Pi this claimed two real pins. Give them back, or the next
-            # run of the service cannot open them.
             for sensor in sensors:
                 sensor.close()
 
@@ -226,8 +188,6 @@ class BringUpViewTest(unittest.TestCase):
         watches = check_motion([sensor], duration_s=0.25, interval_s=0.05,
                                out=io.StringIO())
 
-        # A three-second PIR hold is fifteen polls at 5 Hz. Reporting fifteen
-        # triggers for one wave would make the display useless for wiring.
         self.assertEqual(1, watches[0].triggers)
 
     def test_a_sensor_that_never_fires_is_called_out(self):
@@ -261,12 +221,7 @@ if __name__ == "__main__":
 
 
 class BusyPinTest(unittest.TestCase):
-    """Telling "someone else has this pin" apart from "no library"."""
-
     def test_a_pin_held_by_another_process_is_recognised(self):
-        # What every backend says when the service already has the pin. The
-        # advice for this is the opposite of the advice for a missing library,
-        # and both were previously reported as "check your wiring".
         self.assertTrue(held_elsewhere(["gpiozero: 'GPIO busy'",
                                         "RPi.GPIO: 'GPIO busy'",
                                         "lgpio: 'GPIO busy'"]))
@@ -277,8 +232,6 @@ class BusyPinTest(unittest.TestCase):
                                          "lgpio: No module named 'lgpio'"]))
 
     def test_a_mixture_is_not_reported_as_busy(self):
-        # One backend busy and another missing means the pin might yet be free;
-        # sending someone to stop the service would be a guess.
         self.assertFalse(held_elsewhere(["gpiozero: 'GPIO busy'",
                                          "lgpio: No module named 'lgpio'"]))
 

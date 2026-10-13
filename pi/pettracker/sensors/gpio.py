@@ -1,24 +1,4 @@
-"""Reading a digital input pin, on whichever Raspberry Pi you happen to have.
-
-There is no single GPIO library that works everywhere any more, and picking the
-wrong one is the most likely reason a correctly wired sensor reads nothing:
-
-* **RPi.GPIO** is the classic, and every tutorial online uses it. On a Pi 5 —
-  and on Bookworm images generally — it imports fine and then fails at
-  ``setup()`` with "Cannot determine SOC peripheral base address", because the
-  Pi 5 moved GPIO behind a new chip (RP1) that the library never learned about.
-* **gpiozero** is installed by default on Raspberry Pi OS and picks a working
-  low-level backend for the board it is on, so it is the first thing to try.
-* **lgpio** is what Bookworm ships underneath and works on a Pi 5 directly, so
-  it is the last resort when gpiozero itself is missing.
-
-So: try each in turn, use the first that actually claims the pin, and say in the
-log which one won. During bring-up, "which backend" is the first question worth
-answering when a sensor reads nothing.
-
-Everything here is imported lazily inside the attempts, so this module imports
-cleanly on a laptop and simply finds no backend.
-"""
+"""Digital pin access across the available Raspberry Pi GPIO libraries."""
 
 import logging
 from typing import Optional
@@ -27,22 +7,13 @@ log = logging.getLogger(__name__)
 
 
 class DigitalInput:
-    """One input pin, already claimed and ready to read.
-
-    Deliberately tiny: ``read()`` and ``close()`` are all any sensor here needs,
-    and keeping the surface that small is what lets three very different
-    libraries hide behind it.
-    """
-
-    #: Name of the library backing this pin, for logs and bring-up output.
     backend = "none"
 
     def read(self) -> bool:
-        """True while the pin is high."""
         raise NotImplementedError
 
     def close(self) -> None:
-        """Releases the pin. Safe to call more than once."""
+        """Release the pin."""
 
 
 class _GpiozeroInput(DigitalInput):
@@ -51,10 +22,7 @@ class _GpiozeroInput(DigitalInput):
     def __init__(self, pin: int):
         from gpiozero import DigitalInputDevice  # type: ignore
 
-        # pull_up=False is a pull-*down*: with the signal wire off, the input
-        # floats and reads as random noise, which looks exactly like a PIR
-        # firing. Held low, a disconnected sensor reads as "no motion", which is
-        # the truthful answer.
+        # pull_up=False pulls down, so a loose wire reads low instead of floating.
         self._device = DigitalInputDevice(pin, pull_up=False)
 
     def read(self) -> bool:
@@ -75,7 +43,6 @@ class _RpiGpioInput(DigitalInput):
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
-        # This is the call that raises on a Pi 5, not the import.
         GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         self._gpio = GPIO
         self._pin = pin
@@ -85,8 +52,7 @@ class _RpiGpioInput(DigitalInput):
 
     def close(self) -> None:
         try:
-            # Per pin, never GPIO.cleanup(): a bare cleanup resets every pin on
-            # the board, including the servo's, which would drop the hopper gate.
+            # Release per pin. GPIO.cleanup() would also reset the servo pin.
             self._gpio.cleanup(self._pin)
         except Exception:
             pass
@@ -115,29 +81,17 @@ class _LgpioInput(DigitalInput):
 
 
 def _lgpio_chip() -> int:
-    """Which gpiochip carries the header pins.
-
-    0 on a Pi 5 (the RP1), 0 on a Pi 4 under Bookworm's kernel too — but older
-    kernels put the header on chip 0 and newer ones briefly used 4. Try 0 and
-    let the caller fall over to the next backend if the claim fails.
-    """
     return 0
 
 
 class DigitalOutput:
-    """One output pin, claimed and ready to drive.
-
-    The HX711 needs a clock line, which is the first thing here that has to
-    *write* a pin rather than read one. Same three backends, same reason.
-    """
-
     backend = "none"
 
     def write(self, high: bool) -> None:
         raise NotImplementedError
 
     def close(self) -> None:
-        """Releases the pin. Safe to call more than once."""
+        """Release the pin."""
 
 
 class _GpiozeroOutput(DigitalOutput):
@@ -149,9 +103,6 @@ class _GpiozeroOutput(DigitalOutput):
         self._device = DigitalOutputDevice(pin, initial_value=False)
 
     def write(self, high: bool) -> None:
-        # .value rather than .on()/.off(): one attribute write instead of a
-        # method dispatch, and this runs 24 times per weight reading inside a
-        # window the chip times out of.
         self._device.value = 1 if high else 0
 
     def close(self) -> None:
@@ -205,35 +156,16 @@ class _LgpioOutput(DigitalOutput):
             pass
 
 
-#: Tried in order. gpiozero first because it picks a working low-level driver
-#: for the board it is running on, which is the whole problem being solved here.
+# Tried in order. gpiozero picks a working driver for the board.
 _BACKENDS = (_GpiozeroInput, _RpiGpioInput, _LgpioInput)
 _OUTPUT_BACKENDS = (_GpiozeroOutput, _RpiGpioOutput, _LgpioOutput)
 
-#: The same three, ordered by speed instead of by convenience.
-#:
-#: gpiozero is a pleasant abstraction over a pin factory, and every read or
-#: write goes through several Python frames to reach the hardware. For a PIR
-#: polled five times a second that is invisible. For an HX711 it is fatal: the
-#: chip powers itself down if the clock line stays high longer than 60
-#: microseconds, and gpiozero can spend that much getting there. The reading
-#: then comes back as twenty-four zero bits, which looks exactly like a
-#: disconnected sensor.
-#:
-#: lgpio and RPi.GPIO are thin wrappers over C, so they are first here.
+# Ordered by speed: the HX711 powers down if its clock stays high for 60 us.
 _FAST_BACKENDS = (_LgpioInput, _RpiGpioInput, _GpiozeroInput)
 _FAST_OUTPUT_BACKENDS = (_LgpioOutput, _RpiGpioOutput, _GpiozeroOutput)
 
 
 def held_elsewhere(errors) -> bool:
-    """Whether every backend failed because something else has the pin.
-
-    Worth separating from "no library could be loaded", because the two need
-    opposite responses: one is a missing package, the other is the service
-    already running. A pin can only be claimed once, so the bring-up tools and
-    the service cannot both have it — and the failure looks identical to a
-    wiring fault unless somebody says otherwise.
-    """
     return bool(errors) and all("busy" in str(e).lower() for e in errors)
 
 
@@ -245,20 +177,11 @@ def _explain_if_busy(pin: int, errors) -> None:
 
 
 def open_input(pin: int, fast: bool = False) -> Optional[DigitalInput]:
-    """Claims ``pin`` as an input, or returns None if no backend can.
-
-    None rather than an exception: a Pi with one sensor unplugged, or a laptop
-    with no GPIO at all, must still start the service. The caller reports itself
-    unavailable and /health says so.
-
-    :param fast: prefer the backends with the least overhead per call, for a
-        device with timing requirements. See :data:`_FAST_BACKENDS`.
-    """
     errors = []
     for backend in (_FAST_BACKENDS if fast else _BACKENDS):
         try:
             claimed = backend(pin)
-        except Exception as e:                      # ImportError, or the Pi 5 setup failure
+        except Exception as e:
             errors.append(f"{backend.backend}: {e}")
             continue
         log.info("GPIO %d claimed via %s", pin, claimed.backend)
@@ -270,14 +193,6 @@ def open_input(pin: int, fast: bool = False) -> Optional[DigitalInput]:
 
 
 def open_output(pin: int, fast: bool = False) -> Optional[DigitalOutput]:
-    """Claims ``pin`` as an output, or returns None if no backend can.
-
-    None rather than an exception, for the same reason as :func:`open_input`: a
-    missing amplifier must leave the service running the sensors it does have.
-
-    :param fast: prefer the backends with the least overhead per call. A clock
-        line almost always wants this.
-    """
     errors = []
     for backend in (_FAST_OUTPUT_BACKENDS if fast else _OUTPUT_BACKENDS):
         try:
@@ -294,56 +209,16 @@ def open_output(pin: int, fast: bool = False) -> Optional[DigitalOutput]:
 
 
 class ServoOutput:
-    """One hobby servo, positioned by pulse width.
-
-    A servo is told where to go by the width of a pulse repeated at 50 Hz:
-    roughly 500 µs at one end of its travel, 2400 µs at the other. The number
-    that matters is therefore microseconds, not degrees — degrees are a
-    convenience this class provides on top, and the mapping is approximate on
-    a cheap servo.
-
-    ``release()`` is not an afterthought. A servo held at an angle keeps
-    correcting itself against whatever is pushing back, which on a hopper gate
-    means buzzing, heat, and current drawn all day for a gate that is not
-    moving. Stop the pulses and it goes limp and quiet.
-    """
-
     backend = "none"
 
-    #: Pulse widths at the ends of travel. The datasheet for an SG90 says
-    #: 1000-2000, and almost every real one does 500-2400; going past what a
-    #: particular servo can reach makes it grind against its own stop.
+    # Pulse widths at the ends of travel, in microseconds.
     MIN_PULSE_US = 500
     MAX_PULSE_US = 2400
 
-    #: What the drivers themselves will accept, whatever is configured above.
-    #:
-    #: lgpio's tx_servo refuses anything outside 500-2500 us and raises, which
-    #: is a poor way to find out: the exception comes out of the middle of a
-    #: servo move, and in the service that means a dispense abandoned part-way
-    #: with the hopper wherever it happened to be. So a configured range is
-    #: checked when it is set, and clamped again at the driver as a last resort.
-    #:
-    #: 2500 is also roughly where servos stop responding at all, so this is
-    #: close to a physical limit rather than an arbitrary software one.
+    # Limits the drivers themselves accept.
     HARD_MIN_PULSE_US = 500
     HARD_MAX_PULSE_US = 2500
 
-    #: The range a *resting* angle should stay inside.
-    #:
-    #: Not enforced — a bring-up session needs to be able to ask for anything,
-    #: because finding a particular servo's real limits is the point of it. This
-    #: is advice for choosing defaults and configured positions.
-    #:
-    #: 0 degrees is exactly MIN_PULSE_US and 180 exactly MAX_PULSE_US. Datasheet
-    #: travel for an SG90 is 1000-2000 us; the wider range here is what most
-    #: real ones manage, but "most" is not "this one", and a servo asked for a
-    #: pulse it cannot reach stalls against an internal stop and draws stall
-    #: current for as long as it is asked. A feeder parks on construction and
-    #: the service restarts on failure, so a resting position at the limit is
-    #: not a momentary mistake — it is a standing one, repeated at every start.
-    #:
-    #: Angles outside this band are for finding limits, not for living at.
     SAFE_MIN_ANGLE = 20
     SAFE_MAX_ANGLE = 160
 
@@ -351,17 +226,15 @@ class ServoOutput:
         raise NotImplementedError
 
     def set_angle(self, degrees: float) -> None:
-        """Positions by angle, 0 to 180, mapped linearly onto the pulse range."""
         degrees = max(0.0, min(180.0, float(degrees)))
         span = self.MAX_PULSE_US - self.MIN_PULSE_US
         self.set_pulse_us(int(self.MIN_PULSE_US + span * degrees / 180.0))
 
     def release(self) -> None:
-        """Stops the pulses, so the servo stops holding position."""
         self.set_pulse_us(0)
 
     def close(self) -> None:
-        """Releases the pin. Safe to call more than once."""
+        """Release the pin."""
 
 
 class _LgpioServo(ServoOutput):
@@ -376,14 +249,6 @@ class _LgpioServo(ServoOutput):
         self._pin = pin
 
     def set_pulse_us(self, microseconds: int) -> None:
-        # tx_servo is timed in the library rather than by Python, so the pulse
-        # does not jitter when the interpreter is busy. Software PWM does, and
-        # a jittering pulse is what makes cheap servos buzz and creep.
-        #
-        # Clamped because tx_servo raises on anything outside 500-2500, and an
-        # exception here comes out of the middle of a move — in the service
-        # that is a dispense abandoned with the hopper part-open. A servo that
-        # travels slightly less far is much the better failure.
         pulse = int(microseconds)
         if pulse:
             pulse = max(self.HARD_MIN_PULSE_US, min(self.HARD_MAX_PULSE_US, pulse))
@@ -435,11 +300,10 @@ class _RpiGpioServo(ServoOutput):
         GPIO.setup(pin, GPIO.OUT)
         self._gpio = GPIO
         self._pin = pin
-        self._pwm = GPIO.PWM(pin, 50)          # 50 Hz, standard for hobby servos
+        self._pwm = GPIO.PWM(pin, 50)
         self._pwm.start(0)
 
     def set_pulse_us(self, microseconds: int) -> None:
-        # Duty cycle as a percentage of the 20 ms frame.
         self._pwm.ChangeDutyCycle(microseconds / 20_000.0 * 100.0 if microseconds
                                   else 0)
 
@@ -451,32 +315,13 @@ class _RpiGpioServo(ServoOutput):
             pass
 
 
-#: lgpio first: its pulses are timed by the library rather than by Python, and
-#: a jittering pulse is the difference between a gate that moves and one that
-#: buzzes at the angle it was already at.
+# lgpio first: its pulses are timed by the library, so they do not jitter.
 _SERVO_BACKENDS = (_LgpioServo, _GpiozeroServo, _RpiGpioServo)
 
 
 def open_servo(pin: int,
                min_pulse_us: Optional[int] = None,
                max_pulse_us: Optional[int] = None) -> Optional[ServoOutput]:
-    """Claims ``pin`` for a servo, or returns None if no backend can.
-
-    :param min_pulse_us: pulse width for 0 degrees, overriding the default.
-    :param max_pulse_us: pulse width for 180 degrees, overriding the default.
-
-    The range is worth overriding because "180 degrees" is a fiction the
-    library maintains and the servo does not. The angle is mapped linearly onto
-    these two numbers and nothing measures what the horn actually did — so a
-    unit whose real travel at 2400 us is 120 degrees will stop there, and asking
-    for a larger angle cannot help because the request is already at the top of
-    the range. Widening it is the only lever that produces more rotation.
-
-    Widening it is also how a servo is driven into its own end stop, which is
-    why it is a deliberate setting rather than a generous default. Find the
-    value with --check-servo, a few tens of microseconds at a time, and stop at
-    the first sign of buzzing.
-    """
     for name, value in (("--servo-pulse-min", min_pulse_us),
                         ("--servo-pulse-max", max_pulse_us)):
         if value is None:
@@ -500,8 +345,6 @@ def open_servo(pin: int,
             errors.append(f"{backend.backend}: {e}")
             continue
 
-        # Instance attributes shadow the class constants that set_angle reads,
-        # so this needs no cooperation from the individual backends.
         if min_pulse_us is not None:
             claimed.MIN_PULSE_US = int(min_pulse_us)
         if max_pulse_us is not None:

@@ -1,14 +1,4 @@
-"""Simulated sensors, so the whole service can be run and tested with no Pi.
-
-These are not stubs that return constants. The point is to exercise the code
-paths that will actually be hard: a bowl whose weight drifts down while a cat
-eats and jumps up when refilled, motion that comes in bursts rather than
-continuously, a GPS that has no fix for the first while. Code that copes with
-these will mostly cope with the real thing.
-
-Deterministic by default — pass a seed and a run is reproducible, which matters
-for tests.
-"""
+"""Simulated sensors so the service can run and be tested without a Pi."""
 
 import math
 import random
@@ -20,12 +10,6 @@ from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
 
 
 class FakeScale(Scale):
-    """A bowl that is eaten from and refilled.
-
-    Weight only ever falls between refills, at a plausible rate, with a little
-    noise on every reading — an HX711 never returns the same number twice.
-    """
-
     def __init__(self, initial_grams: float = 0.0, noise_grams: float = 0.4, seed: int = 0):
         self._grams = initial_grams
         self._noise = noise_grams
@@ -50,8 +34,6 @@ class FakeScale(Scale):
     def tare(self) -> None:
         self._tare_offset = self._grams
 
-    # ── test / simulation controls ──────────────────────────────────────────
-
     def add_food(self, grams: float) -> None:
         self._grams += grams
 
@@ -70,14 +52,6 @@ class FakeScale(Scale):
 
 
 class FakeMotionSensor(MotionSensor):
-    """PIR that fires in bursts.
-
-    Real PIRs latch high for a few seconds after triggering and then go quiet,
-    rather than tracking presence continuously — so anything downstream has to
-    turn bursts into "the cat is in this room", not treat each pulse as an
-    arrival.
-    """
-
     def __init__(self, room: str, trigger_probability: float = 0.05, seed: int = 0):
         self._room = room
         self._probability = trigger_probability
@@ -100,7 +74,7 @@ class FakeMotionSensor(MotionSensor):
         if now < self._active_until:
             return True
         if self._random.random() < self._probability:
-            self._active_until = now + 3.0     # PIR hold time
+            self._active_until = now + 3.0
             return True
         return False
 
@@ -116,12 +90,6 @@ class FakeMotionSensor(MotionSensor):
 
 
 class FakeFeeder(Feeder):
-    """Servo stand-in that pushes food into a FakeScale.
-
-    Wired to the scale on purpose: dispensing has to show up as weight, or the
-    feed-then-measure path is never really tested.
-    """
-
     def __init__(self, scale: Optional[FakeScale] = None, accuracy: float = 0.9, seed: int = 0):
         self._scale = scale
         self._accuracy = accuracy
@@ -134,8 +102,6 @@ class FakeFeeder(Feeder):
             raise RuntimeError("feeder unavailable")
         self.dispensed_calls.append(grams)
 
-        # A timed servo never delivers exactly what was asked for. Downstream
-        # code should trust the scale, not this number.
         actual = grams * self._random.uniform(self._accuracy, 2 - self._accuracy)
         if self._scale is not None:
             self._scale.add_food(actual)
@@ -146,15 +112,6 @@ class FakeFeeder(Feeder):
 
 
 class FakeCamera(Camera):
-    """Generates real JPEG bytes, so the MJPEG path is genuinely exercised.
-
-    A moving block gives each frame different content, which is enough to prove
-    frames are not being cached or repeated somewhere along the way.
-    """
-
-    # Encoding is pure Python and costs real time, so a short cycle of frames is
-    # encoded once and then reused. Long enough that the picture visibly moves,
-    # short enough that startup is not dominated by it.
     CYCLE_LENGTH = 8
 
     def __init__(self, width: int = 160, height: int = 120):
@@ -183,8 +140,6 @@ class FakeCamera(Camera):
 
 
 class FakeLocationSensor(LocationSensor):
-    """GPS that starts with no fix, the way a real one does."""
-
     def __init__(self, fix_after_reads: int = 3, lat: float = 47.4979, lon: float = 19.0402):
         self._reads = 0
         self._fix_after = fix_after_reads
@@ -201,24 +156,16 @@ class FakeLocationSensor(LocationSensor):
             return None
         self._reads += 1
         if self._reads < self._fix_after:
-            return None            # cold start, no satellites yet
+            return None
         return {"lat": self._lat, "lon": self._lon, "satellites": 7}
 
     def read_sentences(self) -> List[str]:
-        """The NMEA a module actually sends, cold start and all.
-
-        Real sentences rather than a summary, because the bring-up tool prints
-        exactly these and its whole purpose is telling "talking but no fix" from
-        "nothing connected" — a distinction that only exists at this level.
-        """
         if not self.available_flag:
             return []
 
         self._reads += 1
         satellites = 0 if self._reads < self._fix_after else 7
         if satellites == 0:
-            # Quality 0, no coordinates: what a receiver sends while it is still
-            # looking. The zeros here are why parse_gga checks quality first.
             body = "GPGGA,120000.00,,,,,0,00,99.99,,,,,,"
         else:
             body = (f"GPGGA,120000.00,{_ddmm(self._lat, 2)},N,"
@@ -231,14 +178,12 @@ class FakeLocationSensor(LocationSensor):
 
 
 def _ddmm(degrees: float, width: int) -> str:
-    """Decimal degrees back to the degrees-and-minutes form NMEA uses."""
     whole = int(abs(degrees))
     minutes = (abs(degrees) - whole) * 60.0
     return f"{whole:0{width}d}{minutes:07.4f}"
 
 
 def _nmea(body: str) -> str:
-    """Wraps a sentence body with its leading $ and trailing XOR checksum."""
     checksum = 0
     for character in body:
         checksum ^= ord(character)
@@ -246,7 +191,6 @@ def _nmea(body: str) -> str:
 
 
 def build_fake_sensor_set(seed: int = 0, rooms: Optional[List[str]] = None) -> SensorSet:
-    """A complete simulated rig, wired the way the real one will be."""
     if rooms is None:
         rooms = ["Kitchen", "Living room", "Hall"]
 
@@ -262,11 +206,7 @@ def build_fake_sensor_set(seed: int = 0, rooms: Optional[List[str]] = None) -> S
     )
 
 
-# ── minimal JPEG encoder ────────────────────────────────────────────────────
-# Writing one is less trouble than depending on Pillow, which would otherwise be
-# the only third-party package in the project and would need installing on the
-# Pi as well. Baseline greyscale, quality fixed — it exists so the MJPEG stream
-# carries bytes a real decoder accepts, nothing more.
+# Minimal JPEG encoder, to avoid depending on Pillow.
 
 _ZIGZAG = [
     0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
@@ -348,18 +288,12 @@ def _magnitude(value: int):
     return size, value if value > 0 else value + (1 << size) - 1
 
 
-# cos((2a+1) * b * pi / 16), precomputed: the naive 2-D form recomputes these
-# 4096 times per block and made a single 160x120 frame take 0.42s.
+# Precomputed cosine table for the DCT.
 _COS = [[math.cos((2 * a + 1) * b * math.pi / 16) for b in range(8)] for a in range(8)]
 _C = [1 / math.sqrt(2)] + [1.0] * 7
 
 
 def _dct_2d(block):
-    """Separable 2-D DCT: eight row transforms, then eight column transforms.
-
-    Same result as the double sum, 4x fewer multiplications, and the cosines
-    come from a table instead of libm.
-    """
     rows = [0.0] * 64
     for x in range(8):
         base = x * 8
@@ -382,7 +316,6 @@ def _dct_2d(block):
 
 
 def _encode_jpeg(width: int, height: int, frame: int) -> bytes:
-    """Baseline greyscale JPEG with a block that moves with ``frame``."""
     width = (width // 8) * 8
     height = (height // 8) * 8
 

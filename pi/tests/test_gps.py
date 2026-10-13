@@ -1,15 +1,3 @@
-"""NMEA parsing, and the serial port that carries it.
-
-The parsing is where a GPS goes wrong quietly. Every mistake here produces a
-number rather than an error: a receiver with no fix reports zeros, which is a
-real place in the Gulf of Guinea; degrees-and-minutes read as decimal degrees
-lands you in roughly the right country; and a line corrupted by noise can parse
-cleanly into somewhere else entirely.
-
-The port is exercised against a file, which runs the same os.read path as the
-real thing with no hardware and no GPS.
-"""
-
 import logging
 import os
 import sys
@@ -25,11 +13,8 @@ from pettracker.sensors.fake import (FakeLocationSensor,
 from pettracker.store import EventStore
 from pettracker.sensors.real import UbloxLocationSensor
 
-#: A real sentence, from the NEO-6M datasheet's own example.
 FIX = "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
 
-#: What the same receiver sends before it has found anything: quality 0, and
-#: empty coordinate fields.
 NO_FIX = "$GPGGA,120000.00,,,,,0,00,99.99,,,,,,*65"
 
 
@@ -42,7 +27,6 @@ def tearDownModule():
 
 
 def nmea(body: str) -> str:
-    """Wraps a body with its $ and its XOR checksum, so tests can build lines."""
     checksum = 0
     for character in body:
         checksum ^= ord(character)
@@ -55,8 +39,6 @@ class ChecksumTest(unittest.TestCase):
         self.assertTrue(valid_checksum(FIX))
 
     def test_rejects_a_corrupted_one(self):
-        # One digit changed. Serial at 9600 baud beside a servo does this, and
-        # the result parses perfectly into a position that is not yours.
         corrupted = FIX.replace("4807.038", "4907.038")
 
         self.assertFalse(valid_checksum(corrupted))
@@ -74,16 +56,11 @@ class ParsingTest(unittest.TestCase):
     def test_reads_a_position(self):
         fix = parse_gga(FIX)
 
-        # 4807.038 is 48 degrees 7.038 minutes. Read as decimal degrees it would
-        # be 48.07 — about eight kilometres out, and plausible enough to keep.
         self.assertAlmostEqual(48.1173, fix["lat"], places=4)
         self.assertAlmostEqual(11.5167, fix["lon"], places=4)
         self.assertEqual(8, fix["satellites"])
 
     def test_no_fix_is_not_a_position(self):
-        # The single most important line in this file. Quality 0 means the
-        # coordinates are meaningless, and they are frequently zeros — which is
-        # a real spot in the Atlantic, and where an unguarded parser puts you.
         self.assertIsNone(parse_gga(NO_FIX))
 
     def test_zero_coordinates_with_no_fix_are_refused(self):
@@ -98,16 +75,12 @@ class ParsingTest(unittest.TestCase):
         self.assertAlmostEqual(-151.2000, fix["lon"], places=4)
 
     def test_longitude_has_three_degree_digits_not_two(self):
-        # Latitude goes to 90 and longitude to 180, so the split between degrees
-        # and minutes differs between the two fields.
         fix = parse_gga(nmea(
             "GPGGA,123519,0000.000,N,17959.000,E,1,06,0.9,10.0,M,0.0,M,,"))
 
         self.assertAlmostEqual(179.9833, fix["lon"], places=4)
 
     def test_a_multi_constellation_receiver_is_understood(self):
-        # Modern modules send GN rather than GP once they are using more than
-        # one constellation, and can switch between the two mid-session.
         fix = parse_gga(nmea(
             "GNGGA,123519,4807.038,N,01131.000,E,1,09,0.9,545.4,M,46.9,M,,"))
 
@@ -130,15 +103,6 @@ class ParsingTest(unittest.TestCase):
 
 
 class SerialPortTest(unittest.TestCase):
-    """The reading half, against a file rather than a UART.
-
-    A file rather than a pipe: os.read on a file with nothing more in it returns
-    empty immediately, which is how the non-blocking serial port behaves, while
-    a pipe holds a writer hostage once its buffer fills — twenty kilobytes into
-    one that nothing drains simply hangs. The code path under test is the same
-    os.read either way.
-    """
-
     def setUp(self):
         handle, self.path = tempfile.mkstemp(suffix=".nmea")
         os.close(handle)
@@ -176,8 +140,6 @@ class SerialPortTest(unittest.TestCase):
         self.send(FIX)
         self.gps.read_fix()
 
-        # Nothing new to read. A module briefly losing a satellite should not
-        # blank the position on the next poll.
         self.assertIsNotNone(self.gps.read_fix())
 
     def test_half_a_sentence_waits_for_the_rest(self):
@@ -186,16 +148,12 @@ class SerialPortTest(unittest.TestCase):
 
         self.write_bytes(b"31.000,E,1,08,0.9,545.4,M,46.9,M,,*47\n")
 
-        # A read lands wherever it lands in the stream; a sentence split across
-        # two of them must not become two broken sentences.
         self.assertEqual([FIX], self.gps.read_sentences())
 
     def test_talking_means_available_even_with_no_fix(self):
         self.send(NO_FIX)
         self.gps.read_sentences()
 
-        # The distinction the whole class rests on: a GPS indoors talks
-        # constantly and knows nothing, and that is a working GPS.
         self.assertTrue(self.gps.available)
         self.assertIsNone(self.gps.read_fix())
 
@@ -215,8 +173,6 @@ class SerialPortTest(unittest.TestCase):
         self.assertFalse(gps.available)
 
     def test_a_flood_of_data_does_not_grow_forever(self):
-        # A module talking to nobody for a week. Nothing consumes the buffer
-        # unless a newline arrives, so it needs a ceiling of its own.
         self.write_bytes(b"x" * 20000)
         self.gps.read_sentences()
 
@@ -231,8 +187,6 @@ class NoPortTest(unittest.TestCase):
 
         gps = UbloxLocationSensor(port="/dev/nope", opener=refuse)
 
-        # The serial console still owning /dev/serial0 is the usual cause, and
-        # it must not stop the motion sensors from running.
         self.assertFalse(gps.available)
         self.assertIsNone(gps.read_fix())
         self.assertEqual([], gps.read_sentences())
@@ -255,8 +209,6 @@ if __name__ == "__main__":
 
 
 class FrameErrorNoticeTest(unittest.TestCase):
-    """A module complaining about its own receiver is not a fault here."""
-
     class Talking:
         port = "test"
 
@@ -277,8 +229,6 @@ class FrameErrorNoticeTest(unittest.TestCase):
             NO_FIX), duration_s=0.05, interval_s=0.01, out=out)
 
         text = out.getvalue()
-        # It reads like a failure and is not one: the RX side matters only for
-        # configuring the module, and this service never writes to it.
         self.assertIn("disabled its RX line", text)
         self.assertIn("read-only", text)
 
@@ -293,14 +243,6 @@ class FrameErrorNoticeTest(unittest.TestCase):
 
 
 class NoSatellitesTest(unittest.TestCase):
-    """Telling a bad sky from a wrong antenna.
-
-    Both produce no fix, and the advice for them is opposite: one is patience,
-    the other is a different part. The number of sentences separates them — a
-    working antenna under a roof still shows satellites weakly, so a flat zero
-    across thousands of sentences is not about the view.
-    """
-
     class Talking:
         port = "test"
 
@@ -328,7 +270,6 @@ class NoSatellitesTest(unittest.TestCase):
         self.assertNotIn("Put it by a window", text)
 
     def test_a_brief_look_still_suggests_patience(self):
-        # Twenty seconds on a windowsill is not evidence of anything.
         text = self.run_check(NO_FIX, 20)
 
         self.assertIn("Put it by a window", text)
@@ -336,24 +277,12 @@ class NoSatellitesTest(unittest.TestCase):
 
 
 class LocationLoggingInterval(unittest.TestCase):
-    """How often a fix is recorded, which decides whether a track exists.
-
-    A Pi bolted to a kitchen floor wants a fix every few minutes. A Pi carried
-    on a walk wants one every few seconds, because at 300 s a fifteen-minute
-    route is three points and the straight lines between them — a shape that
-    says nothing about where anyone went.
-    """
-
     def setUp(self):
         self.store = EventStore(":memory:")
         self.sensors = build_fake_sensor_set(rooms=["Hall"])
-        # The stock fake simulates a cold start and withholds its first two
-        # fixes, which is honest but makes counting points here a test of the
-        # fake rather than of the interval. This one has a fix immediately.
         self.sensors.location = FakeLocationSensor(fix_after_reads=1)
 
     def _fixes_recorded(self, interval_s, clock_steps):
-        """Runs the location poll over a scripted clock and counts the rows."""
         monitor = Monitor(self.sensors, self.store,
                           location_log_interval_s=interval_s)
         for now in clock_steps:
@@ -361,13 +290,10 @@ class LocationLoggingInterval(unittest.TestCase):
         return [e for e in self.store.since(0) if e["kind"] == "location"]
 
     def test_a_short_interval_records_a_track(self):
-        # Ten seconds of walking, sampled every second.
         fixes = self._fixes_recorded(1.0, [float(n) for n in range(10)])
         self.assertGreaterEqual(len(fixes), 9)
 
     def test_the_default_interval_would_not(self):
-        # The same ten seconds at the fixed-installation default. At most one
-        # point, which is a dot rather than a route.
         fixes = self._fixes_recorded(300.0, [float(n) for n in range(10)])
         self.assertLessEqual(len(fixes), 1)
 

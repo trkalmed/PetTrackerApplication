@@ -1,16 +1,4 @@
-"""Real Raspberry Pi sensors.
-
-Deliberately unfinished. Each class has the wiring, the library, and the traps
-written down, but the bodies are stubs — filling them in is a job to do next to
-the hardware, one sensor at a time, because the numbers involved (calibration
-factor, servo angles, PIR pot positions) can only be found empirically.
-
-Imports of Pi-only libraries happen inside the constructors, not at module
-level, so this file can be imported and inspected on a laptop.
-
-GPIO pins below are BCM numbering and are suggestions, not requirements — the
-only real constraints are noted per sensor.
-"""
+"""Real Raspberry Pi sensors."""
 
 import io
 from collections import OrderedDict
@@ -28,62 +16,19 @@ from .gpio import open_input, open_output, open_servo
 
 log = logging.getLogger(__name__)
 
-#: Default for GpioMotionSensor's pin_input, meaning "go and claim the real pin".
-#: A sentinel rather than None, because None is what open_input returns when no
-#: backend could claim one — so it has to be passable, and has to mean "this
-#: sensor has no pin". Conflating the two made a test that thought it was
-#: checking an unavailable sensor quietly claim GPIO 22 on a real Pi and pass
-#: for the wrong reason.
 _CLAIM_THE_PIN = object()
 
 
 class HX711Scale(Scale):
-    """Load cell through an HX711 amplifier.
-
-    Wiring: VCC to 5V, GND to GND, DT and SCK to any two free GPIOs. The
-    protocol lives in :mod:`pettracker.hx711`; this class is the part that turns
-    counts into grams, which is to say the part that needs calibrating.
-
-    **The calibration factor cannot be guessed.** Counts per gram depend on the
-    specific cell, the amplifier gain, and how the bowl sits on it. Find it once:
-
-        1. Empty the bowl and run ``run.py --check-scale``
-        2. Press t to tare
-        3. Put a known mass on it — a 100 g kitchen weight, or water, where
-           1 ml is 1 g
-        4. The tool prints the factor to pass as --scale-factor
-
-    Re-do it if the bowl or its mounting changes. A factor of 1.0 means
-    uncalibrated, and the readings are then raw counts wearing a gram label —
-    the meal detector would report a nudge of the bowl as a 40,000 g meal.
-    """
-
-    #: What the factor is when nobody has calibrated anything.
     UNCALIBRATED = 1.0
 
-    #: How recently the amplifier must have answered to count as available. The
-    #: monitor reads it several times a second while the service runs, so this
-    #: only ever comes into play on a rig whose readings have stopped.
     READING_FRESHNESS_S = 10.0
 
-    #: The least time between probe reads when nothing else is reading. Each one
-    #: waits for the chip, so /health must not trigger one on every poll.
     PROBE_INTERVAL_S = 5.0
 
     def __init__(self, dout_pin: int = 5, sck_pin: int = 6,
                  calibration_factor: float = UNCALIBRATED, samples: int = 5,
                  gain: int = 128, tare_path: Optional[str] = None):
-        """
-        :param tare_path: file to remember the tare offset in, or None to keep
-            it only in memory. The offset is a *measurement* of this particular
-            bowl on this particular cell — not configuration — so it belongs in
-            a file the service writes rather than in service.env.
-
-            Without it the tare lives only as long as the process. The unit
-            restarts on failure and at boot, so every restart would report the
-            bowl's own weight as food: a screen showing "1196 g in the bowl"
-            with an empty bowl, which is exactly how this was found.
-        """
         self._calibration_factor = calibration_factor
         self._samples = samples
         self._tare_path = tare_path
@@ -93,12 +38,10 @@ class HX711Scale(Scale):
         self._last_good_read = None
         self._last_probe = None
 
-        # fast=True: this chip times out if the clock is held high for 60 µs,
-        # and gpiozero can take that long to set a pin. See gpio._FAST_BACKENDS.
+        # fast=True: the HX711 powers down if the clock stays high for 60 us.
         dout = open_input(dout_pin, fast=True)
         sck = open_output(sck_pin, fast=True)
         if dout is None or sck is None:
-            # One claimed and the other not would leave a pin held for nothing.
             if dout is not None:
                 dout.close()
             if sck is not None:
@@ -112,9 +55,6 @@ class HX711Scale(Scale):
         log.info("HX711 on DT=%d SCK=%d via %s", dout_pin, sck_pin, dout.backend)
 
         if calibration_factor == self.UNCALIBRATED:
-            # Loud, because everything downstream will look like it is working:
-            # readings arrive, the dashboard fills in, and every number on it is
-            # counts pretending to be grams.
             log.warning("HX711 is uncalibrated — pass --scale-factor. "
                         "Until then every weight is raw counts, not grams.")
 
@@ -126,9 +66,7 @@ class HX711Scale(Scale):
         if raw is not None:
             self._last_good_read = time.monotonic()
         if raw is None:
-            # None, never 0. An amplifier that has stopped answering and a bowl
-            # with nothing in it are different facts, and only one of them means
-            # the pet has eaten everything.
+            # None, never 0: a silent amplifier is not an empty bowl.
             return None
 
         if not self._calibration_factor:
@@ -136,11 +74,6 @@ class HX711Scale(Scale):
         return (raw - self._offset) / self._calibration_factor
 
     def tare(self) -> None:
-        """Treats the current weight as zero.
-
-        Averages more samples than a normal reading: this number is subtracted
-        from every future one, so an outlier here is an outlier forever.
-        """
         if self._hx is None:
             return
 
@@ -153,13 +86,6 @@ class HX711Scale(Scale):
         log.info("tared at %d counts", raw)
 
     def _load_offset(self) -> float:
-        """The remembered tare, or zero if there is not one to remember.
-
-        Every failure here is deliberately quiet and returns zero: a missing
-        file is the normal state before the first tare, and a corrupt one is
-        worth no more than a fresh tare costs. Refusing to start because a
-        cached number could not be read would be the wrong trade.
-        """
         if not self._tare_path:
             return 0.0
         try:
@@ -169,12 +95,6 @@ class HX711Scale(Scale):
             return 0.0
 
     def _save_offset(self, offset: float) -> None:
-        """Writes the tare, atomically, so a power cut cannot leave half of one.
-
-        A truncated file would parse as a wrong offset rather than as no
-        offset, which is worse than either — the bowl would read heavy or light
-        by an arbitrary amount and nothing would look broken.
-        """
         if not self._tare_path:
             return
         temporary = self._tare_path + ".part"
@@ -183,13 +103,10 @@ class HX711Scale(Scale):
                 handle.write(repr(float(offset)))
             os.replace(temporary, self._tare_path)
         except OSError as e:
-            # Worth saying, but not worth failing a tare over: the offset is
-            # correct in memory and the scale works for this run.
             log.warning("could not save the tare offset: %s", e)
 
     @property
     def chip(self):
-        """The amplifier itself, for the bring-up tool's timing probe."""
         return self._hx
 
     @property
@@ -210,24 +127,10 @@ class HX711Scale(Scale):
 
     @property
     def claimed(self) -> bool:
-        """Whether the two pins were opened.
-
-        Distinct from :attr:`available`, and the distinction is the whole point:
-        a dead amplifier claims its pins perfectly well. The bring-up tools want
-        this one — there is nothing to diagnose if the pins never opened — while
-        /health wants the other.
-        """
         return self._hx is not None
 
     @property
     def available(self) -> bool:
-        """Whether the amplifier is actually producing readings.
-
-        It used to mean "the two GPIO pins were claimed", which stayed true
-        through an amplifier killed by reversed power: /health reported a
-        working scale for an afternoon while every reading was twenty-four zero
-        bits. A sensor is available when it can do its job.
-        """
         if self._hx is None:
             return False
 
@@ -236,9 +139,6 @@ class HX711Scale(Scale):
                 and now - self._last_good_read <= self.READING_FRESHNESS_S):
             return True
 
-        # Nothing has read it lately — the monitor is not running, or it has
-        # stopped answering. One read settles it, rate limited because each one
-        # waits on the chip and /health asks on every poll.
         if (self._last_probe is not None
                 and now - self._last_probe < self.PROBE_INTERVAL_S):
             return False
@@ -246,7 +146,6 @@ class HX711Scale(Scale):
         return self.read_raw() is not None
 
     def read_raw(self) -> Optional[int]:
-        """Counts, before the offset and the factor. For calibration only."""
         if self._hx is None:
             return None
         raw = self._hx.read_median(self._samples)
@@ -261,38 +160,8 @@ class HX711Scale(Scale):
 
 
 class GpioMotionSensor(MotionSensor):
-    """One HC-SR501 PIR, watching one room.
-
-    Wiring: VCC to 5V, GND to GND, OUT to a GPIO. The output is 3.3V logic on
-    these modules, so no divider is needed. Which GPIO does not matter; which
-    library reads it does, and :mod:`pettracker.sensors.gpio` sorts that out.
-
-    Two traps, both handled here rather than left to the reader:
-
-    * **Warm-up.** A PIR settles for up to a minute after power-up and fires
-      more or less constantly until it does. Those pulses are the sensor
-      stabilising, not an animal, so :meth:`poll` reports nothing for the first
-      ``warmup_s`` seconds. They are discarded rather than queued — replaying
-      phantom motion once the warm-up ends would defeat the point.
-    * **The two pots.** Sensitivity and hold time are set physically on the
-      board, not in code. Hold time interacts with the debounce in
-      :class:`~pettracker.monitor.Monitor`: turn the pot to its shortest hold
-      and let the software debounce, or the two fight and one visit becomes
-      either one event or fifty depending on which wins.
-
-    ``run.py --check-motion`` reads :meth:`read_raw` in a loop and prints every
-    sensor's state live, which is how you confirm that the sensor labelled
-    "Kitchen" is the one that fires when you wave at the kitchen.
-    """
-
     def __init__(self, room: str, pin: int, warmup_s: float = 60.0,
                  clock=time.monotonic, pin_input=_CLAIM_THE_PIN):
-        """
-        :param pin_input: omit it to claim ``pin`` for real. Pass an object with
-            ``read()``/``close()`` to drive the logic from a test, or None to
-            build a sensor that has no pin at all — which is what a Pi with a
-            missing library or an unclaimable pin actually produces.
-        """
         self._room = room
         self._pin = pin
         self._warmup_s = warmup_s
@@ -320,23 +189,16 @@ class GpioMotionSensor(MotionSensor):
 
     @property
     def warmup_remaining_s(self) -> float:
-        """Seconds left before this sensor is believed. 0 once it is warm."""
         if self._warm:
             return 0.0
         return max(0.0, self._warmup_s - (self._clock() - self._started_at))
 
     def read_raw(self) -> bool:
-        """The pin as it actually is, warm-up ignored.
-
-        What the bring-up tool shows: during the first minute the useful
-        question is "is this wire connected", not "did the cat move".
-        """
         if self._input is None:
             return False
         try:
             return bool(self._input.read())
         except Exception as e:
-            # A wire pulled out mid-run must not take the monitor thread down.
             log.warning("PIR '%s' read failed: %s", self._room, e)
             return False
 
@@ -362,50 +224,12 @@ class GpioMotionSensor(MotionSensor):
 
 
 class ServoFeeder(Feeder):
-    """An SG90 or MG90S driving the hopper gate.
-
-    **Power the servo from its own 5 V supply, never from the Pi's 5 V pin.**
-    An SG90 draws a few hundred milliamps moving and closer to a full amp
-    stalled, which is exactly what happens when kibble jams the gate. That
-    browns out the Pi, and a brown-out during an SD-card write corrupts the
-    filesystem. Tie the grounds together, signal to a GPIO.
-
-    **The three numbers here have to be measured, not guessed.** The open and
-    closed angles depend on how the horn is mounted — servos only mount at 
-    roughly 20-degree increments, so the useful angles are whatever the geometry
-    gave you rather than a tidy 0 and 90. And the flow rate depends on the
-    kibble: bigger pieces bridge the opening and fall in bursts.
-    ``run.py --check-servo`` walks a servo through angles interactively so the
-    first two can be read off the real gate; the third comes from opening it for
-    a known time and weighing what fell.
-
-    Approximate by nature, and that is fine. The servo controls how long the
-    gate is open, not how much comes out — the load cell measures what actually
-    landed, which is why the two are separate readings in the event log.
-    """
-
-    #: Sensible until measured: a quarter turn, and a flow rate that is more
-    #: likely to under-dispense than to empty the hopper onto the floor.
-    #:
-    #: Closed is 20 degrees rather than 0. An angle is mapped linearly onto a
-    #: 500-2400 us pulse, so 0 degrees asks for exactly the hard minimum, and
-    #: many SG90 clones cannot physically reach it — they drive into an internal
-    #: end stop and stall there. A feeder parks on construction and the service
-    #: restarts on failure, so a resting default at the limit is a servo held
-    #: against its own stop on every start. Nothing here needs the last twenty
-    #: degrees of travel, so there is no reason to spend them. See
-    #: SAFE_MIN_ANGLE.
     DEFAULT_OPEN_ANGLE = 90
     DEFAULT_CLOSED_ANGLE = 20
     DEFAULT_MS_PER_GRAM = 50.0
 
-    #: Time for the gate itself to swing, at each end of a dispense. An SG90
-    #: crosses 90 degrees in roughly 0.3 s unloaded and slower against kibble.
     TRAVEL_S = 0.5
 
-    #: Refuse to hold the gate open longer than this in one go. A wrong
-    #: milliseconds-per-gram is the likeliest mistake here, and the failure mode
-    #: is the whole hopper on the floor.
     MAX_OPEN_S = 20.0
 
     def __init__(self, pin: int = 18,
@@ -413,49 +237,25 @@ class ServoFeeder(Feeder):
                  closed_angle: int = DEFAULT_CLOSED_ANGLE,
                  ms_per_gram: float = DEFAULT_MS_PER_GRAM,
                  servo=_CLAIM_THE_PIN, travel_s: Optional[float] = None):
-        """
-        :param servo: omit it to claim ``pin`` for real. Pass an object with
-            ``set_angle``/``release``/``close`` to drive the logic from a test,
-            or None for a rig with no servo at all — which is what open_servo
-            returns when it cannot claim the pin.
-        """
         self._pin = pin
         self._travel_s = self.TRAVEL_S if travel_s is None else travel_s
         self._open_angle = open_angle
         self._closed_angle = closed_angle
         self._ms_per_gram = ms_per_gram
-        # The same sentinel the PIR sensor uses, and for the same reason: None
-        # is what open_servo returns when nothing could be claimed, so None has
-        # to mean "no servo". Conflating the two made a test that believed it
-        # was checking an absent servo claim GPIO 18 on the real Pi and move it.
         self._servo = open_servo(pin) if servo is _CLAIM_THE_PIN else servo
 
         if self._servo is not None:
-            # Start from a known position. A servo powered up mid-travel holds
-            # wherever it happened to be, which for a hopper gate may be open.
+            # Start closed: a servo powered up mid travel may hold the gate open.
             self.move_to(closed_angle)
 
     def move_to(self, angle: float) -> None:
-        """Sends the gate to an angle and lets go once it has arrived.
-
-        Public because the bring-up tool drives it directly: finding the two
-        angles is a matter of watching the real gate move to each one.
-        """
         if self._servo is None:
             return
         self._servo.set_angle(angle)
         time.sleep(self._travel_s)
-        # Released rather than held: a servo holding position against a spring
-        # or a stiff hinge buzzes, warms up, and draws current all day.
         self._servo.release()
 
     def dispense(self, grams: int) -> None:
-        """Opens the gate for as long as ``grams`` should take to fall.
-
-        How much actually comes out is the load cell's business. This only
-        opens a hole for a while, and the difference between the two is real
-        rather than an error to be corrected.
-        """
         if self._servo is None:
             raise RuntimeError("feeder unavailable")
 
@@ -466,20 +266,12 @@ class ServoFeeder(Feeder):
             self._servo.set_angle(self._open_angle)
             time.sleep(self._travel_s + seconds)
         finally:
-            # Always. An exception mid-dispense must not leave the hopper open,
-            # which would empty it onto the floor and is the one failure here
-            # with a cost beyond a missed meal.
+            # Always close, even if dispensing raised.
             self.move_to(self._closed_angle)
 
-    #: Matches the --feeder value that builds this class.
     kind = "gate"
 
     def open_seconds(self, grams: int) -> float:
-        """How long the gate is held open for a request of ``grams``.
-
-        Separate from :meth:`dispense` so the cap can be reasoned about — and
-        tested — without anybody waiting twenty seconds for it.
-        """
         return min(max(0, grams) * self._ms_per_gram / 1000.0, self.MAX_OPEN_S)
 
     @property
@@ -504,10 +296,7 @@ class ServoFeeder(Feeder):
 
     @property
     def available(self) -> bool:
-        # Claimed, not verified. A servo has no feedback wire: it cannot be
-        # asked where it is or whether it moved, so unlike the scale there is no
-        # better answer to give. Whether the gate actually opened shows up as a
-        # DISPENSED reading from the load cell, or as its absence.
+        # Claimed, not verified: the servo has no feedback. The load cell measures what fell.
         return self._servo is not None
 
     def close(self) -> None:
@@ -517,51 +306,15 @@ class ServoFeeder(Feeder):
 
 
 class PaddleFeeder(Feeder):
-    """A paddle wheel or pocketed drum, turned one pocket at a time.
-
-    The alternative to a timed gate, and the better one for a positional servo.
-    A gate meters food by how long a hole is open, which depends on how full the
-    hopper is, how the kibble happens to be sitting and how much of it is
-    bridging the opening. A pocket meters by volume: a pocket either passes the
-    opening or it does not, and what falls is the same whether the hopper is
-    full or nearly empty.
-
-    So portioning becomes counting rather than timing. ``grams_per_cycle`` is
-    measured once — cycle it ten times into a bowl, weigh, divide by ten — and
-    from then on a request is rounded to a whole number of pockets, because a
-    third of a pocket is not a thing this machine can do. That rounding is
-    reported honestly: the load cell measures what actually landed, and the
-    difference between what was asked for and what fell is real.
-
-    Mechanically an SG90 is enough to turn a light wheel and nothing more. If a
-    pocket ever catches a piece of kibble against the housing the servo will
-    stall rather than shear it, which is why :attr:`SETTLE_S` pauses at the dump
-    position — a moment for the pocket to empty is cheaper than a jam.
-    """
-
-    #: A wheel parks here and dumps at the other. Anything within the servo's
-    #: travel works; keeping off the end stops means a jam cannot drive it into
-    #: its own limit.
     DEFAULT_PARK_ANGLE = 30
     DEFAULT_DUMP_ANGLE = 150
 
-    #: Measured on the rig this was built for: a pocket drops 10-15 g, depending
-    #: on how full the hopper is, because the column of kibble above the wheel is
-    #: what packs the pocket. 12.5 is the middle of that, and is therefore right
-    #: to about ±20% at best.
-    #:
-    #: The spread belongs to the mechanism and no amount of care removes it,
-    #: which is exactly why the load cell and not the servo is what reports a
-    #: meal. Re-measure for a different kibble: the pocket's volume is fixed and
-    #: its mass is not.
+    # Measured on this rig: a pocket drops 10 to 15 g.
     DEFAULT_GRAMS_PER_CYCLE = 12.5
 
-    #: Pause at the dump position, for the pocket to actually empty. Kibble
-    #: does not fall instantly and a wheel that snaps back takes some with it.
     SETTLE_S = 0.4
 
-    #: Most pockets one request may turn. A grams_per_cycle that is wrong by an
-    #: order of magnitude would otherwise run the wheel for several minutes.
+    # Upper bound on pockets per request.
     MAX_CYCLES = 20
 
     def __init__(self, pin: int = 18,
@@ -573,17 +326,6 @@ class PaddleFeeder(Feeder):
                  sweep: Optional[List[float]] = None,
                  min_pulse_us: Optional[int] = None,
                  max_pulse_us: Optional[int] = None):
-        """
-        :param sweep: the angles one cycle visits, in order, instead of the
-            plain dump-and-return. A wheel that swings out and back can leave
-            kibble bridged over the pocket; walking it through several positions
-            shakes the column loose, and the shape that works is a property of
-            the hopper someone built rather than anything derivable — so it is
-            configuration, like the angles themselves.
-
-            The **last angle is where the wheel rests**, which is what closes
-            the hopper, so a sweep must end somewhere the pocket is shut.
-        """
         self._pin = pin
         self._park_angle = park_angle
         self._dump_angle = dump_angle
@@ -599,7 +341,6 @@ class PaddleFeeder(Feeder):
             self.move_to(self._rest_angle)
 
     def move_to(self, angle: float) -> None:
-        """Turns the wheel to an angle and lets go once it has arrived."""
         if self._servo is None:
             return
         self._servo.set_angle(angle)
@@ -607,19 +348,12 @@ class PaddleFeeder(Feeder):
         self._servo.release()
 
     def cycles_for(self, grams: int) -> int:
-        """Whole pockets for a request, rounded and capped.
-
-        At least one for any positive request: asking for less than a pocket and
-        getting nothing at all would look like a broken feeder, and the load cell
-        will report what actually fell either way.
-        """
         if grams <= 0 or self._grams_per_cycle <= 0:
             return 0
         cycles = int(round(grams / self._grams_per_cycle))
         return max(1, min(cycles, self.MAX_CYCLES))
 
     def dispense(self, grams: int) -> None:
-        """Turns the wheel enough times to drop roughly ``grams``."""
         if self._servo is None:
             raise RuntimeError("feeder unavailable")
 
@@ -631,20 +365,14 @@ class PaddleFeeder(Feeder):
             for _ in range(cycles):
                 for index, angle in enumerate(sweep):
                     self._servo.set_angle(angle)
-                    # The settle only belongs where the pocket is emptying: a
-                    # wheel that snaps straight back takes kibble with it. The
-                    # rest of a sweep is agitation, and pausing at every angle
-                    # would just make a dispense slow.
                     dwell = self._travel_s
                     if angle == max(sweep):
                         dwell += self._settle_s
                     time.sleep(dwell)
         finally:
-            # Parked whatever happened. A wheel abandoned mid-sweep is an open
-            # hole in the bottom of the hopper.
+            # Always park, so the wheel never stops open.
             self.move_to(self._rest_angle)
 
-    #: Matches the --feeder value that builds this class.
     kind = "paddle"
 
     @property
@@ -657,12 +385,6 @@ class PaddleFeeder(Feeder):
 
     @property
     def rest_angle(self) -> float:
-        """Where the wheel is left, which is what keeps the hopper shut.
-
-        The configured park angle normally, or the last angle of a sweep when
-        one is set — a sweep replaces the motion, so it also decides where the
-        motion ends.
-        """
         return self._rest_angle
 
     @property
@@ -679,8 +401,7 @@ class PaddleFeeder(Feeder):
 
     @property
     def available(self) -> bool:
-        # Claimed, not verified, for the same reason as the gate: a hobby servo
-        # has no feedback wire. What actually fell is the load cell's answer.
+        # Claimed, not verified: the servo has no feedback. The load cell measures what fell.
         return self._servo is not None
 
     def close(self) -> None:
@@ -690,21 +411,6 @@ class PaddleFeeder(Feeder):
 
 
 class PiCamera(Camera):
-    """CSI ribbon camera via picamera2.
-
-    Raspberry Pi OS ships picamera2 as a system package; it is not usefully
-    installable from pip, so use apt and do not create the service's virtualenv
-    with --no-system-site-packages if you ever make one.
-
-    Only one process may hold the camera. If this service is serving /stream,
-    nothing else can open it — including a second copy of this service, which is
-    the usual cause of a camera that worked yesterday.
-
-    A Pi 4 has one CSI connector, so one of these per Pi. It sits on an entirely
-    separate bus from USB, which is why a CSI camera and a USB webcam together
-    cost nothing in bandwidth while two webcams compete for it.
-    """
-
     def __init__(self, width: int = 640, height: int = 480):
         self._camera = None
         self._lock = threading.Lock()
@@ -721,27 +427,16 @@ class PiCamera(Camera):
             log.warning("Pi camera unavailable: %s", e)
 
     def read_jpeg(self) -> Optional[bytes]:
-        """One frame, JPEG-encoded by picamera2 itself.
-
-        capture_file into a BytesIO rather than capturing an array and encoding
-        it here: the array route needs PIL or OpenCV, costs a full-frame copy
-        through Python, and would make this the slowest thing in the service.
-
-        Serialised, like the USB camera, because the monitor thread takes
-        snapshots while an HTTP thread may be serving the stream.
-        """
         if self._camera is None:
             return None
 
         buffer = io.BytesIO()
         try:
             with self._lock:
-                if self._camera is None:            # closed while we waited
+                if self._camera is None:
                     return None
                 self._camera.capture_file(buffer, format="jpeg")
         except Exception as e:
-            # A ribbon cable that has worked loose raises from deep inside
-            # libcamera rather than returning nothing.
             log.warning("Pi camera read failed: %s", e)
             return None
 
@@ -763,20 +458,9 @@ class PiCamera(Camera):
 
 
 class UsbCamera(Camera):
-    """USB webcam via OpenCV.
-
-    An alternative to the CSI camera, not an addition: one MJPEG endpoint
-    serves one camera. To use both, run a second instance on another port and
-    give the app a second stream URL.
-    """
-
     def __init__(self, device_index: int = 0, width: int = 640, height: int = 480):
         self._capture = None
-        # The monitor thread now takes snapshots while an HTTP thread may be
-        # serving /stream, and a VideoCapture is not safe for two readers: the
-        # frames interleave, and the driver can return a half-decoded buffer.
-        # One reader at a time; a frame takes tens of milliseconds, so nothing
-        # waits long.
+        # A VideoCapture is not safe for two readers, so reads are locked.
         self._lock = threading.Lock()
         try:
             import cv2  # type: ignore
@@ -796,14 +480,11 @@ class UsbCamera(Camera):
         if self._capture is None:
             return None
         with self._lock:
-            if self._capture is None:          # closed while we waited
+            if self._capture is None:
                 return None
             ok, frame = self._capture.read()
         if not ok:
             return None
-        # Encoding is pure CPU on a copy of the frame, so it happens outside the
-        # lock — a 10 fps stream would otherwise hold the camera most of the time
-        # and starve the snapshot.
         ok, buffer = self._cv2.imencode(".jpg", frame)
         return buffer.tobytes() if ok else None
 
@@ -819,57 +500,10 @@ class UsbCamera(Camera):
 
 
 class UbloxLocationSensor(LocationSensor):
-    """A u-blox GNSS module over the Pi's serial port.
-
-    Written against a NEO-6M and tested on a NEO-M8N; the two speak the same
-    NMEA at the same default 9600 baud, so nothing here distinguishes them. The
-    visible difference is that an M8N tracks several constellations at once and
-    therefore talks in ``$GN`` sentences rather than ``$GP`` ones, with ``$GL``
-    for the GLONASS satellites it can see. Both are parsed.
-
-    One consequence worth knowing: an M8N at 9600 baud with every constellation
-    enabled produces a great deal of traffic — GGA, GSA, GSV, GLL, RMC and VTG
-    for each system, once a second — and 9600 baud is not far off the limit. If
-    sentences ever start arriving truncated, that is the reason, and the fix is
-    a higher baud rate rather than a faster Pi.
-
-    Setup, in this order:
-
-    1. ``sudo raspi-config`` -> Interface Options -> Serial Port -> login shell
-       **no**, hardware serial **yes**, then reboot. Without this the kernel
-       console owns the port and answers your reads with its own noise.
-    2. Use ``/dev/serial0``, which points at whichever UART is right for the
-       board revision. ``/dev/ttyAMA0`` is wrong on a Pi 4 by default, because
-       there the good UART is on Bluetooth.
-    3. Wiring is crossed: module TX to Pi RX (GPIO 15, physical pin 10), module
-       RX to Pi TX (GPIO 14, physical pin 8). 3.3V power and a shared ground.
-
-    **It will not get a fix indoors.** A cold start needs several minutes of
-    open sky, and the module reports no fix until then — which is why
-    :meth:`read_fix` returns None rather than zeros, and why
-    :attr:`available` asks a different question: whether the module is talking
-    at all. A GPS on a windowsill sending sentences and reporting no position is
-    working correctly, and the two states must not look the same.
-
-    Read with :mod:`termios` rather than pyserial: a serial port at a fixed baud
-    rate is thirty lines of standard library, and the alternative is a package to
-    install on every rig.
-
-    Worth restating: this measures where the **Pi** is. For a feeder on a kitchen
-    floor that is a constant. The PIR sensors are what answer "which room".
-    """
-
-    #: How recently a sentence must have arrived for the module to count as
-    #: present. It sends several a second, so this is generous.
     TALKING_FRESHNESS_S = 10.0
 
     def __init__(self, port: str = "/dev/serial0", baudrate: int = 9600,
                  clock=time.monotonic, opener=None):
-        """
-        :param opener: makes the file descriptor, for tests. The default opens
-            and configures the real port; a test hands over the read end of a
-            pipe, which exercises the same os.read path with no hardware.
-        """
         self._port_path = port
         self._fd = None
         self._buffer = b""
@@ -881,16 +515,10 @@ class UbloxLocationSensor(LocationSensor):
             self._fd = (opener or _open_serial)(port, baudrate)
             log.info("GPS on %s at %d baud", port, baudrate)
         except Exception as e:
-            # The commonest cause by far is the serial console still owning the
-            # port, which raises here rather than misbehaving later.
+            # Usually the serial console still owns the port.
             log.warning("GPS unavailable: %s", e)
 
     def read_fix(self) -> Optional[dict]:
-        """The most recent position, or None if the module has no fix.
-
-        None is the normal answer indoors and for the first minutes outdoors.
-        See :attr:`available` for whether the module is there at all.
-        """
         for sentence in self.read_sentences():
             fix = parse_gga(sentence)
             if fix is not None:
@@ -898,12 +526,6 @@ class UbloxLocationSensor(LocationSensor):
         return self._last_fix
 
     def read_sentences(self):
-        """Whatever complete NMEA lines have arrived since the last call.
-
-        Also what the bring-up tool prints: seeing the raw sentences is how you
-        tell "no fix yet" from "nothing is connected", and the two look
-        identical from :meth:`read_fix`.
-        """
         if self._fd is None:
             return []
 
@@ -917,8 +539,6 @@ class UbloxLocationSensor(LocationSensor):
 
         if chunk:
             self._buffer += chunk
-            # A module left talking to nobody would grow this without limit.
-            # One second of 9600 baud is about 1 kB.
             if len(self._buffer) > 8192:
                 self._buffer = self._buffer[-4096:]
 
@@ -934,15 +554,10 @@ class UbloxLocationSensor(LocationSensor):
 
     @property
     def available(self) -> bool:
-        """Whether the module is sending sentences, not whether it has a fix.
-
-        Those are different facts and only one of them is about the hardware. A
-        GPS indoors talks constantly and knows nothing, which is a working GPS.
-        """
         if self._fd is None:
             return False
         if self._last_sentence_at is None:
-            self.read_sentences()          # nothing has read it yet
+            self.read_sentences()
         return (self._last_sentence_at is not None
                 and self._clock() - self._last_sentence_at
                 <= self.TALKING_FRESHNESS_S)
@@ -961,12 +576,6 @@ class UbloxLocationSensor(LocationSensor):
 
 
 def _open_serial(path: str, baudrate: int) -> int:
-    """Opens a serial port for reading, configured raw at ``baudrate``.
-
-    Non-blocking, because the service polls: a blocking read on a GPS that has
-    been unplugged would hold the monitor thread and stop the motion sensors
-    with it.
-    """
     import termios
 
     speeds = {4800: termios.B4800, 9600: termios.B9600,
@@ -978,14 +587,13 @@ def _open_serial(path: str, baudrate: int) -> int:
     fd = os.open(path, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
     try:
         attributes = termios.tcgetattr(fd)
-        # Raw: no echo, no line discipline, no character translation. The
-        # defaults are meant for a terminal, and would eat and rewrite bytes.
-        attributes[0] = 0                                    # iflag
-        attributes[1] = 0                                    # oflag
+        # Raw mode: no echo and no byte translation.
+        attributes[0] = 0
+        attributes[1] = 0
         attributes[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
-        attributes[3] = 0                                    # lflag
-        attributes[4] = speeds[baudrate]                     # ispeed
-        attributes[5] = speeds[baudrate]                     # ospeed
+        attributes[3] = 0
+        attributes[4] = speeds[baudrate]
+        attributes[5] = speeds[baudrate]
         attributes[6][termios.VMIN] = 0
         attributes[6][termios.VTIME] = 0
         termios.tcsetattr(fd, termios.TCSANOW, attributes)
@@ -995,22 +603,13 @@ def _open_serial(path: str, baudrate: int) -> int:
     return fd
 
 
-#: One PIR per room, in the order --rooms lists them. BCM numbering. These three
-#: are free on every Pi header revision and avoid the pins with special jobs at
-#: boot (0/1 are the ID EEPROM, 2/3 have fixed pull-ups, 14/15 are the UART).
+# One PIR per room, in the order the rooms are listed. BCM numbering.
 DEFAULT_PIR_PINS = [17, 27, 22]
 
-#: HX711 data and clock, BCM numbering. Any two free pins will do; these avoid
-#: the SPI and I2C peripherals in case something else on the rig wants them.
 DEFAULT_SCALE_PINS = [5, 6]
 
 
 def parse_pins(spec: str) -> List[int]:
-    """Turns ``"17,27,22"`` into ``[17, 27, 22]``.
-
-    Raises ValueError with a usable message rather than letting a typo become a
-    sensor that silently never fires.
-    """
     pins = []
     for piece in spec.split(","):
         piece = piece.strip()
@@ -1021,20 +620,13 @@ def parse_pins(spec: str) -> List[int]:
         except ValueError:
             raise ValueError(f"'{piece}' is not a GPIO number") from None
         if not 2 <= pin <= 27:
-            # BCM numbering on a 40-pin header. 0 and 1 are the ID EEPROM and
-            # must not be claimed.
+            # Pins 0 and 1 are the ID EEPROM and must not be claimed.
             raise ValueError(f"GPIO {pin} is not a usable header pin (expected 2-27)")
         pins.append(pin)
     return pins
 
 
 def pin_map(rooms: List[str], pins: List[int]) -> List[tuple]:
-    """Pairs room names with pins, complaining about the mistakes that matter.
-
-    A room list and a pin list of different lengths is the easiest way to bring
-    up "Hall" and quietly never read it, because :func:`zip` would drop the
-    extra silently.
-    """
     if len(rooms) != len(pins):
         raise ValueError(
             f"{len(rooms)} room(s) but {len(pins)} pin(s): "
@@ -1052,7 +644,6 @@ def pin_map(rooms: List[str], pins: List[int]) -> List[tuple]:
 def build_motion_sensors(rooms: Optional[List[str]] = None,
                          pins: Optional[List[int]] = None,
                          warmup_s: float = 60.0) -> List[GpioMotionSensor]:
-    """The PIR sensors on their own, for the service and for bring-up."""
     if rooms is None:
         rooms = ["Kitchen", "Living room", "Hall"]
     if pins is None:
@@ -1065,13 +656,6 @@ def build_motion_sensors(rooms: Optional[List[str]] = None,
 
 
 class NoCamera(Camera):
-    """A rig with no camera at all.
-
-    Not a failure state: a Pi doing feeder and motion duty has no reason to hold
-    a video device open, and "none" has to be sayable without one of the real
-    camera classes logging a warning about hardware nobody asked for.
-    """
-
     def read_jpeg(self) -> Optional[bytes]:
         return None
 
@@ -1080,28 +664,7 @@ class NoCamera(Camera):
         return False
 
 
-#: What --feeder accepts. A gate meters by time, a paddle by whole pockets.
 class HoldFeeder(Feeder):
-    """A hopper the person opens and closes, rather than one that meters.
-
-    The other two designs decide for themselves when to stop: the gate holds
-    open for a computed time, the paddle turns whole pockets. This one turns to
-    the open angle and **stays there** until something tells it to close.
-
-    That is a deliberate removal of the safety the other two have. Their close
-    is in a ``finally`` precisely because a hopper left open empties onto the
-    floor, and a cat that finds the pile eats until it is sick. Here the close
-    is a separate request, so the guarantee is only as good as the person
-    watching — which is the right trade when someone wants to watch food fall
-    and stop it by eye, and the wrong one for anything unattended.
-
-    :data:`AUTO_CLOSE_S` is the backstop: not a timer that meters anything, just
-    a limit on how long the hopper can be open if the close never arrives —
-    because the failure it guards against is the phone going flat mid-feed.
-    """
-
-    #: Longest the hopper may stay open without being told to close. None
-    #: disables it entirely, which is a choice worth making deliberately.
     AUTO_CLOSE_S = 120.0
 
     def __init__(self, pin: int = 18,
@@ -1123,25 +686,9 @@ class HoldFeeder(Feeder):
                        if servo is _CLAIM_THE_PIN else servo)
 
         if self._servo is not None:
-            # Shut from the moment the service starts, not from the first
-            # request: a servo powered up mid-travel holds wherever it happens
-            # to be, and for a hopper that may be wide open.
             self.move_to(closed_angle)
 
     def move_to(self, angle: float, hold: bool = False) -> None:
-        """Turns to an angle, and optionally keeps holding it there.
-
-        Holding matters for this design and for no other. The gate and the
-        paddle let go once they have arrived, because nothing pushes back on
-        them. A hopper held open is resisting the weight of the kibble above
-        it: released, the column shoves it closed again, and the symptom is a
-        servo that "does not turn fully" when in fact it turned and was pushed
-        back.
-
-        The cost of holding is real — a servo under load draws current and
-        warms up — which is why it is only done while the hopper is open, and
-        why the auto-close backstop exists.
-        """
         if self._servo is None:
             return
         self._servo.set_angle(angle)
@@ -1150,13 +697,6 @@ class HoldFeeder(Feeder):
             self._servo.release()
 
     def dispense(self, grams: int = 0) -> None:
-        """Opens, and leaves it open. ``grams`` is ignored by this design.
-
-        Named ``dispense`` because it is what the Feeder contract calls the
-        act of releasing food, and because /feed reaches every feeder through
-        the same method. What differs is that this one does not decide when to
-        stop.
-        """
         if self._servo is None:
             raise RuntimeError("feeder unavailable")
 
@@ -1166,7 +706,6 @@ class HoldFeeder(Feeder):
                  self._open_angle)
 
     def close_gate(self) -> None:
-        """Returns to the closed angle. Safe to call when already closed."""
         if self._servo is None:
             raise RuntimeError("feeder unavailable")
 
@@ -1175,13 +714,6 @@ class HoldFeeder(Feeder):
         log.info("hopper closed at %d degrees", self._closed_angle)
 
     def tick(self) -> None:
-        """Closes the hopper if it has been open too long. Called by the monitor.
-
-        The backstop, and the reason it exists: the close comes from a phone,
-        and a phone runs out of battery, loses Wi-Fi, or is put in a pocket. A
-        hopper waiting for a request that will never arrive is the failure this
-        design is otherwise wide open to.
-        """
         if self._auto_close_s is None or self._opened_at is None:
             return
         if self._clock() - self._opened_at < self._auto_close_s:
@@ -1194,7 +726,6 @@ class HoldFeeder(Feeder):
         except RuntimeError:
             self._opened_at = None
 
-    #: Matches the --feeder value that builds this class.
     kind = "hold"
 
     @property
@@ -1222,30 +753,16 @@ class HoldFeeder(Feeder):
 FEEDER_KINDS = ("gate", "paddle", "hold")
 
 
-#: What --camera accepts. One camera per service: the CSI and USB devices cannot
-#: share a single /stream, so this is a choice rather than a list.
 CAMERA_KINDS = ("csi", "usb", "none")
 
 
 def build_camera(kind: str = "csi", device_index: int = 0,
                  retry_interval_s: float = 10.0) -> Camera:
-    """The camera named, wrapped so it recovers on its own.
-
-    The wrapper is the point: a device that is not there at startup — because
-    the Pi beat USB enumeration to it, or because somebody was holding it — used
-    to stay missing until the service was restarted by hand, taking the stream
-    and every motion snapshot with it. See
-    :class:`~pettracker.sensors.camera.ReopeningCamera`.
-
-    :param kind: one of :data:`CAMERA_KINDS`
-    :param device_index: which /dev/videoN, for a USB camera
-    """
     if kind not in CAMERA_KINDS:
         raise ValueError(
             f"unknown camera '{kind}' (expected one of {', '.join(CAMERA_KINDS)})")
 
     if kind == "none":
-        # Nothing to reopen, and nothing that could appear later.
         return NoCamera()
 
     def factory() -> Camera:
@@ -1257,22 +774,6 @@ def build_camera(kind: str = "csi", device_index: int = 0,
 
 def build_cameras(spec: str = "csi", usb_device_index: int = 0,
                   retry_interval_s: float = 10.0):
-    """One camera per kind named in ``spec``, keyed by kind.
-
-    ``"usb"`` is one camera; ``"usb,csi"`` is two, and the first named is the
-    primary — the one motion snapshots come from and the one ``/stream`` serves
-    when the client does not say which it wants.
-
-    The two buses are independent, which is what makes this worth doing at all:
-    a CSI camera and a USB webcam cost each other nothing, while two USB
-    webcams compete for the same controller's bandwidth and neither gets a
-    usable frame rate. A Pi has one CSI connector, so "csi,csi" is not a rig
-    that exists.
-
-    ``"none"`` is only meaningful on its own — a rig with no camera. Mixed with
-    a real one it would add a camera that can never produce a frame, so it is
-    rejected rather than quietly dropped.
-    """
     kinds = [k.strip() for k in (spec or "").split(",") if k.strip()]
     if not kinds:
         raise ValueError("--camera needs at least one kind")
@@ -1296,16 +797,6 @@ def build_cameras(spec: str = "csi", usb_device_index: int = 0,
 
 
 def probe_scale_pins(dout_pin: int, sck_pin: int):
-    """Tries the pins both ways round and returns the pair that reads.
-
-    Swapping DT and SCK is the easiest mistake to make with this module and the
-    hardest to see: the pin being read is then wired to the amplifier's clock
-    input, which nothing drives, so it floats — noise with no pull, low with a
-    pull-down, and twenty-four zero bits when read. That is indistinguishable
-    from a dead amplifier unless something actually tries the other order.
-
-    :returns: (dout, sck) that produced a reading, or None if neither did
-    """
     for candidate in ((dout_pin, sck_pin), (sck_pin, dout_pin)):
         scale = HX711Scale(dout_pin=candidate[0], sck_pin=candidate[1])
         try:
@@ -1326,20 +817,6 @@ def build_real_sensor_set(rooms: Optional[List[str]] = None,
                           tare_path: Optional[str] = "scale-tare",
                           gps_port: Optional[str] = "/dev/serial0",
                           feeder: Optional[Feeder] = None) -> SensorSet:
-    """Wires up the real rig.
-
-    Every sensor reports itself unavailable rather than raising if its hardware
-    is missing, so the service still starts with one thing unplugged and
-    /health says which. That is what makes it possible to bring the sensors up
-    one at a time.
-
-    :param pir_warmup_s: how long to ignore the PIRs for. The warm-up belongs to
-        the *sensor's* power-up, not to this process, so a service restart on a
-        rig that has been powered for hours can pass 0 and lose nothing.
-    :param camera: which camera this Pi has — see :func:`build_camera`. It was
-        previously always the CSI one, which meant a USB camera could be plugged
-        in, working, and still reported as absent.
-    """
     dout, sck = (scale_pins or DEFAULT_SCALE_PINS)
     cameras = build_cameras(camera, camera_device)
     return SensorSet(

@@ -1,19 +1,4 @@
-"""The HTTP service the Android app talks to.
-
-Standard library only, on purpose. Nothing to pip install on a fresh Raspberry
-Pi OS image, nothing to keep up to date, and no chance of a dependency that
-happens not to have an ARM wheel. The API is four endpoints and an MJPEG
-stream; a framework would not earn its place.
-
-Endpoints — see README.md for the full contract:
-
-    GET  /health              is it alive, which sensors are reporting
-    GET  /events?since=<id>   readings since a cursor, plus the next cursor
-    GET  /snapshot?name=<n>   the JPEG saved when a motion event fired
-    GET  /stream              MJPEG, the URL PiConnectionManager already builds
-    POST /feed  {"grams": N}  run the feeder
-    POST /tare                zero the scale
-"""
+"""The HTTP service the Android app talks to. Standard library only."""
 
 import json
 import logging
@@ -30,8 +15,7 @@ from .store import EventStore
 
 log = logging.getLogger(__name__)
 
-# Matches PiConnectionManager.STREAM_PORT on the Android side. Changing it means
-# changing both.
+# Must match PiConnectionManager.STREAM_PORT in the app.
 DEFAULT_PORT = 8080
 
 BOUNDARY = "pettrackerframe"
@@ -39,11 +23,7 @@ MAX_EVENTS_PER_REQUEST = 500
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """One request. The service objects are attached to the server."""
-
     protocol_version = "HTTP/1.1"
-
-    # ── plumbing ────────────────────────────────────────────────────────────
 
     @property
     def store(self) -> EventStore:
@@ -62,8 +42,7 @@ class _Handler(BaseHTTPRequestHandler):
         return self.server.snapshots      # type: ignore[attr-defined]
 
     def log_message(self, fmt, *args):
-        # BaseHTTPRequestHandler writes to stderr by default, which on a Pi
-        # running under systemd means every polled request lands in the journal.
+        # Silence per request logging, which would flood the journal.
         log.debug(fmt, *args)
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
@@ -82,8 +61,6 @@ class _Handler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(length).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return {}
-
-    # ── routes ──────────────────────────────────────────────────────────────
 
     def do_GET(self):
         route = urlparse(self.path)
@@ -115,18 +92,8 @@ class _Handler(BaseHTTPRequestHandler):
             "sensors": self.sensors.health(),
             "latest_cursor": self.store.latest_cursor(),
             "latest_weight_grams": self.monitor.latest_weight_grams,
-            # What one serving is, so the app does not have to ask a person a
-            # question only the rig can answer. A paddle wheel meters in whole
-            # pockets, so a portion is one pocket and the number lives here;
-            # null for a design with no natural serving, and the client then
-            # falls back to something sensible.
             "portion_grams": getattr(self.sensors.feeder, "grams_per_cycle", None),
-            # Only a hold feeder can be open between requests; the others shut
-            # themselves as part of dispensing, so False is the truth for them.
             "feeder_open": bool(getattr(self.sensors.feeder, "is_open", False)),
-            # Which design is running, so the app can word its own controls.
-            # "Open the hopper" and "Feed now" are different promises, and the
-            # phone cannot tell which is true without being told.
             "feeder_kind": getattr(self.sensors.feeder, "kind", None),
         })
 
@@ -138,8 +105,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send_json({"error": "since must be an integer"}, 400)
 
         events = self.store.since(since, limit=MAX_EVENTS_PER_REQUEST)
-        # next_cursor is the last id handed out, not the store's maximum: with
-        # more than one page pending, the client must come back for the rest.
+        # next_cursor is the last id returned, so the client comes back for the rest.
         next_cursor = events[-1]["id"] if events else since
         self._send_json({
             "events": events,
@@ -153,8 +119,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(grams, int) or grams <= 0:
             return self._send_json({"error": "grams must be a positive integer"}, 400)
         if grams > 500:
-            # A servo jammed open empties the hopper. Refuse absurd amounts
-            # rather than trusting whatever asked.
+            # Refuse absurd amounts: a jammed servo empties the hopper.
             return self._send_json({"error": "grams exceeds the per-request limit"}, 400)
 
         try:
@@ -164,13 +129,6 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json(result)
 
     def _close_feeder(self) -> None:
-        """Shuts a hopper that stays open until it is told to close.
-
-        Only the "hold" feeder has anything to do here. The gate and the paddle
-        close themselves as part of dispensing, so for those this is a no-op
-        rather than an error — a client that closes after every feed is doing
-        something harmless, not something wrong.
-        """
         feeder = self.sensors.feeder
         if not feeder.available:
             return self._send_json({"error": "feeder unavailable"}, 503)
@@ -190,13 +148,6 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json({"ok": True})
 
     def _snapshot(self, query: dict) -> None:
-        """Serves one saved frame by the name its motion event carries.
-
-        The name is validated by SnapshotStore rather than here, and a name that
-        does not match what it writes gets the same 404 as one that has been
-        pruned. Saying "invalid" instead would be telling anyone who asks that
-        the difference is worth exploring.
-        """
         name = (query.get("name") or [""])[0]
         path = self.snapshots.path_for(name) if self.snapshots else None
         if path is None:
@@ -211,23 +162,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(body)))
-        # Snapshots never change once written, so a phone that has one can keep
-        # it rather than fetching it again on every dashboard refresh.
+        # Snapshots never change, so clients may cache them.
         self.send_header("Cache-Control", "public, max-age=86400, immutable")
         self.end_headers()
         self.wfile.write(body)
 
     def _stream(self, query: Optional[dict] = None) -> None:
-        """multipart/x-mixed-replace, the format MjpegInputStream expects.
-
-        ``?camera=<name>`` picks one on a rig with more than one; without it the
-        primary is served, so a client that predates the second camera keeps
-        working unchanged.
-
-        An unknown name is a 404 rather than a fall back to the primary. Showing
-        the hall to a phone that asked for the kitchen would be worse than an
-        error: nothing in the picture says it is the wrong room.
-        """
         name = ((query or {}).get("camera") or [""])[0]
         camera = self.sensors.camera_named(name)
         if camera is None:
@@ -258,21 +198,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"\r\n")
                 time.sleep(interval)
         except ConnectionError:
-            # The phone closed the stream. Entirely normal — it happens every
-            # time the live screen is left. Catch the base class, not the
-            # individual subclasses: a disconnect surfaces as BrokenPipeError
-            # on Linux and ConnectionAbortedError on Windows, and only the
-            # former was caught before, so a dropped viewer printed a traceback.
             log.debug("stream client disconnected")
 
 
 class PetTrackerServer(ThreadingHTTPServer):
-    """Threaded so a client sitting on /stream cannot block /events.
-
-    That matters more than it sounds: the stream response never ends, so a
-    single-threaded server would serve one viewer and nothing else, forever.
-    """
-
     daemon_threads = True
     allow_reuse_address = True
 
@@ -289,11 +218,6 @@ class PetTrackerServer(ThreadingHTTPServer):
 
 
 def local_ip() -> Optional[str]:
-    """The address to type into the app's Pi Connection dialog.
-
-    No packet is actually sent; connect() on a UDP socket just picks the route
-    the kernel would use, which is the interface facing the LAN.
-    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.connect(("8.8.8.8", 80))

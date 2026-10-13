@@ -1,10 +1,3 @@
-"""Motion snapshots: naming, serving safely, and not filling the card.
-
-The camera part of this is the easy part. What can actually go wrong is a file
-name from a URL resolving somewhere it should not, and a directory that grows
-until the Pi stops booting — so those are what is pinned here.
-"""
-
 import logging
 import os
 import shutil
@@ -49,8 +42,6 @@ class SnapshotStoreTest(unittest.TestCase):
             self.assertEqual(JPEG, saved.read())
 
     def test_a_room_name_becomes_a_safe_slug(self):
-        # Rooms are named by whoever ran the service and can contain anything a
-        # shell argument can. The file name cannot.
         name = self.store.save(JPEG, "Living room", 1_752_000_000_000)
         self.assertTrue(name.endswith("-living-room.jpg"))
 
@@ -67,19 +58,13 @@ class SnapshotStoreTest(unittest.TestCase):
         self.assertEqual(2, len(os.listdir(self.directory)))
 
     def test_an_empty_frame_is_not_written(self):
-        # A camera that returned nothing must not leave a 0-byte file that the
-        # app will happily try to display.
         self.assertIsNone(self.store.save(b"", "Kitchen", 1_752_000_000_000))
         self.assertEqual([], os.listdir(self.directory))
 
     def test_a_half_written_frame_is_never_served(self):
         self.store.save(JPEG, "Kitchen", 1_752_000_000_000)
 
-        # Written under a .part name and moved into place, so nothing under the
-        # served name is ever incomplete.
         self.assertFalse(any(n.endswith(".part") for n in os.listdir(self.directory)))
-
-    # ── serving ─────────────────────────────────────────────────────────────
 
     def test_finds_a_saved_snapshot_by_name(self):
         name = self.store.save(JPEG, "Kitchen", 1_752_000_000_000)
@@ -87,7 +72,6 @@ class SnapshotStoreTest(unittest.TestCase):
         self.assertIsNotNone(self.store.path_for(name))
 
     def test_refuses_a_name_that_climbs_out_of_the_directory(self):
-        # The reason names are generated to one shape and checked against it.
         for attempt in ("../../etc/passwd",
                         "..\\..\\windows\\system32\\config\\sam",
                         "/etc/passwd",
@@ -100,12 +84,8 @@ class SnapshotStoreTest(unittest.TestCase):
             self.assertIsNone(self.store.path_for(attempt), attempt)
 
     def test_a_name_that_is_gone_is_simply_not_there(self):
-        # Pruned since the event was written. Not an error — the event stays
-        # valid and useful without its picture.
         self.assertIsNone(
             self.store.path_for("motion-20200101-000000-000-kitchen.jpg"))
-
-    # ── retention ───────────────────────────────────────────────────────────
 
     def test_old_snapshots_are_deleted(self):
         name = self.store.save(JPEG, "Kitchen", 1_752_000_000_000)
@@ -129,14 +109,10 @@ class SnapshotStoreTest(unittest.TestCase):
         long_ago = time.time() - 40 * 24 * 60 * 60
         os.utime(stray, (long_ago, long_ago))
 
-        # A write that died mid-frame leaves one of these, and it is of no use
-        # to anybody.
         self.assertEqual(1, self.store.prune())
 
 
 class MotionSnapshotTest(unittest.TestCase):
-    """What the monitor does with the camera when a sensor fires."""
-
     def setUp(self):
         handle, self.db = tempfile.mkstemp(suffix=".db")
         os.close(handle)
@@ -184,8 +160,6 @@ class MotionSnapshotTest(unittest.TestCase):
         for tick in range(50):
             self.monitor.poll_once(now=1000.0 + tick * 0.2)
 
-        # The debounce governs the camera as well as the log. A cat that settles
-        # in one room would otherwise produce a photo five times a second.
         self.assertEqual(1, len(os.listdir(self.directory)))
 
     def test_no_camera_means_an_event_without_a_picture(self):
@@ -194,8 +168,6 @@ class MotionSnapshotTest(unittest.TestCase):
 
         self.monitor.poll_once(now=1000.0)
 
-        # The reading is what matters. Knowing the cat was in the kitchen is
-        # worth more than the photograph of it.
         event = self.motion_events()[0]
         self.assertEqual("Kitchen", event["room"])
         self.assertNotIn("snapshot", event)
@@ -209,7 +181,6 @@ class MotionSnapshotTest(unittest.TestCase):
 
         self.monitor.poll_once(now=1000.0)
 
-        # A webcam pulled out mid-run is a picture lost, not a sensor lost.
         self.assertEqual(1, len(self.motion_events()))
         self.assertNotIn("snapshot", self.motion_events()[0])
 

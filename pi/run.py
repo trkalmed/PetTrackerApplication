@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Entry point.
-
-    python3 run.py --fake        simulated sensors, runs anywhere
-    python3 run.py               real hardware, Raspberry Pi only
-
---fake is not a toy mode. It runs the same service, the same event pipeline and
-the same HTTP contract as the real thing; only the five sensor objects differ.
-Point the Android app at a laptop running --fake and the entire app-to-Pi path
-can be finished and debugged before any wiring exists.
-"""
+"""Entry point for the Pet Tracker service."""
 
 import argparse
 import logging
@@ -21,20 +12,14 @@ from pettracker.store import EventStore
 
 
 def pir_pins(args, rooms):
-    """The GPIO for each room, defaults filled in and the pairing checked.
-
-    Resolved before any hardware is touched: a typo should be a message at
-    startup, not two claimed pins and a half-built sensor set.
-    """
     from pettracker.sensors.real import DEFAULT_PIR_PINS, parse_pins, pin_map
 
     pins = parse_pins(args.pir_pins) if args.pir_pins else DEFAULT_PIR_PINS[:len(rooms)]
-    pin_map(rooms, pins)          # raises ValueError with something readable
+    pin_map(rooms, pins)
     return pins
 
 
 def build_scale(args, log):
-    """The load cell on its own, for the two bring-up modes."""
     from pettracker.sensors.real import (DEFAULT_SCALE_PINS, HX711Scale,
                                          parse_pins)
 
@@ -50,12 +35,6 @@ def build_scale(args, log):
 
 
 def scale_mode(args, log) -> int:
-    """--check-scale and --calibrate-scale, without starting the service.
-
-    Both need the bowl still and nobody else clocking the amplifier, so the
-    monitor thread stays off. Two readers on one HX711 interleave their clock
-    pulses and produce two corrupt samples rather than one good one.
-    """
     from pettracker.bringup import calibrate_scale, check_scale
 
     if args.fake:
@@ -82,16 +61,10 @@ def scale_mode(args, log) -> int:
 
 
 def _suggest_swapped_pins(args, scale, log) -> None:
-    """Nothing read — see whether the other pin order does.
-
-    Worth the extra ten seconds at the end of a failed check: swapping DT and
-    SCK produces exactly the same symptom as an amplifier with no power, and
-    only one of the two can be ruled out from an armchair.
-    """
     from pettracker.sensors.real import DEFAULT_SCALE_PINS, parse_pins, probe_scale_pins
 
     pins = parse_pins(args.scale_pins) if args.scale_pins else DEFAULT_SCALE_PINS
-    scale.close()          # the probe needs the pins
+    scale.close()
 
     print()
     print("Trying the pins the other way round...")
@@ -109,12 +82,6 @@ def _suggest_swapped_pins(args, scale, log) -> None:
 
 
 def parse_sweep(spec):
-    """"50,180,50,0" -> [50.0, 180.0, 50.0, 0.0]; empty or None -> None.
-
-    Rejected loudly rather than silently ignored: a mistyped sweep that fell
-    back to the default would move the wheel differently from what the person
-    asked for, and the only symptom would be a feeder that meters wrongly.
-    """
     if not spec or not spec.strip():
         return None
 
@@ -137,16 +104,6 @@ def parse_sweep(spec):
 
 
 def parse_camera_rooms(spec):
-    """"csi=Kitchen,usb=Hall" -> {"Kitchen": "csi", "Hall": "usb"}.
-
-    Empty or None gives None, meaning nothing was said about where the cameras
-    point and the primary one answers for every room — the old behaviour, kept
-    for rigs whose single camera watches the only room worth photographing.
-
-    Written camera-first because that is how the rig reads: one camera is bolted
-    up, and it sees these rooms. Stored room-first because that is how it is
-    asked: a PIR fires in a room, and the question is which camera can see it.
-    """
     if not spec or not spec.strip():
         return None
 
@@ -172,7 +129,6 @@ def parse_camera_rooms(spec):
 
 
 def build_feeder(args):
-    """The feeder this rig has, with whatever numbers have been measured so far."""
     from pettracker.sensors.real import (FEEDER_KINDS, HoldFeeder, PaddleFeeder,
                                          ServoFeeder)
 
@@ -215,7 +171,6 @@ def build_feeder(args):
 
 
 def servo_mode(args, log) -> int:
-    """--check-servo: move the servo by hand, without starting the service."""
     from pettracker.bringup import check_servo
 
     if args.fake:
@@ -238,7 +193,6 @@ def servo_mode(args, log) -> int:
 
 
 def camera_mode(args, log) -> int:
-    """--check-camera: prove the camera before anything depends on it."""
     from pettracker.bringup import check_camera
 
     if args.fake:
@@ -253,9 +207,6 @@ def camera_mode(args, log) -> int:
             log.error("%s", e)
             return 2
 
-        # Every camera named, one after another. Checking only the first would
-        # pass a rig whose second camera is unplugged, which is exactly the rig
-        # someone runs this to find.
         for name, camera in cameras.items():
             print()
             print(f"--- {name} ---")
@@ -273,7 +224,6 @@ def camera_mode(args, log) -> int:
 
 
 def gps_mode(args, log) -> int:
-    """--check-gps: watch the sentences arrive, without starting the service."""
     from pettracker.bringup import check_gps
 
     if args.fake:
@@ -293,13 +243,6 @@ def gps_mode(args, log) -> int:
 
 
 def check_motion_mode(args, rooms, log) -> int:
-    """--check-motion: watch the PIRs and exit, without starting the service.
-
-    Bringing a sensor up is a different job from running the service, and it
-    needs the opposite of a daemon: no event log, no HTTP, no debounce — just
-    the pin, on screen, now. Everything else stays off so nothing else can be
-    blamed for what you see.
-    """
     from pettracker.bringup import check_motion
 
     if args.fake:
@@ -324,13 +267,6 @@ def check_motion_mode(args, rooms, log) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Every flag the service takes, in one place the tests can reach.
-
-    Split out of main() so test_service_unit.py can feed the systemd unit's own
-    ExecStart line to the real parser. A unit that passes a flag this parser
-    does not have is a service that exits 2 at boot, and the only place that
-    used to show up was the journal on the Pi.
-    """
     parser = argparse.ArgumentParser(description="Pet Tracker Pi service")
     parser.add_argument("--fake", action="store_true",
                         help="use simulated sensors instead of real hardware")
@@ -511,10 +447,6 @@ def main() -> int:
             log.error("%s", e)
             return 2
 
-    # After the sensors exist, because both halves of the mapping are checked
-    # against what this rig actually has — a camera it was not given, or a room
-    # no PIR watches, is a configuration error worth exiting for rather than a
-    # room that quietly never produces a picture.
     try:
         camera_rooms = parse_camera_rooms(args.camera_rooms)
         if camera_rooms:
@@ -528,11 +460,6 @@ def main() -> int:
 
     store = EventStore(args.db)
 
-    # Configured rather than detected. Asking whether the camera is available
-    # *right now* used to decide this, which meant a Pi that started before its
-    # webcam enumerated ran the whole session with snapshots silently off —
-    # events still arriving, only the pictures missing. The camera reopens
-    # itself now, so the only question here is whether this rig has one at all.
     snapshots = None
     if not args.no_snapshots and args.camera.strip() != "none":
         snapshots = SnapshotStore(args.snapshot_dir)

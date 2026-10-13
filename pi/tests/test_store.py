@@ -1,5 +1,3 @@
-"""Event buffer behaviour, especially the cursor the app polls with."""
-
 import os
 import sys
 import tempfile
@@ -45,7 +43,6 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual("load-cell", events[0]["source"])
 
     def test_the_cursor_is_exclusive(self):
-        # An app that re-sends its last cursor must get nothing, not a repeat.
         first = self.store.append(KIND_MOTION, {"room": "Kitchen"})
         self.store.append(KIND_MOTION, {"room": "Hall"})
 
@@ -63,8 +60,6 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual(["Kitchen", "Hall", "Living room"], rooms)
 
     def test_ids_increase_even_when_timestamps_do_not(self):
-        # The Pi has no real-time clock, so its clock jumps backwards when NTP
-        # first syncs. The cursor must not care.
         self.store.append(KIND_MOTION, {"room": "Kitchen"}, timestamp_ms=9_000_000)
         self.store.append(KIND_MOTION, {"room": "Hall"}, timestamp_ms=1_000)
 
@@ -107,8 +102,6 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual(["recent"], rooms)
 
     def test_it_survives_writes_from_several_threads(self):
-        # The monitor thread appends while the HTTP threads read; SQLite
-        # connections cannot be shared across threads, hence thread-local ones.
         def writer(n):
             for i in range(20):
                 self.store.append(KIND_MOTION, {"room": f"t{n}-{i}"})
@@ -124,7 +117,6 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual(80, len(set(ids)))
 
     def test_reopening_keeps_what_was_written(self):
-        # The phone may be away for days; a Pi reboot must not lose the backlog.
         self.store.append(KIND_FEEDING, {"grams": 25, "type": "EATEN"})
         self.store.close()
 

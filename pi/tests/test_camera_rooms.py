@@ -1,16 +1,3 @@
-"""Which camera answers for which room.
-
-A camera is bolted to one place. The rig has the ribbon camera in the kitchen,
-and every PIR in the house was being photographed with it — so a sighting in the
-bathroom reached the phone captioned "BedRoom/Bathroom" with a picture of the
-kitchen attached. The event was true and the picture was of somewhere else, and
-nothing on the card said so.
-
-The rule these tests hold to is the same one the rest of the project runs on: an
-absent reading is shown as absent. A room no camera can see gets a motion event
-with no picture, which the app already renders as a card without a thumbnail.
-"""
-
 import logging
 import os
 import shutil
@@ -41,15 +28,10 @@ def tearDownModule():
 class ParseCameraRoomsTest(unittest.TestCase):
 
     def test_pairs_are_stored_by_room(self):
-        # Written camera-first, because that is how the rig reads. Asked
-        # room-first, because that is the question a firing PIR poses.
         self.assertEqual({"Kitchen": "csi", "Hall": "usb"},
                          parse_camera_rooms("csi=Kitchen,usb=Hall"))
 
     def test_a_room_name_may_contain_spaces_and_punctuation(self):
-        # "Living Room / Hall" is a real room name on this rig. Only the comma
-        # is reserved, and room names cannot contain one for the same reason
-        # --rooms cannot.
         self.assertEqual({"Living Room / Hall": "usb"},
                          parse_camera_rooms("usb=Living Room / Hall"))
 
@@ -58,9 +40,6 @@ class ParseCameraRoomsTest(unittest.TestCase):
                          parse_camera_rooms("csi=Kitchen,csi=Hall"))
 
     def test_empty_means_no_mapping(self):
-        # Not an error: it is what every rig that has never configured this
-        # passes, and it must keep meaning "say nothing about where cameras
-        # point" rather than "no room gets a picture".
         self.assertIsNone(parse_camera_rooms(""))
         self.assertIsNone(parse_camera_rooms("   "))
         self.assertIsNone(parse_camera_rooms(None))
@@ -76,9 +55,6 @@ class ParseCameraRoomsTest(unittest.TestCase):
             parse_camera_rooms("=Kitchen")
 
     def test_one_room_cannot_have_two_cameras(self):
-        # Silently keeping the last would be a coin toss decided by argument
-        # order, and the wrong side of it looks exactly like the bug this whole
-        # mapping exists to fix.
         with self.assertRaises(ValueError):
             parse_camera_rooms("csi=Kitchen,usb=Kitchen")
 
@@ -122,9 +98,6 @@ class CameraForRoomTest(unittest.TestCase):
             self.sensors.set_camera_rooms({"Kitchen": "doorbell"})
 
     def test_a_room_no_sensor_watches_is_rejected(self):
-        # A typo here fails silently in the worst direction — the room simply
-        # stops producing pictures, and the only symptom is a sighting that
-        # never has one.
         with self.assertRaises(ValueError):
             self.sensors.set_camera_rooms({"Ktichen": "csi"})
 
@@ -140,14 +113,10 @@ class CameraForRoomTest(unittest.TestCase):
     def test_health_reports_where_the_cameras_point(self):
         self.sensors.set_camera_rooms({"Kitchen": "csi"})
 
-        # So the mapping can be checked from the phone during a demo, without
-        # an SSH session to read the unit file.
         self.assertEqual({"Kitchen": "csi"}, self.sensors.health()["camera_rooms"])
 
 
 class MotionSnapshotRoutingTest(unittest.TestCase):
-    """The bug itself, at the level the phone sees it."""
-
     def setUp(self):
         handle, self.db = tempfile.mkstemp(suffix=".db")
         os.close(handle)
@@ -195,8 +164,6 @@ class MotionSnapshotRoutingTest(unittest.TestCase):
         self.assertNotIn("snapshot", events["BedRoom/Bathroom"])
 
     def test_the_uncovered_room_still_records_the_sighting(self):
-        # The picture is the part that was wrong. The reading is not, and losing
-        # it would trade one fault for a worse one.
         self.sensors.set_camera_rooms({"Kitchen": "csi"})
         self.bathroom.force(True)
 
@@ -206,9 +173,6 @@ class MotionSnapshotRoutingTest(unittest.TestCase):
                          [e["room"] for e in self.motion_events()])
 
     def test_only_one_file_is_written(self):
-        # The frame for the uncovered room must not be taken and then discarded:
-        # a snapshot per PIR fills the card at three times the rate, and on this
-        # rig the CSI camera would be read for a room it cannot see.
         self.sensors.set_camera_rooms({"Kitchen": "csi"})
         self.kitchen.force(True)
         self.bathroom.force(True)

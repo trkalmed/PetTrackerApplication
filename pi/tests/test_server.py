@@ -1,11 +1,3 @@
-"""The HTTP contract, exercised against a real server on a real socket.
-
-Runs the actual :class:`PetTrackerServer` with simulated sensors rather than
-calling handlers directly, so routing, status codes and JSON shapes are all
-covered. This is the contract the Android side codes against, so a change that
-breaks it should break a test.
-"""
-
 import json
 import os
 import sys
@@ -38,8 +30,6 @@ class ServerTest(unittest.TestCase):
         cls.snapshots_dir = tempfile.mkdtemp()
         cls.snapshots = SnapshotStore(cls.snapshots_dir)
         cls.monitor = Monitor(cls.sensors, cls.store, snapshots=cls.snapshots)
-        # Port 0 lets the OS pick a free one, so the suite cannot collide with a
-        # service already running on 8080.
         cls.server = PetTrackerServer(
             cls.sensors, cls.store, cls.monitor, host="127.0.0.1", port=0,
             snapshots=cls.snapshots)
@@ -77,20 +67,14 @@ class ServerTest(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode())
 
-    # ── /health ─────────────────────────────────────────────────────────────
-
     def test_health_reports_every_sensor(self):
         status, body = self.get("/health")
 
         self.assertEqual(200, status)
         self.assertTrue(body["ok"])
-        # Which sensors are live is the whole point: it is how you tell a Pi
-        # with the load cell unplugged from one that is simply not being used.
         for key in ("scale", "feeder", "camera", "motion"):
             self.assertIn(key, body["sensors"])
         self.assertIn("Kitchen", body["sensors"]["motion"])
-
-    # ── /events ─────────────────────────────────────────────────────────────
 
     def test_events_starts_empty_and_reports_a_cursor(self):
         status, body = self.get("/events?since=0")
@@ -144,8 +128,6 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertIn("events", body)
 
-    # ── /feed ───────────────────────────────────────────────────────────────
-
     def test_feeding_runs_the_servo(self):
         before = len(self.sensors.feeder.dispensed_calls)
 
@@ -156,8 +138,6 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(before + 1, len(self.sensors.feeder.dispensed_calls))
 
     def test_feeding_does_not_itself_record_a_meal(self):
-        # The servo controls time open, not grams. Recording the request would
-        # log a number nothing measured, and double-count against the load cell.
         _, before = self.get("/events?since=0")
         feeding_before = len([e for e in before["events"] if e["kind"] == KIND_FEEDING])
 
@@ -173,22 +153,15 @@ class ServerTest(unittest.TestCase):
             self.assertEqual(400, status, f"payload {payload} should be rejected")
 
     def test_an_absurd_amount_is_refused(self):
-        # A jammed gate empties the hopper; do not take any number on trust.
         status, _ = self.post("/feed", {"grams": 5000})
 
         self.assertEqual(400, status)
-
-    # ── /tare ───────────────────────────────────────────────────────────────
 
     def test_tare_succeeds(self):
         status, body = self.post("/tare")
 
         self.assertEqual(200, status)
         self.assertTrue(body["ok"])
-
-    # ── routing ─────────────────────────────────────────────────────────────
-
-    # ── /snapshot ───────────────────────────────────────────────────────────
 
     def test_a_saved_snapshot_is_served_as_an_image(self):
         frame = bytes([0xFF, 0xD8]) + b" frame " + bytes([0xFF, 0xD9])
@@ -204,14 +177,9 @@ class ServerTest(unittest.TestCase):
         status, body = self.get_expecting_error(
             "/snapshot?name=motion-20200101-000000-000-kitchen.jpg")
 
-        # Pruned since its event was written. Ordinary, not an error worth
-        # distinguishing.
         self.assertEqual(404, status)
 
     def test_a_name_that_climbs_out_of_the_directory_is_404(self):
-        # Same answer as a missing file on purpose: telling the caller that
-        # "invalid" and "not found" differ is telling them the difference is
-        # worth exploring.
         for attempt in ("../../etc/passwd", "/etc/passwd", "kitchen.jpg", ""):
             status, _ = self.get_expecting_error(f"/snapshot?name={attempt}")
             self.assertEqual(404, status, attempt)
@@ -229,11 +197,7 @@ class ServerTest(unittest.TestCase):
                 urllib.request.urlopen(self.url(path), timeout=5)
             self.assertEqual(404, caught.exception.code)
 
-    # ── /stream ─────────────────────────────────────────────────────────────
-
     def test_the_stream_serves_parseable_jpeg_frames(self):
-        # Parsed the way MjpegInputStream.readJpegFrame does: scan for the SOI
-        # and EOI markers rather than trusting the multipart headers.
         response = urllib.request.urlopen(self.url("/stream"), timeout=5)
         try:
             self.assertIn("multipart/x-mixed-replace",

@@ -1,12 +1,4 @@
-"""Background polling: sensors in, events in the store.
-
-One thread does all the polling. Three sensors at a few hertz is nowhere near
-enough work to justify a thread each, and a single loop means the readings share
-a clock and cannot interleave confusingly in the log.
-
-Nothing here talks HTTP and nothing here talks to hardware directly — it takes a
-:class:`SensorSet`, so it runs identically against fakes and against a Pi.
-"""
+"""Background polling: sensors in, events into the store."""
 
 import logging
 import threading
@@ -23,8 +15,6 @@ log = logging.getLogger(__name__)
 
 
 class Monitor:
-    """Polls the sensors and appends what it finds."""
-
     def __init__(
         self,
         sensors: SensorSet,
@@ -37,17 +27,6 @@ class Monitor:
         detector: Optional[MealDetector] = None,
         snapshots: Optional[SnapshotStore] = None,
     ):
-        """
-        :param motion_debounce_s: a PIR latches high for seconds and retriggers
-            constantly while an animal is in the room. Without a debounce one
-            visit becomes hundreds of rows saying the same thing.
-        :param weight_log_interval_s: raw weights are recorded occasionally for
-            diagnostics. Meals come from the detector, not from these.
-        :param snapshots: where motion snapshots are written, or None for a rig
-            with no camera or with snapshots turned off. The picture is taken on
-            the same debounce as the event, so a cat that settles in one room
-            produces one photo every 30 s rather than one per poll.
-        """
         self._sensors = sensors
         self._store = store
         self._poll_interval = poll_interval_s
@@ -67,8 +46,6 @@ class Monitor:
         self._last_prune = 0.0
         self._latest_weight: Optional[float] = None
 
-    # ── lifecycle ───────────────────────────────────────────────────────────
-
     def start(self) -> None:
         if self._thread is not None:
             return
@@ -86,21 +63,16 @@ class Monitor:
     def latest_weight_grams(self) -> Optional[float]:
         return self._latest_weight
 
-    # ── the loop ────────────────────────────────────────────────────────────
-
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
                 self.poll_once()
             except Exception:
-                # One bad reading must not kill the loop. A Pi that stops
-                # logging because a wire came loose is worse than one that
-                # keeps going with a gap.
+                # One bad reading must not stop the loop.
                 log.exception("poll failed")
             self._stop.wait(self._poll_interval)
 
     def poll_once(self, now: Optional[float] = None) -> None:
-        """One pass over every sensor. Separate from the loop so tests can step it."""
         if now is None:
             now = time.time()
         now_ms = int(now * 1000)
@@ -109,9 +81,7 @@ class Monitor:
         self._poll_motion(now, now_ms)
         self._poll_location(now, now_ms)
 
-        # A hopper that stays open until told to close needs something watching
-        # for the close that never comes — a flat phone, a dropped connection, a
-        # pocket. Feeders that shut themselves have no tick and are skipped.
+        # Close a hold feeder that was never told to close.
         feeder_tick = getattr(self._sensors.feeder, "tick", None)
         if feeder_tick is not None:
             feeder_tick()
@@ -122,8 +92,6 @@ class Monitor:
             if removed:
                 log.info("pruned %d old events", removed)
             if self._snapshots is not None:
-                # On the same schedule as the events: a snapshot outliving the
-                # event that explains it is just a file nobody can interpret.
                 removed = self._snapshots.prune(now)
                 if removed:
                     log.info("pruned %d old snapshots", removed)
@@ -179,20 +147,6 @@ class Monitor:
                      " (snapshot)" if snapshot else "")
 
     def _poll_location(self, now: float, now_ms: int) -> None:
-        """Records where the Pi is.
-
-        Worth being clear about what this is: the position of the Pi. For a
-        feeder bolted to a kitchen floor that is a constant, and the app labels
-        it as the tracker's location rather than the pet's for exactly that
-        reason.
-
-        The interval is configurable because the two uses want opposite things.
-        A fixed installation wants a fix every few minutes — enough to show the
-        module still works, rare enough that the event log is not mostly GPS. A
-        Pi carried on a walk wants one every few seconds, because there the
-        points *are* the result: at 300 s a fifteen-minute route is three dots
-        and a straight line between them, which is not a track of anything.
-        """
         location = self._sensors.location
         if location is None or not location.available:
             return
@@ -202,8 +156,6 @@ class Monitor:
 
         fix = location.read_fix()
         if fix is None:
-            # Talking, but no fix. Normal indoors, and not worth a row: the
-            # absence of location events is the same information.
             return
 
         self._store.append(KIND_LOCATION, fix, timestamp_ms=now_ms, source="gps")
@@ -211,17 +163,6 @@ class Monitor:
                  fix["lat"], fix["lon"], fix.get("satellites", 0))
 
     def _capture(self, room: str, now_ms: int) -> Optional[str]:
-        """One frame, if there is a camera and it is willing.
-
-        Every failure here is swallowed on purpose. A camera that has been
-        unplugged, a driver that returns nothing, a full SD card — none of those
-        should cost the motion event, which is the reading that actually
-        matters. The event simply arrives without a picture.
-
-        Which camera depends on the room: a camera in the kitchen cannot show
-        what moved in the bathroom, so a room it does not cover gets an event
-        with no picture rather than somewhere else's.
-        """
         if self._snapshots is None:
             return None
 
@@ -239,17 +180,7 @@ class Monitor:
             return None
         return self._snapshots.save(frame, room, now_ms)
 
-    # ── commands ────────────────────────────────────────────────────────────
-
     def dispense(self, grams: int) -> dict:
-        """Runs the feeder.
-
-        Deliberately does not record a feeding event. The servo controls how
-        long the hopper is open, not how much comes out; the load cell measures
-        what actually landed and the detector logs that. Recording the requested
-        amount here would double-count, and would record a number nothing
-        verified.
-        """
         if not self._sensors.feeder.available:
             raise RuntimeError("feeder unavailable")
         self._sensors.feeder.dispense(grams)

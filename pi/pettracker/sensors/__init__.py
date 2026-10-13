@@ -1,4 +1,4 @@
-"""Sensor interfaces, simulated implementations, and the real Pi ones."""
+"""Sensor interfaces, simulated implementations and the real Pi ones."""
 
 from .base import Camera, Feeder, LocationSensor, MotionSensor, Scale, SensorSet
 

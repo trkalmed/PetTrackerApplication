@@ -1,13 +1,3 @@
-"""The HX711 protocol, and grams.
-
-Everything here runs against a fake pair of pins that play back a chosen 24-bit
-pattern, so the bit-level protocol is testable without an amplifier — which
-matters, because the failure modes are all silent. A sign bit read the wrong way
-round, a gain pulse missed, a saturated reading passed through as a weight: none
-of them raise anything. They produce a number, the dashboard draws it, and the
-pet appears to have eaten.
-"""
-
 import io
 import logging
 import os
@@ -31,13 +21,6 @@ def tearDownModule():
 
 
 class FakeAmplifier:
-    """A pin pair that clocks out whatever 24-bit values it was given.
-
-    Models the one thing the protocol depends on: DOUT is high while the chip is
-    busy, goes low when a sample is ready, and yields one bit per rising clock
-    edge, most significant first.
-    """
-
     def __init__(self, *values, ready=True):
         self.pending = list(values)
         self.ready = ready
@@ -53,8 +36,6 @@ class FakeAmplifier:
         else:
             self.bits = []
 
-    # ── the two pins ────────────────────────────────────────────────────────
-
     @property
     def dout(self):
         return self
@@ -65,15 +46,14 @@ class FakeAmplifier:
 
     def read(self) -> bool:
         if not self.ready:
-            return True                     # busy, forever
+            return True
         if self._reading:
             return bool(self._current_bit)
-        return False                        # low: a sample is waiting
+        return False
 
     def write(self, high: bool) -> None:
         if not high:
             return
-        # Rising edge: hand over the next bit, or count a gain pulse.
         if self.bits:
             self._current_bit = self.bits.pop(0)
             self._reading = True
@@ -108,13 +88,11 @@ class ProtocolTest(unittest.TestCase):
         return HX711(pins.dout, pins.sck), pins
 
     def test_reads_a_positive_value_most_significant_bit_first(self):
-        chip, _ = self.read(0x0186A0)        # 100,000
+        chip, _ = self.read(0x0186A0)
 
         self.assertEqual(100_000, chip.read_raw())
 
     def test_reads_a_negative_value_as_twos_complement(self):
-        # Bit 23 set means negative. Read as unsigned this is 16,677,216-ish —
-        # a bowl that weighs as much as a car, and no exception anywhere.
         chip, _ = self.read(0xFFFFFF)
 
         self.assertEqual(-1, chip.read_raw())
@@ -122,15 +100,9 @@ class ProtocolTest(unittest.TestCase):
     def test_all_zero_bits_are_not_a_weight_of_zero(self):
         chip, _ = self.read(0x000000)
 
-        # A real cell never sits exactly on zero; it wanders by a few counts.
-        # Twenty-four zero bits means the data line was low for the whole read —
-        # nothing driving it, or the chip powered itself down mid-read because a
-        # clock pulse was held too long. Returning 0 would put "the bowl is
-        # empty" on the dashboard on the strength of a dead wire.
         self.assertIsNone(chip.read_raw())
 
     def test_a_reading_of_one_count_is_still_a_reading(self):
-        # The zero check must not become "small numbers are suspicious".
         chip, _ = self.read(0x000001)
 
         self.assertEqual(1, chip.read_raw())
@@ -139,9 +111,6 @@ class ProtocolTest(unittest.TestCase):
         chip, pins = self.read(0x000001)
         chip.read_raw()
 
-        # These pulses carry no data; they choose the channel and gain for the
-        # *next* conversion. Miss them and every second reading is from the
-        # wrong channel at the wrong gain.
         self.assertEqual(GAIN_PULSES[128], pins.extra_pulses)
 
     def test_a_different_gain_clocks_a_different_number_of_pulses(self):
@@ -155,8 +124,6 @@ class ProtocolTest(unittest.TestCase):
     def test_an_impossible_gain_is_refused_at_construction(self):
         pins = FakeAmplifier(0x000001)
 
-        # 100 is not a gain the chip has. Better to say so than to clock some
-        # arbitrary number of pulses and read from an unknown channel.
         with self.assertRaises(ValueError):
             HX711(pins.dout, pins.sck, gain=100)
 
@@ -166,13 +133,9 @@ class ProtocolTest(unittest.TestCase):
         chip = HX711(pins.dout, pins.sck, ready_timeout_s=0.5,
                      clock=lambda: next(clock, 99.0))
 
-        # A disconnected DT line sits high forever. Waiting for it would stop
-        # the monitor thread and take the motion sensors down with it.
         self.assertIsNone(chip.read_raw())
 
     def test_saturated_readings_are_not_weights(self):
-        # A cell that is disconnected or miswired rails the amplifier. Returned
-        # as a number, full scale would read as an enormous meal.
         for saturated in (0x7FFFFF, 0x800000):
             chip, _ = self.read(saturated)
             self.assertIsNone(chip.read_raw(), hex(saturated))
@@ -186,9 +149,6 @@ class ClockSpeedTest(unittest.TestCase):
 
         held = chip.clock_high_seconds(pulses=20)
 
-        # The number that decides whether this chip can be driven from Python
-        # at all: past 60 µs the chip powers itself down mid-read and every
-        # reading comes back as zeros.
         self.assertGreater(held, 0.0)
         self.assertLess(held, POWER_DOWN_THRESHOLD_S * 100)
 
@@ -202,9 +162,6 @@ class MedianTest(unittest.TestCase):
         self.assertEqual(1001, chip.read_median(3))
 
     def test_one_wild_sample_does_not_move_the_answer(self):
-        # The defence this exists for. A clock pulse stretched by the scheduler
-        # produces a completely wrong sample, not a slightly wrong one, and a
-        # mean would let it drag the reading.
         pins = FakeAmplifier(1000, 900_000, 1001, 1002, 999)
         chip = HX711(pins.dout, pins.sck)
 
@@ -214,17 +171,11 @@ class MedianTest(unittest.TestCase):
         pins = FakeAmplifier(0x7FFFFF, 0x7FFFFF, 0x7FFFFF, 1000, 1001)
         chip = HX711(pins.dout, pins.sck)
 
-        # Two usable readings out of five is a hint, not a measurement, and the
-        # meal detector should not act on it.
         self.assertIsNone(chip.read_median(5))
 
 
 class GramsTest(unittest.TestCase):
-    """Counts to grams — the part that needs a number off a real bench."""
-
     class Scale:
-        """The arithmetic from HX711Scale, without claiming any pins."""
-
         def __init__(self, chip, factor):
             self.chip, self.factor, self.offset = chip, factor, 0.0
 
@@ -250,14 +201,11 @@ class GramsTest(unittest.TestCase):
         scale = self.scale(1000, 43_870)
         scale.tare()
 
-        # The bowl itself weighs something, and it is not food.
         self.assertAlmostEqual(100.0, scale.read_grams(), places=1)
 
     def test_a_failed_reading_is_none_not_zero(self):
         scale = self.scale(0x7FFFFF)
 
-        # An amplifier that has stopped answering and an empty bowl are
-        # different facts. Only one of them means the pet ate everything.
         self.assertIsNone(scale.read_grams())
 
     def test_a_zero_factor_does_not_divide_by_zero(self):
@@ -267,7 +215,6 @@ class GramsTest(unittest.TestCase):
 
 
 def answering(*answers):
-    """An `ask` that ignores the prompt and returns the next canned answer."""
     remaining = iter(answers)
 
     def ask(_prompt):
@@ -310,8 +257,6 @@ class CalibrationTest(unittest.TestCase):
 
         factor = calibrate_scale(scale, out=out, ask=answering("", "100"))
 
-        # The bowl is resting on something other than the cell — the commonest
-        # mechanical mistake, and one that produces a perfectly steady reading.
         self.assertIsNone(factor)
         self.assertIn("not taking the load", out.getvalue())
 
@@ -321,8 +266,6 @@ class CalibrationTest(unittest.TestCase):
 
         factor = calibrate_scale(scale, out=out, ask=answering("", "100"))
 
-        # E+/E- swapped. It works exactly as well; the reading just falls as
-        # weight is added, and the factor comes out negative.
         self.assertLess(factor, 0)
         self.assertIn("wiring swap", out.getvalue())
 
@@ -339,13 +282,6 @@ if __name__ == "__main__":
 
 
 class ReadingDiagnosisTest(unittest.TestCase):
-    """What --check-scale says when the numbers are suspicious.
-
-    A load cell cannot report that it is unhappy; every fault arrives as a
-    plausible number. These three each send you somewhere different, which is
-    why the tool says which rather than printing counts and leaving it to you.
-    """
-
     class Scale:
         available = True
         calibrated = False
@@ -368,9 +304,6 @@ class ReadingDiagnosisTest(unittest.TestCase):
         return out.getvalue()
 
     def test_all_zeros_points_at_the_data_line(self):
-        # An HX711 with no power leaves DT low. Low reads as ready, then as
-        # twenty-four zero bits — which is not a weight of zero, it is no
-        # amplifier at all.
         text = self.run_check(0, 0, 0)
 
         self.assertIn("stuck", text)
@@ -379,7 +312,6 @@ class ReadingDiagnosisTest(unittest.TestCase):
     def test_an_unchanging_reading_points_at_the_cell(self):
         text = self.run_check(8_388_000, 8_388_000)
 
-        # The amplifier is talking; nothing is changing its input.
         self.assertIn("not wired to E+", text.replace("\n", " "))
 
     def test_a_tiny_spread_is_called_noise(self):
@@ -395,8 +327,6 @@ class ReadingDiagnosisTest(unittest.TestCase):
 
 
 class DiagnosisTest(unittest.TestCase):
-    """Three failures that all look like silence, told apart in words."""
-
     def test_a_line_that_never_goes_low_names_power_and_ground(self):
         clock = iter([0.0, 1.0, 2.0])
         pins = FakeAmplifier(1000, ready=False)
@@ -409,8 +339,6 @@ class DiagnosisTest(unittest.TestCase):
         pins = FakeAmplifier(0x000000)
         chip = HX711(pins.dout, pins.sck)
 
-        # The commonest of the three, and the one most often mistaken for an
-        # empty bowl.
         self.assertIn("DT is not on the pin", chip.diagnose())
 
     def test_a_railed_amplifier_names_the_cell_wiring(self):
@@ -427,17 +355,7 @@ class DiagnosisTest(unittest.TestCase):
 
 
 class AvailabilityTest(unittest.TestCase):
-    """What /health means when it says the scale is there.
-
-    It used to mean "the two GPIO pins were claimed", which stayed true through
-    an amplifier killed by reversed power — /health reported a working scale for
-    an afternoon while every reading was twenty-four zero bits. A sensor is
-    available when it can do its job.
-    """
-
     class Scale:
-        """HX711Scale's availability logic, without claiming pins."""
-
         READING_FRESHNESS_S = 10.0
         PROBE_INTERVAL_S = 5.0
 
@@ -478,15 +396,11 @@ class AvailabilityTest(unittest.TestCase):
         self.assertTrue(self.scale(*([1000] * 10)).available)
 
     def test_an_amplifier_that_returns_nothing_is_not_available(self):
-        # Exactly the state a board killed by reversed power leaves behind: pins
-        # claimed, reads all zero.
         self.assertFalse(self.scale(*([0] * 10)).available)
 
     def test_claimed_stays_true_so_the_bring_up_tools_still_run(self):
         scale = self.scale(*([0] * 10))
 
-        # --check-scale exists to investigate exactly this, so it must not
-        # refuse to start on the grounds that there is a problem.
         self.assertFalse(scale.available)
         self.assertTrue(scale.claimed)
 
@@ -497,8 +411,6 @@ class AvailabilityTest(unittest.TestCase):
         scale.read_raw()
         clock.advance(5)
 
-        # The monitor reads several times a second while the service runs, so
-        # /health should not be clocking the chip itself on every poll.
         self.assertTrue(scale.available)
 
     def test_a_stale_reading_is_not_evidence(self):
@@ -508,8 +420,6 @@ class AvailabilityTest(unittest.TestCase):
 
         clock.advance(60)
 
-        # A minute-old reading describes a minute ago. With the monitor running
-        # this cannot happen; without it, the honest answer is "ask again".
         self.assertFalse(scale.available)
 
     def test_probes_are_rate_limited(self):
@@ -526,23 +436,10 @@ class AvailabilityTest(unittest.TestCase):
         for _ in range(10):
             scale.available
 
-        # Each probe waits on the chip, and /health asks on every poll.
         self.assertEqual(1, len(reads))
 
 
 class TareSurvivesARestart(unittest.TestCase):
-    """The tare offset is remembered on disk.
-
-    It lived only in memory, and the unit restarts on failure and at boot — so
-    every restart reported the bowl's own weight as food. That surfaced as an
-    app showing 1196 g in an empty bowl, which looks like a calibration fault
-    and is a lifetime fault.
-
-    The offset is a measurement of this bowl on this cell, not configuration,
-    which is why it belongs in a file the service writes rather than in
-    service.env alongside the calibration factor.
-    """
-
     def setUp(self):
         self.directory = tempfile.mkdtemp()
         self.path = os.path.join(self.directory, "scale-tare")
@@ -551,8 +448,6 @@ class TareSurvivesARestart(unittest.TestCase):
         shutil.rmtree(self.directory, ignore_errors=True)
 
     def _scale(self):
-        # servo/pin claiming is irrelevant here: with no chip the arithmetic
-        # under test is the offset handling, which is what this is about.
         from pettracker.sensors.real import HX711Scale
         return HX711Scale.__new__(HX711Scale)
 
@@ -575,8 +470,6 @@ class TareSurvivesARestart(unittest.TestCase):
         with open(self.path, "w") as handle:
             handle.write("half a number")
 
-        # Zero, not a crash. Refusing to start because a cached number could
-        # not be parsed would be the wrong trade.
         self.assertEqual(0.0, self._configured(self.path)._offset)
 
     def test_no_path_means_memory_only(self):
@@ -586,9 +479,6 @@ class TareSurvivesARestart(unittest.TestCase):
         self.assertEqual(0.0, self._configured(None)._offset)
 
     def test_the_write_is_atomic(self):
-        # Written to .part and renamed, so a power cut leaves either the old
-        # offset or the new one — never half of one, which would parse as a
-        # wrong offset rather than as no offset.
         scale = self._configured(self.path)
         scale._save_offset(100.0)
         scale._save_offset(200.0)
@@ -597,6 +487,5 @@ class TareSurvivesARestart(unittest.TestCase):
         self.assertFalse(os.path.exists(self.path + ".part"))
 
     def test_an_unwritable_path_does_not_fail_the_tare(self):
-        # The offset is right in memory and the scale works for this run.
         scale = self._configured(os.path.join(self.directory, "nope", "tare"))
-        scale._save_offset(5.0)          # must not raise
+        scale._save_offset(5.0)

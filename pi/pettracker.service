@@ -1,18 +1,7 @@
-# Pet Tracker as a system service.
-#
-# Installed by install-service.sh, which substitutes @USER@ and @DIR@ — do not
-# copy this file into /etc/systemd/system by hand with those still in it.
-#
-# Why a service at all: the phone can only collect what the Pi recorded, so the
-# Pi has to be recording whether or not anyone is logged into it. Started with
-# nohup from an SSH session, the service dies with the terminal — quietly, and
-# the app then looks broken rather than the Pi looking stopped.
+# Pet Tracker service. install-service.sh fills in @USER@ and @DIR@.
 
 [Unit]
 Description=Pet Tracker sensor service
-# network-online rather than network: the address is logged at startup and is
-# what gets typed into the app, so coming up before the interface has one is
-# just a confusing log line.
 After=network-online.target
 Wants=network-online.target
 
@@ -21,68 +10,21 @@ Type=simple
 User=@USER@
 WorkingDirectory=@DIR@
 
-# The event database and the snapshot directory are relative to
-# WorkingDirectory, so they stay where they were when it was run by hand.
-
-# Defaults. To change the rooms, pins or camera, put the same names in
-# @DIR@/service.env instead of editing this file — that survives a reinstall
-# and does not need root. Declared before EnvironmentFile so the file wins.
-#
-# The quotes matter. Environment= takes a space-separated list of assignments,
-# so an unquoted Kitchen,Living room,Hall sets PETTRACKER_ROOMS=Kitchen,Living
-# and throws the rest away — which surfaces as "2 room(s) but 3 pin(s)" at
-# startup, an error about the pins that is really about the rooms.
+# Defaults. Override them in @DIR@/service.env, which is read after these.
+# Keep the quotes, or a value containing a space is split.
 Environment="PYTHONUNBUFFERED=1"
 Environment="PETTRACKER_ROOMS=Kitchen,Living room,Hall"
 Environment="PETTRACKER_PIR_PINS=17,27,22"
 Environment="PETTRACKER_CAMERA=usb"
-# Which /dev/videoN the USB camera is, for --camera usb. Zero is right on a Pi
-# with only a webcam attached — but a connected CSI camera brings up the whole
-# ISP pipeline and takes the low numbers, so /dev/video0 becomes unicam and the
-# webcam lands on 1 or higher. `v4l2-ctl --list-devices` says which is which,
-# and the symptom of getting it wrong is "could not open video device 0" on a
-# camera that is plugged in and working.
 Environment="PETTRACKER_CAMERA_DEVICE=0"
-# Which camera can see which room, as camera=room pairs. A camera is bolted to
-# one place, so a room it cannot see gets a motion event with no picture; left
-# empty, the primary camera answers for every room, which is right only on a rig
-# where one camera watches the one room that matters. A rig with the ribbon
-# camera in the kitchen wants:
-#   Environment="PETTRACKER_CAMERA_ROOMS=csi=Kitchen"
-# and every name must match PETTRACKER_CAMERA and PETTRACKER_ROOMS exactly.
 Environment="PETTRACKER_CAMERA_ROOMS="
 Environment="PETTRACKER_SCALE_PINS=5,6"
-# 1.0 means uncalibrated, and every weight is then raw counts wearing a gram
-# label. Run --calibrate-scale and put the real number in service.env.
 Environment="PETTRACKER_SCALE_FACTOR=1.0"
 Environment="PETTRACKER_GPS_PORT=/dev/serial0"
-# Seconds between recorded fixes. 300 suits a Pi that does not move: often
-# enough to show the module still works, rare enough that the event log is not
-# mostly GPS. Carrying the Pi to record a route wants a few seconds instead —
-# at 300 a fifteen-minute walk is three points.
 Environment="PETTRACKER_GPS_INTERVAL=300"
-# How the hopper meters food: "gate" holds a flap open for a computed time,
-# "paddle" turns whole pockets, "hold" opens and stays open until the app says
-# to close. Each design ignores the others' numbers, so switching is this one
-# variable and nothing else. The defaults below are the same numbers the code
-# falls back to, and tests/test_service_unit.py fails if the two ever drift.
-#
-# "hold" gives up the guarantee the other two have — their close is automatic,
-# and a hopper left open empties onto the floor. Its backstop is a time limit
-# in the code (HoldFeeder.AUTO_CLOSE_S), not a setting here, because it is a
-# safety net rather than a tuning knob.
 Environment="PETTRACKER_FEEDER=gate"
 Environment="PETTRACKER_SERVO_PIN=18"
-# Seconds allowed for the servo to reach an angle before it is let go. A full
-# swing under load takes longer than a small one, and a servo released
-# mid-travel simply stops where it got to — which looks like a servo that
-# "does not turn fully" and is in fact one that was not given time.
 Environment="PETTRACKER_SERVO_TRAVEL=0.5"
-# The pulse widths 0 and 180 degrees map onto. Worth changing only when a servo
-# stops short of where it is told: the angle is mapped onto this range, so a
-# bigger angle cannot reach past it, and widening is the only thing that
-# produces more rotation. It is also how a servo is driven into its own end
-# stop — go up in small steps with --check-servo and stop at the first buzz.
 Environment="PETTRACKER_SERVO_PULSE_MIN=500"
 Environment="PETTRACKER_SERVO_PULSE_MAX=2400"
 Environment="PETTRACKER_SERVO_OPEN=90"
@@ -90,29 +32,11 @@ Environment="PETTRACKER_SERVO_CLOSED=20"
 Environment="PETTRACKER_SERVO_MS_PER_GRAM=50.0"
 Environment="PETTRACKER_PADDLE_PARK=30"
 Environment="PETTRACKER_PADDLE_DUMP=150"
-# Measured on this rig: a pocket drops 10-15 g, depending on how full the hopper
-# is. The column of kibble above the wheel is what packs the pocket, so a full
-# hopper meters heavier than one nearly empty, and no single number is right for
-# both. 12.5 is the middle of the measured range and is accurate to about ±20%.
-#
-# That spread is the mechanism's, not a calibration error, and it is the reason
-# the load cell rather than the servo is what reports a meal. Re-measure on a
-# different kibble — pocket volume is fixed, and grams per pocket is not.
 Environment="PETTRACKER_PADDLE_GRAMS=12.5"
-# Angles one cycle visits, in order, instead of a plain dump and return. A
-# wheel that swings out and straight back can leave kibble bridged over the
-# pocket; walking it through several positions shakes the column loose. The
-# shape that works belongs to the hopper somebody built, so it is configuration
-# rather than a constant. Empty means the plain dump-and-return.
-#
-# The last angle is where the wheel rests, and resting is what closes the
-# hopper — so a sweep must end somewhere the pocket is shut.
 Environment="PETTRACKER_PADDLE_SWEEP="
 EnvironmentFile=-@DIR@/service.env
 
-# ${VAR}, not $VAR. systemd splits $VAR on whitespace, which would turn
-# --rooms "Kitchen,Living room,Hall" into three arguments and silently drop two
-# rooms. ${VAR} is substituted as a single argument.
+# ${VAR} keeps a value containing spaces as one argument.
 ExecStart=/usr/bin/python3 run.py \
     --rooms ${PETTRACKER_ROOMS} \
     --pir-pins ${PETTRACKER_PIR_PINS} \
@@ -136,15 +60,8 @@ ExecStart=/usr/bin/python3 run.py \
     --paddle-grams ${PETTRACKER_PADDLE_GRAMS} \
     --paddle-sweep ${PETTRACKER_PADDLE_SWEEP}
 
-# A sensor read that kills the process should not take the house's motion log
-# with it until someone notices. Five seconds is long enough that a genuinely
-# broken configuration is visible as a restart loop in the journal rather than
-# hidden by an instant retry.
 Restart=always
 RestartSec=5
-
-# PIR warm-up is deliberately left at its default here. At boot the sensors are
-# powering up alongside the Pi, which is exactly the case the warm-up is for.
 
 [Install]
 WantedBy=multi-user.target

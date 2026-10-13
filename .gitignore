@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local Claude Code config and skills, not part of the submission.
+.claude/

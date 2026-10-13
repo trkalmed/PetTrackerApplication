@@ -16,24 +16,13 @@ import org.tensorflow.lite.task.vision.detector.Detection;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Draws detector output over the camera feed.
- *
- * The tricky part is mapping detector coordinates onto the view. Boxes come back
- * in the analysed image's pixel space, but the view underneath does not show that
- * image one-to-one: {@code PreviewView} fills and crops, the Pi's {@code ImageView}
- * letterboxes. The old code scaled x and y independently by the view/image ratio,
- * which is only correct if the view happens to match the image aspect exactly —
- * otherwise every box is offset and the wrong shape. {@link ScaleMode} exists so
- * the same maths as the view underneath is applied here.
- */
+/** Draws detector boxes over the camera feed. */
 public class GraphicOverlay extends View {
 
     private final Paint boxPaint;
     private final Paint textPaint;
     private final Paint bgPaint;
 
-    /** How long a box survives frames with no detection, to stop it strobing. */
     private static final long HOLD_MS = 400L;
 
     private final List<Detection> detections = new ArrayList<>();
@@ -42,7 +31,6 @@ public class GraphicOverlay extends View {
     private int imageHeight = 0;
     private BoxMapper.ScaleMode scaleMode = BoxMapper.ScaleMode.FILL_CENTER;
 
-    /** Overrides the detector's label, so a box can say "Biscuit" not "cat". */
     private String displayName;
 
     private final int[] colors = {
@@ -82,24 +70,15 @@ public class GraphicOverlay extends View {
         this.scaleMode = mode;
     }
 
-    /** Name shown instead of the COCO class, or null to show the class. */
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
     }
 
-    /**
-     * @param imgWidth  width of the bitmap the detector actually saw — after any
-     *                  rotation, not the raw sensor buffer
-     * @param imgHeight height of that same bitmap
-     */
     public synchronized void setResults(
             List<Detection> newDetections, int imgWidth, int imgHeight) {
         boolean empty = newDetections == null || newDetections.isEmpty();
 
-        // A detector drops the odd frame even while the cat sits still, and
-        // clearing on every one of those makes the boxes strobe. Hold the last
-        // result briefly instead: if the pet really has left, the boxes still
-        // disappear within HOLD_MS.
+        // Hold the last result briefly so the boxes do not flicker on dropped frames.
         if (empty && !detections.isEmpty()
                 && System.currentTimeMillis() - lastNonEmptyAt < HOLD_MS) {
             return;
@@ -138,8 +117,6 @@ public class GraphicOverlay extends View {
             float textWidth  = textPaint.measureText(label);
             float textHeight = textPaint.getTextSize();
 
-            // Keep the caption on screen when the box touches the top edge,
-            // otherwise it is drawn off the canvas and simply never seen.
             float captionBottom = top < textHeight + 8 ? bottom + textHeight + 8 : top;
 
             bgPaint.setColor(color);

@@ -9,28 +9,9 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * The route the tracker took — the Pi's route, and never the pet's.
- *
- * The dashboard shows the latest fix; this shows the run of them, which is a
- * different claim and a stronger one. A single fix proves the GNSS module
- * works. A sequence proves the whole chain works: the module fixes, the Pi
- * buffers while it is off the house network, and the phone reconciles the lot
- * when it comes back into range. That last part is the interesting one, and it
- * is invisible on any screen that only shows the newest reading.
- *
- * Everything here is labelled as the tracker's position. Carrying the Pi to
- * record a route does not make the route a pet's — it makes it a demonstration
- * of what a collar-mounted unit would produce, at a size that could be carried
- * by a large animal but not by a cat.
- */
+/** The route screen. The route is the tracker's, not the pet's. */
 public class TrackActivity extends ThemedActivity {
 
-    /**
-     * Most fixes drawn. At a one-second interval this is over two hours of
-     * walking, and a path with more vertices than the screen has pixels costs
-     * time to draw and shows nothing extra.
-     */
     private static final int MAX_FIXES = 8000;
 
     private TrackView trackView;
@@ -61,10 +42,6 @@ public class TrackActivity extends ThemedActivity {
     protected void onResume() {
         super.onResume();
         load();
-        // The route is the one screen where the reading arriving is the whole
-        // point — watching a walk extend is different evidence from opening a
-        // finished one. Same poller the dashboard uses, so the Pi is asked no
-        // more often than anywhere else.
         piPoller.start();
     }
 
@@ -74,7 +51,6 @@ public class TrackActivity extends ThemedActivity {
         piPoller.stop();
     }
 
-    /** A sync finished. Redrawing only matters if it brought new fixes. */
     private void onSynced(PiEventSync.Result result) {
         if (isFinishing() || isDestroyed()) return;
         if (result.storedAnything()) load();
@@ -109,10 +85,6 @@ public class TrackActivity extends ThemedActivity {
             return;
         }
 
-        // One outing, not everything ever recorded. The query returns the last
-        // N fixes whenever they happened, which is a count and not a run: a
-        // week of readings taken at a desk arrived on this screen joined to
-        // yesterday's walk and summarised as a single 194-hour journey.
         long[] all = new long[fixes.size()];
         for (int i = 0; i < all.length; i++) all[i] = fixes.get(i).getTimestampMillis();
         int runStart = Geo.mostRecentRunStart(all);
@@ -168,13 +140,6 @@ public class TrackActivity extends ThemedActivity {
                 last.getLatitude(), last.getLongitude(), clock));
     }
 
-    /**
-     * "12 min", "1 h 04", or "48 s".
-     *
-     * Seconds are shown below a minute rather than rounded to "0 min", because
-     * a very short run is exactly what a demo produces and reading zero would
-     * look like a fault.
-     */
     private String describeDuration(long millis) {
         long seconds = Math.max(0, millis / 1000);
         if (seconds < 60) {

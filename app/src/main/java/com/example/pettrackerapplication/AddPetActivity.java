@@ -42,8 +42,8 @@ public class AddPetActivity extends ThemedActivity {
     private static final String TAG = "AddPetActivity";
     private MaterialCardView      cardPhoto;
     private ImageView             imgPreview;
-    private View                  vSegmentingOverlay;   // dim layer during ML processing
-    private ProgressBar           progressSegmentation; // spinner during ML processing
+    private View                  vSegmentingOverlay;
+    private ProgressBar           progressSegmentation;
     private TextInputEditText     etName, etBreed, etWeight, etBirthdate, etNotes;
     private AutoCompleteTextView  autoSpecies, autoSex;
     private MaterialButton        btnSavePet;
@@ -52,9 +52,7 @@ public class AddPetActivity extends ThemedActivity {
     private SubjectSegmenter subjectSegmenter;
     private ActivityResultLauncher<PickVisualMediaRequest> pickImageLauncher;
 
-    /** -1 = adding a new pet; anything else = editing that pet. */
     private long editingPetId = -1L;
-    /** The row being edited, loaded before the form is filled in. */
     private Pet  editingPet;
 
 
@@ -80,9 +78,7 @@ public class AddPetActivity extends ThemedActivity {
                         .enableForegroundBitmap()
                         .build());
 
-        // The photo picker needs no storage permission at all: the system picker
-        // runs out of process and hands back one URI the user chose. This is why
-        // READ_MEDIA_IMAGES and READ_EXTERNAL_STORAGE are gone from the manifest.
+        // The system photo picker needs no storage permission.
         pickImageLauncher = registerForActivityResult(
                 new ActivityResultContracts.PickVisualMedia(),
                 uri -> {
@@ -116,7 +112,6 @@ public class AddPetActivity extends ThemedActivity {
         etBirthdate.setOnClickListener(v -> showDatePicker());
         cardPhoto.setOnClickListener(v -> pickImageLauncher.launch(
                 new PickVisualMediaRequest.Builder()
-                        // ImageOnly is a Kotlin object, hence INSTANCE from Java.
                         .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE)
                         .build()));
         btnSavePet.setOnClickListener(v -> savePet());
@@ -126,8 +121,6 @@ public class AddPetActivity extends ThemedActivity {
             loadPetForEditing(editingPetId);
         }
     }
-
-    // ── Edit mode ───────────────────────────────────────────────────────────
 
     private void loadPetForEditing(long petId) {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
@@ -175,8 +168,6 @@ public class AddPetActivity extends ThemedActivity {
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
-            // Keep the saved photo unless the user picks a new one. Not assigned
-            // to selectedImageUri: that field means "a new pick to process".
             PhotoTint.clearFor(imgPreview);
             Glide.with(this).load(Uri.parse(photoUri)).centerCrop().into(imgPreview);
         }
@@ -224,38 +215,15 @@ public class AddPetActivity extends ThemedActivity {
             segmentedBitmap = foreground;
             imgPreview.setImageBitmap(foreground);
         } else {
-            // The preview still holds the original, loaded when the picker
-            // returned, and segmentedBitmap stays null — so save() copies the
-            // photo as it was taken.
             Toast.makeText(this,
                     getString(R.string.no_subject_found_original_photo_will),
                     Toast.LENGTH_SHORT).show();
         }
     }
 
-    /**
-     * True if the cut-out actually contains something.
-     *
-     * "No subject" does not arrive as null. The segmenter hands back a bitmap of
-     * the full frame with every non-subject pixel made transparent, and when it
-     * recognises nothing that is a bitmap which is transparent everywhere —
-     * correctly sized, correctly formatted, and completely invisible. Accepting
-     * it put an empty PNG in the database as the pet's photo, so the preview
-     * went blank the moment segmentation finished and every screen afterwards
-     * showed a photo that was there and could not be seen.
-     *
-     * A photograph is sampled rather than read: a grid of a few thousand pixels
-     * is enough to tell "a cat" from "nothing at all", and reading twelve
-     * megapixels on the main thread to learn the same fact is not.
-     */
     static boolean hasVisibleSubject(Bitmap bitmap) {
         final int samplesPerAxis = 64;
-        // A hair-thin outline or a faint edge is not a subject; alpha has to be
-        // solid enough to be a pixel of an animal.
         final int minAlpha = 32;
-        // One part in a hundred. A cat fills a good deal more of a frame than
-        // that, and anything below it is the segmenter having found nothing
-        // while returning something.
         final double minVisibleFraction = 0.01;
 
         int width = bitmap.getWidth();
@@ -263,8 +231,6 @@ public class AddPetActivity extends ThemedActivity {
         if (width <= 0 || height <= 0) return false;
 
         if (!bitmap.hasAlpha()) {
-            // No alpha channel means nothing was cut away, so there is nothing
-            // to be empty.
             return true;
         }
 
@@ -311,14 +277,6 @@ public class AddPetActivity extends ThemedActivity {
         }
     }
 
-    /**
-     * Copies a picked image into app storage and returns the local URI.
-     *
-     * The picker grants read access to its URI only for this task's lifetime, so
-     * persisting that URI in the database gives a photo that silently stops
-     * loading later. Segmented photos were already written to disk; this does the
-     * same for the original when segmentation finds no subject or fails.
-     */
     private Uri copyPickedImageToFile(Uri source) {
         try {
             File dir = new File(getFilesDir(), "pet_photos");
@@ -397,7 +355,7 @@ public class AddPetActivity extends ThemedActivity {
                 Uri localUri = copyPickedImageToFile(fallbackUri);
                 photoUriString = localUri != null ? localUri.toString() : null;
             } else if (editing) {
-                photoUriString = existingPet.getPhotoUri();   // keep the saved photo
+                photoUriString = existingPet.getPhotoUri();
             }
 
             AppDatabase db = AppDatabase.getInstance(getApplicationContext());
@@ -407,14 +365,10 @@ public class AddPetActivity extends ThemedActivity {
                         name, species, breed, finalWeight,
                         sex, birthdate, notes,
                         photoUriString,
-                        existingPet.getLastSeen(),   // not ours to reset
+                        existingPet.getLastSeen(),
                         ownerId);
                 updated.setId(existingPet.getId());
-                // Set on the Food tab, not on this form. The update replaces the
-                // whole row, so anything this screen does not carry over is
-                // erased — renaming a pet was silently resetting its daily
-                // target back to the default, which then read as a number
-                // somebody had chosen.
+                // The update replaces the whole row, so carry over the fields this form does not edit.
                 updated.setDailyFoodGrams(existingPet.getDailyFoodGrams());
                 db.petDao().update(updated);
             } else {

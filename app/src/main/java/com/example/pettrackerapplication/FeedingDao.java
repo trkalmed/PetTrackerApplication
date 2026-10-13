@@ -10,18 +10,13 @@ import java.util.List;
 @Dao
 public interface FeedingDao {
 
-    /**
-     * IGNORE, not ABORT: the unique index over (petId, source, remoteId) makes a
-     * re-delivered Pi reading collide, and a collision there means "already have
-     * it" rather than an error. Returns -1 when the row was dropped.
-     */
+    /** IGNORE: a Pi reading delivered twice collides with the unique index and is dropped. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     long insert(FeedingEvent event);
 
     @Insert
     void insertAll(List<FeedingEvent> events);
 
-    /** Readings inside a window, oldest first — the order the meal list renders in. */
     @Query("SELECT * FROM feeding_events "
             + "WHERE petId = :petId AND type = :type "
             + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "
@@ -33,17 +28,9 @@ public interface FeedingDao {
             + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis")
     int getTotalGramsInRange(long petId, String type, long fromMillis, long toMillis);
 
-    /**
-     * Whether this pet has ever had a feeder reading.
-     *
-     * This is what separates "no feeder paired" from "the feeder is paired and
-     * the pet has not eaten yet today" — the dashboard shows a setup prompt for
-     * the first and a real zero for the second.
-     */
     @Query("SELECT EXISTS(SELECT 1 FROM feeding_events WHERE petId = :petId)")
     boolean hasAnyReading(long petId);
 
-    /** Housekeeping for later: these tables grow forever otherwise. */
     @Query("DELETE FROM feeding_events WHERE timestampMillis < :beforeMillis")
     int deleteOlderThan(long beforeMillis);
 }

@@ -22,18 +22,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Random;
 
-/**
- * Loads the real model and runs inference on it.
- *
- * A model swap fails in exactly two ways, both of them silent until someone
- * opens the live screen: the asset does not parse (wrong file, missing
- * metadata, no embedded labels) or the options are rejected (an allow-list
- * naming labels the model does not have). Both surface here instead.
- *
- * These deliberately do not assert that a specific animal is found — that needs
- * real photographs and belongs in a fixture-driven accuracy suite, not a build
- * check.
- */
 @RunWith(AndroidJUnit4.class)
 public class CocoObjectDetectorTest {
 
@@ -46,8 +34,6 @@ public class CocoObjectDetectorTest {
         Canvas canvas = new Canvas(bitmap);
         canvas.drawColor(Color.rgb(120, 120, 120));
 
-        // Deterministic noise plus a few shapes: enough structure for the model
-        // to do real work rather than short-circuit on a flat image.
         Random random = new Random(42);
         Paint paint = new Paint();
         for (int i = 0; i < 40; i++) {
@@ -62,9 +48,6 @@ public class CocoObjectDetectorTest {
 
     @Test
     public void theModelLoadsAndTheAllowListIsAccepted() {
-        // Construction parses the .tflite, reads its embedded labelmap, and
-        // validates the allow-list against it. If the asset were the wrong file
-        // or a label were misspelled, this throws.
         try {
             CocoObjectDetector detector = new CocoObjectDetector(context());
             assertNotNull(detector);
@@ -80,7 +63,6 @@ public class CocoObjectDetectorTest {
         try {
             List<Detection> detections = detector.detect(syntheticScene(640, 480));
 
-            // Never null, and never more than the configured cap.
             assertNotNull(detections);
             assertTrue("max results should be respected", detections.size() <= 10);
         } finally {
@@ -90,8 +72,6 @@ public class CocoObjectDetectorTest {
 
     @Test
     public void onlyAnimalsComeBack() throws IOException {
-        // The allow-list is the reason the overlay does not box furniture. If it
-        // silently stopped applying, this catches it.
         CocoObjectDetector detector = new CocoObjectDetector(context());
         try {
             List<Detection> detections = detector.detect(syntheticScene(640, 480));
@@ -110,8 +90,6 @@ public class CocoObjectDetectorTest {
 
     @Test
     public void oddlyShapedFramesAreHandled() throws IOException {
-        // The Pi stream and the phone camera do not agree on aspect ratio, and a
-        // rotated portrait frame is taller than it is wide.
         CocoObjectDetector detector = new CocoObjectDetector(context());
         try {
             assertNotNull(detector.detect(syntheticScene(720, 1280)));

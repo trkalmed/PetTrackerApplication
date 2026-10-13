@@ -1,6 +1,3 @@
-# Only what the build actually uses. The rest of the dependency versions live in
-# app/build.gradle.kts; this file used to declare a parallel, contradicting set
-# (ML Kit 17.0.2 vs 17.0.1, espresso 3.7.0 vs 3.5.1, ...) that nothing resolved.
 [versions]
 agp = "8.8.1"
 

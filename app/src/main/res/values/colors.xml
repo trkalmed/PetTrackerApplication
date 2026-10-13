@@ -1,27 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  GREEN THEME (light default). Every existing name is kept, so no layout
-  references break — only the values change. New names at the bottom are
-  additive: per-tab accents, room hues and the four-stop ring ramp.
--->
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- primary (forest green) -->
     <color name="primary">#2C7B55</color>
     <color name="primary_dark">#1F6B48</color>
     <color name="primary_light">#DCEBCE</color>
     <color name="primary_tint">#EDF6E3</color>
     <color name="on_primary">#F2FBF4</color>
 
-    <!-- accent 2 (deep teal — the second voice in the header gradient) -->
     <color name="accent_2">#22705F</color>
     <color name="accent_2_dark">#17564A</color>
     <color name="accent_2_light">#D8EFE9</color>
     <color name="accent_2_tint">#EFF8F5</color>
 
-    <!-- ground -->
     <color name="background">#F2F7EE</color>
     <color name="surface">#FFFFFF</color>
     <color name="surface_raised">#F2F7EE</color>
@@ -31,23 +23,19 @@
     <color name="text_secondary">#4C5E53</color>
     <color name="text_disabled">#6B7A70</color>
 
-    <!-- header gradient stops -->
     <color name="header_start">#2C7B55</color>
     <color name="header_end">#22705F</color>
 
-    <!-- per-tab accent: the nav tints to the active destination -->
     <color name="tab_home">#1E7A52</color>
     <color name="tab_live">#1F9BB8</color>
     <color name="tab_food">#A87A1E</color>
     <color name="tab_settings">#6E8A2F</color>
 
-    <!-- room identity, one hue each (Where they were) -->
     <color name="room_1">#C4462F</color>
     <color name="room_2">#6D4AA8</color>
     <color name="room_3">#1B7FA8</color>
     <color name="room_4">#3E8E4F</color>
 
-    <!-- four-stop ramp used by the food ring and every progress bar -->
     <color name="ramp_1">#FF8A6B</color>
     <color name="ramp_2">#B18CFF</color>
     <color name="ramp_3">#5FCDF0</color>
@@ -57,7 +45,6 @@
     <color name="danger">#C4462F</color>
     <color name="danger_tint">#FBEFEC</color>
 
-    <!-- text and chips sitting on the header gradient -->
     <color name="on_header">#F2FBF4</color>
     <color name="on_header_secondary">#C2E8D6</color>
 </resources>

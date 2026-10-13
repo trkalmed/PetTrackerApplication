@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lucide "ellipsis-vertical" (lucide.dev). Dots are filled rather than stroked,
-     matching how the design system draws solid marks at this size. -->
+<!-- Lucide icon (lucide.dev) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

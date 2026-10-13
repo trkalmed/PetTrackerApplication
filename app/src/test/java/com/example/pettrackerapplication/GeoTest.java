@@ -6,16 +6,8 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/**
- * The route length shown on the track screen.
- *
- * Worth testing precisely because it is the one figure there that is computed
- * rather than displayed: a route can be drawn perfectly and still be labelled
- * with a nonsense distance, and nobody looking at the picture would know.
- */
 public class GeoTest {
 
-    /** One degree of latitude, in metres, for the radius Geo uses. */
     private static final double DEGREE_OF_LATITUDE_M = 111_194.9;
 
     @Test
@@ -27,8 +19,6 @@ public class GeoTest {
 
     @Test
     public void oneDegreeOfLatitudeIsTheSameLengthAtEveryLatitude() {
-        // Unlike longitude. This is the property that makes the projection in
-        // TrackView need a cos(lat) correction on longitude and none on this.
         double atEquator = Geo.distanceMetres(0, 0, 1, 0);
         double atSixty = Geo.distanceMetres(60, 0, 61, 0);
 
@@ -37,12 +27,9 @@ public class GeoTest {
 
     @Test
     public void longitudeShrinksTowardsThePoles() {
-        // At 60 degrees, a degree of longitude is half what it is at the
-        // equator. Plotting lat against lon without this stretches an
-        // east-west route.
         assertEquals(1.0, Geo.longitudeScale(0), 0.0001);
         assertEquals(0.5, Geo.longitudeScale(60), 0.001);
-        assertEquals(0.848, Geo.longitudeScale(32), 0.001);   // the rig's latitude
+        assertEquals(0.848, Geo.longitudeScale(32), 0.001);
     }
 
     @Test
@@ -55,7 +42,6 @@ public class GeoTest {
 
     @Test
     public void aRouteIsTheSumOfItsLegs() {
-        // Five points, each 20 m further north than the last.
         double step = 20.0 / DEGREE_OF_LATITUDE_M;
         double[] lats = new double[5];
         double[] lons = new double[5];
@@ -67,14 +53,8 @@ public class GeoTest {
         assertEquals(80.0, Geo.routeLengthMetres(lats, lons), 0.5);
     }
 
-    /**
-     * The failure this guards against is quiet and embarrassing: a Pi sitting
-     * still on a table, reporting a fix every second all night, and the app
-     * announcing in the morning that the tracker walked several kilometres.
-     */
     @Test
     public void aStationaryTrackerDoesNotAccumulateDistance() {
-        // A metre of wander around one spot, sampled 200 times.
         double metre = 1.0 / DEGREE_OF_LATITUDE_M;
         double[] lats = new double[200];
         double[] lons = new double[200];
@@ -86,18 +66,8 @@ public class GeoTest {
         assertEquals(0.0, Geo.routeLengthMetres(lats, lons), 0.001);
     }
 
-    /**
-     * A slow walk sampled quickly must still accumulate.
-     *
-     * This is the counterweight to the test above, and the reason the filter
-     * keeps the last *accepted* point as its anchor rather than the previous
-     * one. Comparing each point only to the one before it would discard every
-     * step of a genuine walk sampled faster than three metres of progress.
-     */
     @Test
     public void aSlowWalkSampledQuicklyStillCounts() {
-        // 100 points, each 1 m further north — below the per-step threshold,
-        // but 99 m of real travel.
         double metre = 1.0 / DEGREE_OF_LATITUDE_M;
         double[] lats = new double[100];
         double[] lons = new double[100];
@@ -111,27 +81,8 @@ public class GeoTest {
         assertTrue("nor should it exceed the distance walked: " + metres, metres <= 99.5);
     }
 
-    // ── Breaks in coverage ──────────────────────────────────────────────────
-    //
-    // A route is drawn by joining consecutive fixes. When the receiver loses
-    // lock for a while the next fix is far away, and joining them with a solid
-    // line draws a path through streets and buildings that nothing measured.
-    // The first real walk produced several of these.
-
-    /** Timestamps at a steady interval, with optional gaps injected. */
-    // ── What the distance must refuse to measure ────────────────────────────
-    //
-    // The drawing already declines to join two fixes separated by a break in
-    // coverage, because the line between them crosses ground nothing observed.
-    // The distance had no timestamps and so made no such refusal, and a screen
-    // that draws a break while adding its length to the total is saying two
-    // different things about the same pair of points.
-
     @Test
     public void distanceIsNotMeasuredAcrossABreakInCoverage() {
-        // Two clusters 1 km apart, each walked a few metres, with ten minutes
-        // of silence in between: about 6 m of travel was observed and the
-        // kilometre was not.
         double metre = 1.0 / DEGREE_OF_LATITUDE_M;
         double[] lats = new double[8];
         double[] lons = new double[8];
@@ -175,13 +126,8 @@ public class GeoTest {
         double[] lats = {32.0, 32.001};
         double[] lons = {35.0, 35.0};
 
-        // Fewer stamps than fixes is a programming error, not a coverage gap.
-        // Measuring straight through is the safer of the two wrong answers:
-        // reporting zero would look like a tracker that never moved.
         assertTrue(Geo.routeLengthMetres(lats, lons, new long[]{1L}) > 100);
     }
-
-    // ── One outing, not everything ever recorded ────────────────────────────
 
     @Test
     public void oneContinuousWalkIsAllOneRun() {
@@ -200,9 +146,6 @@ public class GeoTest {
 
     @Test
     public void losingTheSkyForAMinuteDoesNotEndTheWalk() {
-        // The receiver goes quiet behind a building. That is a break in
-        // coverage inside one walk, and splitting the run there would throw
-        // away everything before it.
         long[] stamps = new long[20];
         long now = 1_788_000_000_000L;
         for (int i = 0; i < 10; i++) stamps[i] = now + i * 2_000L;
@@ -213,7 +156,6 @@ public class GeoTest {
 
     @Test
     public void onlyTheLastBreakEndsTheRun() {
-        // Three outings. The run is the third, not everything after the first.
         long[] stamps = new long[30];
         long now = 1_788_000_000_000L;
         for (int i = 0; i < 10; i++) stamps[i] = now + i * 2_000L;
@@ -230,18 +172,8 @@ public class GeoTest {
         assertEquals(0, Geo.mostRecentRunStart(new long[]{1_788_000_000_000L}));
     }
 
-    // ── A fix the receiver could not place ──────────────────────────────────
-    //
-    // A break in coverage used to mean silence. On a measured 1351.6 m walk the
-    // receiver never went quiet: in one built-up street it kept reporting every
-    // two seconds from three or four satellites while the positions scattered,
-    // which added 11.7% of distance that was never walked and produced a legend
-    // saying the route had no breaks at all.
-
     @Test
     public void aScatterFromThreeSatellitesIsNotDistanceWalked() {
-        // Walking north at 1 m/s, except for ten fixes in the middle taken from
-        // three satellites and thrown 40 m sideways.
         double metre = 1.0 / DEGREE_OF_LATITUDE_M;
         int n = 60;
         double[] lats = new double[n];
@@ -286,9 +218,6 @@ public class GeoTest {
 
     @Test
     public void sixSatellitesIsTrustedAndFiveIsNot() {
-        // Four is the bare minimum for a three-dimensional fix; six leaves two
-        // spare. Stated as a test because the number is a judgement, and a
-        // judgement that changes silently is worse than one that fails a test.
         assertTrue(Geo.isTrusted(6));
         assertTrue(Geo.isTrusted(12));
         assertFalse(Geo.isTrusted(5));
@@ -347,13 +276,6 @@ public class GeoTest {
         assertEquals(3, Geo.countGaps(steady(100, 2000, 10, 40, 70)));
     }
 
-    /**
-     * The threshold follows the recording interval rather than being fixed.
-     *
-     * A walk records every 2 s and a fixed installation every 300 s. A constant
-     * right for one is nonsense for the other: 30 s would miss every gap in the
-     * slow case and mark every normal step as a gap in it too.
-     */
     @Test
     public void theThresholdAdaptsToTheRecordingInterval() {
         long fast = Geo.gapThresholdMillis(steady(50, 2000));
@@ -363,24 +285,16 @@ public class GeoTest {
         assertTrue("a 300 s run should not treat 30 s as a gap", slow > 30_000);
     }
 
-    /** A run recorded slowly is not all gaps just because the steps are long. */
     @Test
     public void aSlowlyRecordedRunIsNotAllGaps() {
         assertEquals(0, Geo.countGaps(steady(50, 300_000)));
     }
 
-    /**
-     * Ordinary jitter is not a gap.
-     *
-     * Fixes do not arrive on a metronome — the receiver misses one now and
-     * then, the poll loop drifts. Marking each of those would litter the
-     * drawing with breaks that mean nothing.
-     */
     @Test
     public void aSingleMissedFixIsNotAGap() {
         long[] stamps = steady(50, 2000);
         for (int i = 25; i < stamps.length; i++) {
-            stamps[i] += 2000;             // one fix skipped, mid-run
+            stamps[i] += 2000;
         }
 
         assertEquals(0, Geo.countGaps(stamps));

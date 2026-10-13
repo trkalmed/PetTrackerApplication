@@ -7,7 +7,6 @@
     android:layout_height="match_parent"
     android:background="#2E2B25">
 
-    <!-- ── Local camera preview (CameraX mode) ── -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="0dp"
@@ -17,7 +16,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ── Pi MJPEG frame display (hidden until Pi stream starts) ── -->
     <ImageView
         android:id="@+id/piStreamView"
         android:layout_width="0dp"
@@ -30,7 +28,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ── ML bounding-box overlay (shared by both modes) ── -->
     <com.example.pettrackerapplication.GraphicOverlay
         android:id="@+id/GraphicOverlay"
         android:layout_width="0dp"
@@ -41,9 +38,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ── Top controls: a floating back pill and a LIVE badge, no solid bar.
-             The old opaque toolbar cut 56dp off a feed that is the whole point
-             of the screen. ── -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/btnBack"
         android:layout_width="44dp"
@@ -101,7 +95,6 @@
             android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- Which camera you are looking at — the old screen never said. -->
     <TextView
         android:id="@+id/tvCameraName"
         android:layout_width="wrap_content"
@@ -118,7 +111,6 @@
         app:layout_constraintStart_toEndOf="@id/chipLive"
         app:layout_constraintTop_toTopOf="@id/btnBack" />
 
-    <!-- ── Status pill (Pi mode), bottom centre ── -->
     <TextView
         android:id="@+id/tvStreamStatus"
         android:layout_width="wrap_content"

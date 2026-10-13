@@ -20,18 +20,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Renders layouts straight to PNG without signing in.
- *
- * Every screen worth looking at sits behind Firebase auth, which makes the
- * theme awkward to check on a device. Settings has no auth guard, so it hosts
- * the inflation: its LayoutInflater carries a real, fully themed activity
- * context, which Material widgets require — a plain ContextThemeWrapper over
- * the application context is not enough, and CircularProgressIndicator refuses
- * to inflate from one.
- *
- * Files land in the app's external files dir, ready to pull with adb.
- */
 @RunWith(AndroidJUnit4.class)
 public class LayoutRenderTest {
 
@@ -82,14 +70,6 @@ public class LayoutRenderTest {
         }
     }
 
-    /**
-     * Fills in a few representative values.
-     *
-     * Inflating outside an activity means nothing binds, and tools:text is a
-     * design-time attribute the Layout Editor honours but the runtime ignores —
-     * so an untouched render is all blanks and an empty ring, which says
-     * nothing about whether the design is right.
-     */
     private void populate(View root) {
         text(root, R.id.tvPetName, "Marvel");
         text(root, R.id.tvPetSubtitle, "Golden retriever · 4 yrs");

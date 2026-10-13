@@ -3,21 +3,14 @@ package com.example.pettrackerapplication;
 
 public final class BoxMapper {
 
-    /** How the view beneath the overlay fits the image. */
     public enum ScaleMode {
-        /** Whole image visible, bars on the short side — the Pi's ImageView. */
         FIT_CENTER,
-        /** Image fills the view, overflow cropped — PreviewView's default. */
         FILL_CENTER
     }
 
     private BoxMapper() {
-        // static helper, no instances
     }
 
-    /**
-     * @return {left, top, right, bottom} in view pixels
-     */
     public static float[] map(float left, float top, float right, float bottom,
                               int imageWidth, int imageHeight,
                               float viewWidth, float viewHeight,

@@ -23,16 +23,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The poller, end to end into a real database.
- *
- * The Pi is scripted rather than real, because what needs pinning down is not
- * HTTP — {@link PiClientTest} covers that — but the handful of situations that
- * decide whether the numbers on the dashboard are true: a cursor that has gone
- * stale, a Pi whose log was rebuilt, a sync cut off halfway, and the same
- * reading arriving twice. All of those happen rarely, and all of them corrupt
- * totals silently when they are got wrong.
- */
 @RunWith(AndroidJUnit4.class)
 public class PiEventSyncTest {
 
@@ -49,9 +39,6 @@ public class PiEventSyncTest {
     @Before
     public void setUp() {
         context = ApplicationProvider.getApplicationContext();
-        // Close the cached instance before unlinking the file, or the
-        // singleton hands the next test a connection to a database that
-        // no longer exists — see AppDatabase.closeForTests().
         AppDatabase.closeForTests();
         context.deleteDatabase("pets_db");
         db = AppDatabase.getInstance(context);
@@ -74,14 +61,11 @@ public class PiEventSyncTest {
         return db.petDao().getPetById(petId, "owner-1");
     }
 
-    /** A timestamp inside today, offset back from now but never past midnight. */
     private long todayAt(long millisAgo) {
         long candidate = System.currentTimeMillis() - millisAgo;
         DayRange today = DayRange.today();
         return today.contains(candidate) ? candidate : today.startMillis + 1;
     }
-
-    // ── What gets stored ────────────────────────────────────────────────────
 
     @Test
     public void aMealFromThePiReachesTheDashboard() {
@@ -115,8 +99,6 @@ public class PiEventSyncTest {
 
         sync.sync(petId);
 
-        // The dashboard rebuilds the URL from whichever Pi is paired, so the
-        // name is the only part worth keeping — but it has to arrive at all.
         assertEquals("motion-20260828-152031-812-kitchen.jpg",
                 repository.statsForToday(pet()).lastSnapshotName);
     }
@@ -129,10 +111,6 @@ public class PiEventSyncTest {
         assertNull(repository.statsForToday(pet()).lastSnapshotName);
     }
 
-    /**
-     * A fix from the Pi reaches the dashboard — as the <em>tracker's</em>
-     * position, which is the only thing it ever describes.
-     */
     @Test
     public void aFixFromThePiReachesTheDashboard() {
         pi.page(location(52, todayAt(HOUR), 32.00964, 35.76567, 12));
@@ -144,12 +122,6 @@ public class PiEventSyncTest {
         assertEquals(12, stats.trackerSatellites);
     }
 
-    /**
-     * A location event with no coordinates is skipped, not fatal.
-     *
-     * The Pi does not send these — it drops a fix it could not parse — but the
-     * sync must survive one page of five hundred containing a malformed row.
-     */
     @Test
     public void aFixWithNoCoordinatesIsSkipped() {
         pi.page(event(53, PiEvent.KIND_LOCATION, todayAt(HOUR)));
@@ -163,8 +135,6 @@ public class PiEventSyncTest {
 
     @Test
     public void rawWeightsAreNotStored() {
-        // Logged once a minute for whoever is calibrating the load cell. The
-        // bowl weighing 118 g is not something any screen has to say.
         pi.page(weight(45, todayAt(HOUR), 118.4));
 
         PiEventSync.Result result = sync.sync(petId);
@@ -176,8 +146,6 @@ public class PiEventSyncTest {
 
     @Test
     public void anUnknownKindIsSkippedRatherThanFatal() {
-        // A newer Pi with a sensor this app has never heard of. The contract
-        // says adding a kind is safe, so it has to actually be safe.
         pi.page(event(46, "humidity", todayAt(HOUR)),
                 motion(47, todayAt(HOUR), "Hall"));
 
@@ -195,12 +163,8 @@ public class PiEventSyncTest {
         PiEventSync.Result result = sync.sync(petId);
 
         assertEquals(0, result.stored);
-        // Still counted as seen: it will not parse any better next time, and
-        // stopping here would wedge the cursor forever.
         assertEquals(48, cursor.value());
     }
-
-    // ── The cursor ──────────────────────────────────────────────────────────
 
     @Test
     public void theCursorStartsAtZeroAndAdvances() {
@@ -238,8 +202,6 @@ public class PiEventSyncTest {
 
     @Test
     public void oneSyncDoesNotRunForever() {
-        // A Pi left running for a month against a phone that has not synced.
-        // Draining all of it in one pass would stall the screen that asked.
         pi.endlessPages = true;
 
         PiEventSync.Result result = sync.sync(petId);
@@ -250,10 +212,6 @@ public class PiEventSyncTest {
 
     @Test
     public void aPiWhoseLogWasRebuiltIsNoticed() {
-        // Reinstalled, or the database file deleted: its ids restart from 1 and
-        // it can no longer reach the cursor this phone is holding. Without this
-        // check the app would sit at 500 forever, receiving nothing, looking
-        // exactly like a house where nothing happens.
         cursor.save(500);
         pi.latestCursor = 12;
         pi.page(motion(1, todayAt(HOUR), "Kitchen"));
@@ -271,9 +229,6 @@ public class PiEventSyncTest {
                 motion(44, todayAt(HOUR), "Kitchen"));
         sync.sync(petId);
 
-        // Whatever the reason for re-reading — a rewind, a re-pairing, an
-        // interrupted sync — the second copy has to be free. Otherwise every
-        // recovery doubles a day's meals.
         cursor.save(0);
         pi.rewind();
         PiEventSync.Result again = sync.sync(petId);
@@ -284,8 +239,6 @@ public class PiEventSyncTest {
                 Integer.valueOf(40), repository.statsForToday(pet()).gramsEaten);
         assertEquals(1, repository.statsForToday(pet()).rooms.size());
     }
-
-    // ── When the Pi is not there ────────────────────────────────────────────
 
     @Test
     public void anUnreachablePiIsReportedRatherThanThrown() {
@@ -301,15 +254,13 @@ public class PiEventSyncTest {
     @Test
     public void aSyncCutOffKeepsWhatItAlreadyStored() {
         pi.page(motion(1, todayAt(2 * HOUR), "Hall"));
-        pi.page(motion(2, todayAt(HOUR), "Kitchen"));   // never arrives
-        pi.failEventsAfterPages = 1;      // the second request drops
+        pi.page(motion(2, todayAt(HOUR), "Kitchen"));
+        pi.failEventsAfterPages = 1;
 
         PiEventSync.Result result = sync.sync(petId);
 
         assertTrue(result.reachable);
         assertEquals(1, result.stored);
-        // The half that arrived is filed and will not be asked for again; the
-        // rest is still on the Pi.
         assertEquals(1, cursor.value());
         assertNotNull(result.error);
         assertTrue(result.moreWaiting);
@@ -321,14 +272,10 @@ public class PiEventSyncTest {
 
         PiEventSync.Result result = sync.sync(-1);
 
-        // Readings carry no pet id — the Pi cannot know which cat ate. Storing
-        // them now would mean guessing whose they are later.
         assertFalse(result.reachable);
         assertTrue(pi.requestedCursors.isEmpty());
         assertEquals(0, cursor.value());
     }
-
-    // ── Fixtures ────────────────────────────────────────────────────────────
 
     private static JSONObject event(long id, String kind, long timestamp) {
         try {
@@ -377,7 +324,6 @@ public class PiEventSyncTest {
         }
     }
 
-    /** A Pi with a scripted event log, built page by page. */
     private static final class FakePi implements PiEventSource {
 
         private final List<List<JSONObject>> pages = new ArrayList<>();
@@ -394,7 +340,6 @@ public class PiEventSyncTest {
             pages.add(java.util.Arrays.asList(events));
         }
 
-        /** Puts every page back, as a Pi that never pruned anything would. */
         void rewind() {
             pages.addAll(0, served);
             served.clear();
@@ -446,7 +391,6 @@ public class PiEventSyncTest {
         }
     }
 
-    /** The cursor, without SharedPreferences. */
     private static final class MemoryCursor implements PiEventSync.Cursor {
         private long value;
 

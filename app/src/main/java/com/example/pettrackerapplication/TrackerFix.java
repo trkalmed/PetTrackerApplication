@@ -6,27 +6,7 @@ import androidx.room.ForeignKey;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
-/**
- * One GPS fix from the Raspberry Pi — where the <em>tracker</em> was, not the pet.
- *
- * The distinction is the whole reason this class is named as it is. The Pi is a
- * box in the hall with a GNSS module wired to it; its position is the house. A
- * cat's position inside that house comes from the PIR sensors and lives in
- * {@link RoomEvent}. Naming this table after the pet, or feeding it into
- * anything that answers "where is the cat", would have the app reporting a
- * stationary object as a moving animal — accurate to five decimal places and
- * wrong about the only thing anyone is asking.
- *
- * What it is good for: proving the location subsystem works end to end, and
- * telling you where the installation is. If a collar tag ever exists, it lands
- * in its own table alongside this one rather than replacing it — the two answer
- * different questions.
- *
- * Rows carry {@link #petId} for the same reason every other reading does: the
- * sync runs against the pet the app is currently showing, and cascade delete
- * keeps a removed pet from leaving readings behind. It is bookkeeping, not a
- * claim that this fix describes that animal.
- */
+/** One GPS fix from the Pi: where the tracker was, not the pet. */
 @Entity(
         tableName = "tracker_fixes",
         foreignKeys = @ForeignKey(
@@ -45,30 +25,17 @@ public class TrackerFix {
 
     private long petId;
 
-    /** When the Pi computed the fix, epoch millis. */
     @ColumnInfo(name = "timestampMillis")
     private long timestampMillis;
 
-    /** Decimal degrees, north positive. */
     private double latitude;
 
-    /** Decimal degrees, east positive. */
     private double longitude;
 
-    /**
-     * Satellites the fix was computed from.
-     *
-     * Stored because it is the only thing here that says how much to trust the
-     * coordinates. A three-satellite fix wanders by tens of metres; a twelve-
-     * satellite one does not. Without it a bad fix and a good one look identical
-     * in the database.
-     */
     private int satellites;
 
-    /** Free-text origin, e.g. "gps". */
     private String source;
 
-    /** The id this event had on the Pi, or null when it came from elsewhere. */
     private Long remoteId;
 
     public TrackerFix(long petId, long timestampMillis, double latitude,

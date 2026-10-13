@@ -15,9 +15,6 @@
         android:layout_height="wrap_content"
         android:paddingBottom="24dp">
 
-        <!-- Same gradient panel as the dashboard, Account and Settings — but
-             here it sits behind the photo rather than replacing it, so the pet
-             keeps its picture and the screen still reads as one family. -->
         <LinearLayout
             android:id="@+id/headerBlock"
             android:layout_width="0dp"
@@ -39,7 +36,6 @@
             app:title=""
             app:titleTextColor="@color/on_header" />
 
-        <!-- Rounded, washed photo header — square corners were the one hard edge left -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/petHeaderSquare"
             android:layout_width="match_parent"
@@ -88,7 +84,6 @@
         </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
 
-        <!-- Today: the three facts the hardware reports -->
         <androidx.cardview.widget.CardView
             android:id="@+id/summaryCard"
             android:layout_width="0dp"

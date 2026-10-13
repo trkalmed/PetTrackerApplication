@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Four destinations, no actions. "Add pet" is a create action, so it moved to
-     the FAB on the dashboard; a nav tab should always take you to a place. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/nav_home"

@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    One motion sighting: when, where, and what the camera saw.
-
-    The photo is a fixed square rather than the full frame, because a list of
-    full-width photos is a list you scroll past rather than read. The time is
-    what the eye lands on first — a history is read as a sequence of moments.
--->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -65,8 +58,6 @@
                 android:textSize="14sp"
                 tools:text="Kitchen" />
 
-            <!-- Only shown when there is no photo, so the gap is explained
-                 rather than looking like a failed download. -->
             <TextView
                 android:id="@+id/tvNoPicture"
                 android:layout_width="wrap_content"

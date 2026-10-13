@@ -9,11 +9,7 @@ import androidx.room.RoomDatabase;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
-/**
- * Schema export is on, so version 2 is recorded in app/schemas as the baseline
- * every later migration is written against. Bump the version and Room will
- * refuse to build until a Migration exists — which is the point.
- */
+/** Room database. Version 2 is the exported schema baseline, and every later version ships a migration. */
 @Database(
         entities = {Pet.class, FeedingEvent.class, DetectionEvent.class, RoomEvent.class,
                 TrackerFix.class},
@@ -28,15 +24,6 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract RoomDao roomDao();
     public abstract TrackerFixDao trackerFixDao();
 
-    /**
-     * Adds the sensor-reading tables. Nothing about the pets table changes, so
-     * existing pets survive — which is the entire reason this is a real
-     * Migration rather than another destructive fallback.
-     *
-     * The CREATE statements must match what Room generates exactly, including
-     * index names and column order; app/schemas/…/3.json is the reference, and
-     * the migration test will fail loudly if they drift apart.
-     */
     static final Migration MIGRATION_2_3 = new Migration(2, 3) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
@@ -71,21 +58,6 @@ public abstract class AppDatabase extends RoomDatabase {
                             + "ON `detection_events` (`petId`, `timestampMillis`)");
         }
     };
-    /**
-     * Adds motion sightings, and the dedupe keys the Pi poller needs.
-     *
-     * Two things happen here. { room_events} is new — the PIR sensors
-     * finally have somewhere to land. And { feeding_events} gains a
-     * nullable { remoteId} plus a unique index over
-     * (petId, source, remoteId), which is what makes polling the Pi idempotent:
-     * a reading re-delivered after a cursor reset collides and is dropped
-     * instead of being counted a second time. Existing rows get a NULL
-     * remoteId, and SQLite treats NULLs in a unique index as distinct, so
-     * nothing already stored collides with anything else.
-     *
-     * app/schemas/…/4.json is the reference; MigrationTest fails if these
-     * statements drift from it.
-     */
     static final Migration MIGRATION_3_4 = new Migration(3, 4) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
@@ -117,14 +89,6 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    /**
-     * Remembers which picture belongs to a motion sighting.
-     *
-     * The Pi now saves a frame when a sensor fires and names it in the event.
-     * Only the name is stored: the Pi's address changes with the lease, so a URL
-     * recorded today would be wrong next month, and the dashboard rebuilds it
-     * from whichever Pi is paired when it draws.
-     */
     static final Migration MIGRATION_4_5 = new Migration(4, 5) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
@@ -133,21 +97,6 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    /**
-     * Somewhere to keep the Pi's own GPS fixes.
-     *
-     * The table is named for the tracker, not the pet, and that is load-bearing
-     * rather than pedantry — see {@link TrackerFix}. The Pi is a box in the
-     * hall; its coordinates are the house's, and the pet's position inside the
-     * house is what { room_events} holds.
-     *
-     * Same shape as the other Pi-fed tables: a nullable remoteId with a unique
-     * index over (petId, source, remoteId), so re-polling after a cursor reset
-     * collides and is dropped instead of storing the same fix twice.
-     *
-     * app/schemas/.../6.json is the reference; MigrationTest fails if these
-     * statements drift from it.
-     */
     static final Migration MIGRATION_5_6 = new Migration(5, 6) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
@@ -174,19 +123,6 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    /**
-     * Drops the cached instance, closing it first. Tests only.
-     *
-     * A test that wants a known-empty database calls
-     * {@code context.deleteDatabase("pets_db")}, which unlinks the file — but
-     * the singleton above is still holding an open connection to it, and
-     * {@link #getInstance} then hands that same dead connection back because
-     * INSTANCE is not null. What follows is "no such table: pets" from the
-     * second test onwards, which reads like a schema fault and is really a
-     * lifecycle one.
-     *
-     * So: close and forget, then delete, then ask for a new one.
-     */
     static void closeForTests() {
         synchronized (AppDatabase.class) {
             if (INSTANCE != null) {
@@ -196,17 +132,6 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     }
 
-    /**
-     * A daily food target that belongs to the pet.
-     *
-     * It was a constant on the dashboard, the same 300 g for every animal. A
-     * Bengal and an elderly indoor cat want different numbers, and the figure
-     * should follow the pet rather than the phone it was typed on — which also
-     * means it survives a reinstall and is deleted with its pet.
-     *
-     * Nullable, so every pet that existed before this column keeps rendering
-     * against the default rather than suddenly having a target of zero.
-     */
     static final Migration MIGRATION_6_7 = new Migration(6, 7) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
@@ -225,11 +150,7 @@ public abstract class AppDatabase extends RoomDatabase {
                                     "pets_db")
                             .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                                     MIGRATION_5_6, MIGRATION_6_7)
-                            // Version 1 predates schema export, so there is no
-                            // baseline to migrate it from — wiping is the only
-                            // option there. Every later version must ship a real
-                            // Migration; a blanket fallback would silently destroy
-                            // a user's pets on the next schema change.
+                            // Version 1 predates schema export, so it is the only version allowed to be wiped.
                             .fallbackToDestructiveMigrationFrom(1)
                             .build();
                 }

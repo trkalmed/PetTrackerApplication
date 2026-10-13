@@ -17,7 +17,6 @@ public interface PetDao {
     @Update
     void update(Pet pet);
 
-    /** Ownership is checked by the caller; kept for the delete-by-id path. */
     @Query("DELETE FROM pets WHERE id = :id AND ownerId = :ownerId")
     int deleteById(long id, String ownerId);
 

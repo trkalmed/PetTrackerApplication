@@ -17,10 +17,7 @@ import com.google.firebase.auth.FirebaseUser;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * My pets. Tapping a row picks the pet the dashboard tracks; the overflow on
- * each row holds Details / Edit / Delete.
- */
+/** The pet list. Tapping a row picks the pet the dashboard tracks. */
 public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapter.OnPetClickListener {
 
     private RecyclerView rvPets;
@@ -49,10 +46,8 @@ public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapt
     @Override
     protected void onResume() {
         super.onResume();
-        load();   // a pet may have been added, edited or deleted since we were last shown
+        load();
     }
-
-    // ── Data ────────────────────────────────────────────────────────────────
 
     private void load() {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
@@ -84,9 +79,6 @@ public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapt
 
         long active = Prefs.getActivePetId(this);
 
-        // The stored active pet can be stale — deleted, or belonging to a
-        // previous account. Fall back to the first pet so the dashboard always
-        // has something to show.
         if (!empty && !containsId(safe, active)) {
             active = safe.get(0).getId();
             Prefs.setActivePetId(this, active);
@@ -104,14 +96,12 @@ public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapt
         return false;
     }
 
-    // ── Row actions ─────────────────────────────────────────────────────────
-
     @Override
     public void onPetClick(Pet pet) {
         Prefs.setActivePetId(this, pet.getId());
         Toast.makeText(this, getString(R.string.now_tracking_pet, pet.getName()),
                 Toast.LENGTH_SHORT).show();
-        finish();   // straight back to the dashboard, which reloads in onResume
+        finish();
     }
 
     @Override
@@ -159,8 +149,7 @@ public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapt
         String ownerId = user.getUid();
 
         new Thread(() -> {
-            // Delete by id + ownerId so a stale Pet object cannot remove
-            // somebody else's row.
+            // Delete by id and ownerId so a stale object cannot remove another user's row.
             int removed = AppDatabase
                     .getInstance(getApplicationContext())
                     .petDao()
@@ -169,7 +158,7 @@ public class PetListActivity extends ThemedActivity implements Petmenu.PetsAdapt
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 if (removed > 0 && Prefs.getActivePetId(this) == pet.getId()) {
-                    Prefs.clearActivePetId(this);   // render() picks a new one
+                    Prefs.clearActivePetId(this);
                 }
                 Toast.makeText(this,
                         removed > 0 ? getString(R.string.pet_deleted, pet.getName())

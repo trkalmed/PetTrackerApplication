@@ -10,11 +10,6 @@ import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
 
-/**
- * "Today" is the quiet source of date bugs: a meal at 23:30 must belong to the
- * day the owner just had, not to tomorrow because the device sits east of UTC.
- * These run without a device, which is the point of keeping the logic here.
- */
 public class DayRangeTest {
 
     private static final TimeZone BUDAPEST = TimeZone.getTimeZone("Europe/Budapest");
@@ -39,8 +34,6 @@ public class DayRangeTest {
 
     @Test
     public void lateEveningBelongsToTheDayJustHad() {
-        // The case that breaks when a UTC day is used east of Greenwich: 23:30
-        // local is already tomorrow in UTC.
         long lateEvening = at(BUDAPEST, 2026, 3, 14, 23, 30);
 
         DayRange range = DayRange.dayContaining(lateEvening, BUDAPEST);
@@ -53,7 +46,6 @@ public class DayRangeTest {
     public void windowIsHalfOpen() {
         DayRange range = DayRange.dayContaining(at(UTC, 2026, 5, 2, 9, 0), UTC);
 
-        // Midnight belongs to its own day, never to both.
         assertTrue(range.contains(range.startMillis));
         assertFalse("end must be exclusive, or a meal counts twice",
                 range.contains(range.endMillis));
@@ -69,8 +61,6 @@ public class DayRangeTest {
 
     @Test
     public void springForwardDayIsTwentyThreeHours() {
-        // Europe/Budapest loses an hour on 2026-03-29. Adding 24h instead of one
-        // calendar day would put the boundary in the wrong place.
         DayRange range = DayRange.dayContaining(at(BUDAPEST, 2026, 3, 29, 12, 0), BUDAPEST);
 
         assertEquals(23 * 60 * 60 * 1000L, range.lengthMillis());

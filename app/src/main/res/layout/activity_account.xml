@@ -7,9 +7,6 @@
     android:background="@color/background"
     tools:context=".AccountActivity">
 
-    <!-- Full-width gradient panel, matching the dashboard. The root's uniform
-         padding moved onto the blocks so this can reach the screen edges; the
-         cards below carry their own horizontal margin. -->
     <LinearLayout
         android:id="@+id/headerBlock"
         android:layout_width="0dp"
@@ -24,9 +21,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- The theme is NoActionBar and the panel below carries the title, so
-             this supplies the one thing that was missing: a way back. On green
-             it reads as glass rather than a white chip. -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/btnBack"
             android:layout_width="44dp"

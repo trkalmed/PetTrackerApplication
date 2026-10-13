@@ -10,48 +10,25 @@ import java.util.List;
 @Dao
 public interface RoomDao {
 
-    /**
-     * IGNORE, not ABORT: the unique index over (petId, source, remoteId) makes a
-     * re-delivered Pi event collide, and a collision here means "already have
-     * it", not an error. Returns -1 when the row was dropped as a duplicate.
-     */
+    /** IGNORE: a Pi event delivered twice collides with the unique index and is dropped. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     long insert(RoomEvent event);
 
-    /** Sightings inside a window, oldest first — the order the dwell maths needs. */
     @Query("SELECT * FROM room_events "
             + "WHERE petId = :petId "
             + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "
             + "ORDER BY timestampMillis ASC")
     List<RoomEvent> getInRange(long petId, long fromMillis, long toMillis);
 
-    /**
-     * Whether any motion sensor has ever reported for this pet — "no sensors
-     * paired" against "paired, and the pet has not moved today".
-     */
     @Query("SELECT EXISTS(SELECT 1 FROM room_events WHERE petId = :petId)")
     boolean hasAnyReading(long petId);
 
-    /**
-     * The newest sighting in the window that actually has a picture.
-     *
-     * Not simply the newest sighting: most have no snapshot — the camera was
-     * busy, or absent — and showing nothing because the last one happened to
-     * miss would waste the one that succeeded a minute earlier.
-     */
     @Query("SELECT * FROM room_events "
             + "WHERE petId = :petId AND snapshotName IS NOT NULL "
             + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "
             + "ORDER BY timestampMillis DESC LIMIT 1")
     RoomEvent getMostRecentWithSnapshot(long petId, long fromMillis, long toMillis);
 
-    /**
-     * Sightings in a window, newest first — the order a history list reads in.
-     *
-     * The dwell maths wants the opposite order, which is why both exist rather
-     * than one being reversed at the call site: getting that backwards silently
-     * inverts every duration on the dashboard.
-     */
     @Query("SELECT * FROM room_events "
             + "WHERE petId = :petId "
             + "AND timestampMillis >= :fromMillis AND timestampMillis < :toMillis "

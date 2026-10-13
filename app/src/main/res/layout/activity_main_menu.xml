@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Dashboard — Organic design system.
-  Every value shown here comes from hardware that exists: grams from the feeder,
-  minutes from the room motion sensors, frames from the Pi camera, fixes from GPS.
-  Nothing renders a permanent "—".
--->
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -34,10 +28,6 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <!-- ── The green block: identity, device status and today's food
-                         all sit on one gradient panel, as in the design. It spans
-                         the full width, so the horizontal padding that used to be
-                         on the scroll column lives here instead. ── -->
                 <LinearLayout
                     android:id="@+id/headerBlock"
                     android:layout_width="match_parent"
@@ -48,15 +38,12 @@
                     android:paddingTop="14dp"
                     android:paddingBottom="22dp">
 
-                <!-- ── Header: who, then account ─────────────────────────── -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <!-- Avatar + name are one tap target: the only route into the
-                         pet detail screen. Account stays a separate target. -->
                     <LinearLayout
                         android:id="@+id/rowPetHeader"
                         android:layout_width="0dp"
@@ -134,7 +121,6 @@
                     </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
 
-                <!-- ── Device status: the real connection, not a hardcoded dot ── -->
                 <LinearLayout
                     android:id="@+id/rowDeviceStatus"
                     android:layout_width="match_parent"
@@ -184,7 +170,6 @@
                         app:tint="@color/on_header_secondary" />
                 </LinearLayout>
 
-                <!-- ── Food today: grams, from the feeder ────────────────── -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardFood"
                     android:layout_width="match_parent"
@@ -216,9 +201,6 @@
                             android:layout_height="170dp"
                             android:layout_marginTop="14dp">
 
-                            <!-- Not CircularProgressIndicator: that paints one
-                                 colour, and the design sweeps the four ramp hues
-                                 around the arc. -->
                             <com.example.pettrackerapplication.RampRing
                                 android:id="@+id/foodProgress"
                                 android:layout_width="match_parent"
@@ -251,7 +233,6 @@
                             </LinearLayout>
                         </FrameLayout>
 
-                        <!-- Meals are added here at runtime, one pill each -->
                         <LinearLayout
                             android:id="@+id/mealsContainer"
                             android:layout_width="wrap_content"
@@ -260,7 +241,6 @@
                             android:gravity="center"
                             android:orientation="horizontal" />
 
-                        <!-- Shown instead of the meal pills when no feeder is paired -->
                         <TextView
                             android:id="@+id/tvFoodEmpty"
                             android:layout_width="match_parent"
@@ -274,8 +254,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
-                <!-- ── end of the gradient block ─────────────────────────── -->
-
                 <LinearLayout
                     android:id="@+id/contentColumn"
                     android:layout_width="match_parent"
@@ -284,7 +262,6 @@
                     android:paddingHorizontal="18dp"
                     android:paddingTop="16dp">
 
-                <!-- ── Rooms: minutes, from the motion sensors ───────────── -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cardRooms"
                     android:layout_width="match_parent"
@@ -323,7 +300,6 @@
                                 android:textSize="18sp" />
                         </LinearLayout>
 
-                        <!-- Weighted pill segments, added at runtime -->
                         <LinearLayout
                             android:id="@+id/roomBar"
                             android:layout_width="match_parent"
@@ -331,7 +307,6 @@
                             android:layout_marginTop="16dp"
                             android:orientation="horizontal" />
 
-                        <!-- One legend row per room, added at runtime -->
                         <LinearLayout
                             android:id="@+id/roomLegend"
                             android:layout_width="match_parent"
@@ -339,9 +314,6 @@
                             android:layout_marginTop="14dp"
                             android:orientation="vertical" />
 
-                        <!-- The frame the camera grabbed when a sensor last
-                             fired. Hidden until there is one: most rigs have no
-                             camera, and most sightings miss. -->
                         <com.google.android.material.card.MaterialCardView
                             android:id="@+id/cardLastSeen"
                             android:layout_width="match_parent"
@@ -387,7 +359,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- ── Two facts worth glancing at ───────────────────────── -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -509,7 +480,6 @@
                     </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
 
-                <!-- ── Empty state: no pets at all ───────────────────────── -->
                 <LinearLayout
                     android:id="@+id/emptyStateView"
                     android:layout_width="match_parent"
@@ -566,7 +536,6 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- Add pet is a create action, so it is a FAB, not a nav tab -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabAddPet"
         android:layout_width="wrap_content"

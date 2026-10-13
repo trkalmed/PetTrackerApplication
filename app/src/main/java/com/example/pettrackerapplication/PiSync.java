@@ -10,22 +10,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Runs {@link PiEventSync} on behalf of a screen.
- *
- * <b>Only while the app is on screen, and that is deliberate.</b> Polling in the
- * background would mean a foreground service and its permanent notification, or
- * WorkManager and its fifteen-minute floor — real costs, in battery and in the
- * user's notification shade, for something that buys nothing: the Pi buffers
- * every reading and hands over whatever was missed the moment the app is opened.
- * Nothing is lost by not listening, so nothing listens. If push notifications
- * ("Biscuit has not eaten today") are ever wanted, that is the point at which
- * background sync earns its keep, and WorkManager is where it goes.
- *
- * The work itself runs on one shared background thread. Two screens asking at
- * once, or a poll landing on top of a slow one, collapses to a single sync —
- * they would only fight over the same cursor.
- */
+/** Runs PiEventSync for a screen, only while the app is in the foreground. */
 public final class PiSync {
 
     private static final String TAG = "PiSync";
@@ -34,27 +19,12 @@ public final class PiSync {
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean(false);
 
     private PiSync() {
-        // static helper, no instances
     }
 
-    /**
-     * Told what one sync did, on the main thread.
-     *
-     * A sync outlives the screen that asked for it, so implementations must
-     * check they are still alive before touching views — the same guard every
-     * database load in this app already uses.
-     */
     public interface Listener {
         void onSyncFinished(PiEventSync.Result result);
     }
 
-    /**
-     * Collects whatever the Pi is holding, if there is a Pi and a pet.
-     *
-     * Does nothing when a sync is already running: the listener of the one in
-     * flight is called instead, and screens reload on resume regardless, so a
-     * dropped request costs nothing.
-     */
     public static void requestSync(Context context, Listener listener) {
         Context app = context.getApplicationContext();
 
@@ -84,9 +54,6 @@ public final class PiSync {
                 }
                 rememberHealth(app, result.health);
             } catch (RuntimeException e) {
-                // A database that refuses a write, most likely because the
-                // active pet was deleted between the check above and here. The
-                // sync is lost, not the app.
                 Log.e(TAG, "Sync failed", e);
                 result = PiEventSync.Result.failed(e.getClass().getSimpleName());
             } finally {
@@ -96,10 +63,6 @@ public final class PiSync {
         });
     }
 
-    /**
-     * Keeps what the Pi just said about its sensors, so a screen can render it
-     * without waiting for a round trip of its own.
-     */
     private static void rememberHealth(Context app, PiHealth health) {
         if (health == null) return;
         Prefs.get(app).edit()
@@ -108,25 +71,14 @@ public final class PiSync {
                 .apply();
     }
 
-    /** When the last successful sync finished, or 0 if there has never been one. */
     public static long lastSyncMillis(Context context) {
         return Prefs.get(context).getLong(Prefs.KEY_PI_LAST_SYNC, 0L);
     }
 
-    /** Told whether the Pi answered, on the main thread. */
     public interface HealthListener {
         void onHealth(PiHealth health, String error);
     }
 
-    /**
-     * Asks the Pi whether it is there, and nothing more.
-     *
-     * Separate from {@link #requestSync} because "is this address right" is a
-     * different question from "collect the readings": it has to be answerable
-     * before a pet exists, while someone is standing in Settings typing an IP
-     * address, and it must not be reported as a failure just because nothing has
-     * been chosen to file readings against yet.
-     */
     public static void checkHealth(Context context, HealthListener listener) {
         Context app = context.getApplicationContext();
         PiClient client = PiClient.forSavedPi(app);
@@ -153,14 +105,6 @@ public final class PiSync {
         });
     }
 
-    /**
-     * The cursor, tied to the address it was recorded against.
-     *
-     * Re-pointing the app at a different Pi makes the stored number meaningless
-     * — it indexes a log this machine has never seen — so the host is stored
-     * alongside it and a mismatch starts from the beginning. Replaying is
-     * harmless; silently reading from the wrong offset is not.
-     */
     private static PiEventSync.Cursor cursorFor(Context app) {
         SharedPreferences prefs = Prefs.get(app);
         String host = PiConnectionManager.getSavedIp(app);
@@ -189,20 +133,8 @@ public final class PiSync {
         new Handler(Looper.getMainLooper()).post(() -> listener.onSyncFinished(result));
     }
 
-    /**
-     * Keeps a screen up to date for as long as it is in front of the user.
-     *
-     * Start it in {@code onResume}, stop it in {@code onPause}. Nothing runs
-     * once stopped, which is the whole design: see the class comment.
-     */
     public static final class Poller {
 
-        /**
-         * Faster than anything the hardware can produce. The Pi debounces motion
-         * to one event per room per 30 s and only commits a meal after the bowl
-         * has been still for 4 s, so polling more often would just ask the same
-         * question twice.
-         */
         private static final long INTERVAL_MS = 15_000L;
 
         private final Handler handler = new Handler(Looper.getMainLooper());
@@ -223,7 +155,6 @@ public final class PiSync {
             this.listener = listener;
         }
 
-        /** Syncs now, then every {@link #INTERVAL_MS} until stopped. */
         public void start() {
             if (running) return;
             running = true;

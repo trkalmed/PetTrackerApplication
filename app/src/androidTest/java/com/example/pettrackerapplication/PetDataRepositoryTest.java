@@ -16,14 +16,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * The seam the Raspberry Pi work will plug into, exercised end to end against a
- * real database: readings go in through the ingestion methods, and the dashboard
- * reads them back out as {@link DashboardStats}.
- *
- * These run against the app's actual database file rather than an in-memory one,
- * because that is what the Pi integration will be writing to.
- */
 @RunWith(AndroidJUnit4.class)
 public class PetDataRepositoryTest {
 
@@ -37,11 +29,8 @@ public class PetDataRepositoryTest {
     @Before
     public void setUp() {
         context = ApplicationProvider.getApplicationContext();
-        // Close the cached instance before unlinking the file, or the
-        // singleton hands the next test a connection to a database that
-        // no longer exists — see AppDatabase.closeForTests().
         AppDatabase.closeForTests();
-        context.deleteDatabase("pets_db");           // start from a known state
+        context.deleteDatabase("pets_db");
         db = AppDatabase.getInstance(context);
         repository = new PetDataRepository(context);
 
@@ -52,8 +41,6 @@ public class PetDataRepositoryTest {
     @After
     public void tearDown() {
         db.clearAllTables();
-        // The camera flag is remembered across syncs, so it would otherwise leak
-        // from one test into the next.
         Prefs.get(context).edit()
                 .remove(Prefs.KEY_PI_CAMERA_OK)
                 .remove(Prefs.KEY_PI_HEALTH_AT)
@@ -64,21 +51,16 @@ public class PetDataRepositoryTest {
         return db.petDao().getPetById(petId, "owner-1");
     }
 
-    /** A timestamp inside today, offset back from now but never past midnight. */
     private long todayAt(long millisAgo) {
         long candidate = System.currentTimeMillis() - millisAgo;
         DayRange today = DayRange.today();
         return today.contains(candidate) ? candidate : today.startMillis + 1;
     }
 
-    // ── Feeder ──────────────────────────────────────────────────────────────
-
     @Test
     public void noReadingsMeansNoFeederPaired() {
         DashboardStats stats = repository.statsForToday(pet());
 
-        // null, not 0: "no feeder" and "ate nothing" are different statements and
-        // the dashboard renders them differently.
         assertNull(stats.gramsEaten);
         assertTrue(stats.meals.isEmpty());
     }
@@ -108,8 +90,6 @@ public class PetDataRepositoryTest {
 
     @Test
     public void dispensedDoesNotCountAsEaten() {
-        // The feeder putting food in the bowl is not the pet eating it. Both are
-        // stored; only EATEN drives the dashboard.
         repository.recordFeeding(petId, todayAt(HOUR), 200, FeedingEvent.TYPE_DISPENSED, "f");
 
         DashboardStats stats = repository.statsForToday(pet());
@@ -132,8 +112,6 @@ public class PetDataRepositoryTest {
 
     @Test
     public void negativeGramsAreRejectedRatherThanStored() {
-        // A negative reading is a bug at the source; storing it would poison
-        // every total downstream.
         long id = repository.recordFeeding(petId, todayAt(HOUR), -5, FeedingEvent.TYPE_EATEN, "f");
 
         assertEquals(-1, id);
@@ -146,8 +124,6 @@ public class PetDataRepositoryTest {
 
         assertEquals(-1, id);
     }
-
-    // ── Detections ──────────────────────────────────────────────────────────
 
     @Test
     public void todaysDetectionsAreCounted() {
@@ -180,10 +156,6 @@ public class PetDataRepositoryTest {
                 .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis())
                 .apply();
 
-        // The honest source. The old rule asked whether the phone's own detector
-        // had seen an animal lately, which is only true while somebody is
-        // watching the Live screen — so a working Pi camera read as "offline"
-        // for all the time nobody was looking at it.
         assertTrue(repository.statsForToday(pet()).cameraOnline);
     }
 
@@ -194,8 +166,6 @@ public class PetDataRepositoryTest {
                 .putLong(Prefs.KEY_PI_HEALTH_AT, System.currentTimeMillis() - HOUR)
                 .apply();
 
-        // An hour-old answer describes an hour ago. The poller runs every 15 s
-        // while a screen is open, so this means the app is not talking to the Pi.
         assertFalse(repository.statsForToday(pet()).cameraOnline);
     }
 
@@ -225,20 +195,14 @@ public class PetDataRepositoryTest {
         assertFalse(repository.statsForToday(pet()).cameraOnline);
     }
 
-    // ── Things with no hardware yet ─────────────────────────────────────────
-
     @Test
     public void aFeedingReadingFillsInNothingItDoesNotKnow() {
         repository.recordFeeding(petId, todayAt(HOUR), 50, FeedingEvent.TYPE_EATEN, "f");
 
         DashboardStats stats = repository.statsForToday(pet());
 
-        // Feeding readings say nothing about where the tracker is. The fix has
-        // its own table and its own test below.
         assertNull(stats.trackerFixTime);
 
-        // Feeder readings say nothing about rooms. See RoomOccupancyTest for
-        // what motion sightings do.
         assertTrue(stats.rooms.isEmpty());
         assertNull(stats.currentRoom);
     }
@@ -250,18 +214,12 @@ public class PetDataRepositoryTest {
 
         db.petDao().deleteById(petId, "owner-1");
 
-        // The foreign keys cascade, so readings cannot outlive their pet.
         DayRange today = DayRange.today();
         assertEquals(0, db.feedingDao().getTotalGramsInRange(
                 petId, FeedingEvent.TYPE_EATEN, today.startMillis, today.endMillis));
         assertEquals(0, db.detectionDao().countInRange(
                 petId, today.startMillis, today.endMillis));
     }
-
-    // ── The tracker's own position ──────────────────────────────────────────
-    //
-    // Not the pet's, anywhere in here. The Pi is a box in the hall, and the
-    // naming is the guardrail — see TrackerFix.
 
     @Test
     public void aFixIsStoredAndReadBackOntoTheDashboard() {
@@ -278,9 +236,6 @@ public class PetDataRepositoryTest {
 
     @Test
     public void theNewestFixWins() {
-        // Absolute times inside today rather than offsets from now: todayAt()
-        // clamps to the start of the day, so two calls in the small hours can
-        // land on the same millisecond and make "newest" ambiguous.
         long midnight = DayRange.today().startMillis;
         repository.recordTrackerFix(petId, midnight + HOUR, 32.0, 35.0, 4, "gps", 1L);
         repository.recordTrackerFix(petId, midnight + 2 * HOUR, 31.5, 35.5, 11, "gps", 2L);
@@ -291,13 +246,6 @@ public class PetDataRepositoryTest {
         assertEquals(11, stats.trackerSatellites);
     }
 
-    /**
-     * A fix from before today still shows, unlike every other figure here.
-     *
-     * A GNSS module indoors can go a long time between fixes. "Located
-     * yesterday" is true and useful; a blank would read as "no GPS at all",
-     * which is a different and wrong statement about the hardware.
-     */
     @Test
     public void aFixFromYesterdayIsStillReported() {
         repository.recordTrackerFix(petId, DayRange.today().startMillis - 6 * HOUR,
@@ -306,15 +254,9 @@ public class PetDataRepositoryTest {
         DashboardStats stats = repository.statsForToday(pet());
 
         assertNotNull(stats.trackerFixTime);
-        // Dated, so a stale fix cannot pass for a fresh one at a glance.
         assertTrue(stats.trackerFixTime, stats.trackerFixTime.length() > "19:42".length());
     }
 
-    /**
-     * 0,0 is a real point in the Gulf of Guinea and the classic shape of a fix
-     * built from empty NMEA fields. Storing it would put a working-looking
-     * tracker two thousand kilometres out to sea.
-     */
     @Test
     public void nullIslandIsRejected() {
         assertEquals(-1, repository.recordTrackerFix(
@@ -335,11 +277,6 @@ public class PetDataRepositoryTest {
         assertNull(repository.statsForToday(pet()).trackerFixTime);
     }
 
-    /**
-     * Re-polling the Pi after a cursor reset must not store the same fix twice.
-     * Same guarantee as every other Pi-fed table, and it comes from the unique
-     * index over (petId, source, remoteId).
-     */
     @Test
     public void redeliveringAFixIsANoOp() {
         assertTrue(repository.recordTrackerFix(
@@ -348,13 +285,6 @@ public class PetDataRepositoryTest {
                 petId, todayAt(HOUR), 32.00964, 35.76567, 12, "gps", 421L));
     }
 
-    /**
-     * A route is read oldest first, and that ordering is load-bearing.
-     *
-     * The fixes are joined point to point to draw the track, so the wrong order
-     * does not reverse the picture — it scrambles it, because every consecutive
-     * pair becomes a jump between the wrong two places.
-     */
     @Test
     public void aRouteComesBackInTheOrderItWasWalked() {
         long midnight = DayRange.today().startMillis;
@@ -371,12 +301,6 @@ public class PetDataRepositoryTest {
         assertEquals(32.03, route.get(2).getLatitude(), 0.000005);
     }
 
-    /**
-     * The limit takes the newest fixes, then hands them back oldest first.
-     *
-     * Getting this backwards would cap a long walk by keeping its beginning and
-     * discarding where the tracker actually ended up.
-     */
     @Test
     public void aCappedRouteKeepsTheMostRecentFixes() {
         long midnight = DayRange.today().startMillis;

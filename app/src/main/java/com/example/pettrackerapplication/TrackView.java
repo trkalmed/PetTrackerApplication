@@ -12,34 +12,11 @@ import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Draws a route from GPS fixes, with no map underneath it.
- *
- * <b>Why no map.</b> A tiled map means a maps SDK, an API key, a billing
- * account and a network round trip to show something the app already knows. The
- * question this screen answers is "did the tracker follow a path, and what
- * shape was it" — and the shape is entirely in the fixes. A street map would
- * make it prettier and would also make an offline demo depend on a CDN.
- *
- * <b>The projection.</b> Latitude and longitude are not interchangeable units.
- * A degree of latitude is the same length everywhere; a degree of longitude
- * shrinks towards the poles, so plotting one against the other stretches the
- * route east-west — at 32 degrees north, by about 15%. Longitudes are scaled by
- * cos(latitude) before anything is drawn, which is the standard equirectangular
- * projection and is accurate enough over a walk to be indistinguishable from
- * the truth. The aspect ratio is then preserved when fitting to the view, so a
- * square walk looks square.
- *
- * A single fix draws as one dot rather than an empty view: "the tracker is
- * here, and has not moved" is a real answer.
- */
+/** Draws a GPS route without a map underneath it. */
 public class TrackView extends View {
 
-    /** Route line, in device-independent pixels. */
     private static final float STROKE_DP = 3f;
-    /** Start and end markers. */
     private static final float MARKER_RADIUS_DP = 6f;
-    /** Breathing room so markers are not clipped by the edge. */
     private static final float PADDING_DP = 20f;
 
     private final Paint routePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -48,24 +25,10 @@ public class TrackView extends View {
     private final Path path = new Path();
     private final Path gapPath = new Path();
 
-    private final List<double[]> points = new ArrayList<>();   // {lat, lon}
-    private final List<Long> times = new ArrayList<>();        // epoch millis
-    private final List<Integer> sats = new ArrayList<>();      // satellites per fix
+    private final List<double[]> points = new ArrayList<>();
+    private final List<Long> times = new ArrayList<>();
+    private final List<Integer> sats = new ArrayList<>();
 
-    /**
-     * Segments where the receiver stopped reporting, drawn as a broken line.
-     *
-     * Joining across a gap with the same confident stroke as the rest claims a
-     * path nothing measured — the straight lines cutting across the first
-     * walk's route were all of this kind. What is unknown is the shape of the
-     * route between them, and a dashed line says exactly that.
-     *
-     * Two things are drawn this way, because they are the same claim. The
-     * receiver going quiet is one. The receiver staying talkative while it
-     * stops knowing where it is — three satellites, a fix every two seconds,
-     * positions scattered over tens of metres — is the other, and it is the
-     * one that used to pass for a measured route.
-     */
     private final Paint gapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public TrackView(Context context) {
@@ -97,7 +60,6 @@ public class TrackView extends View {
                 new float[]{6 * density, 6 * density}, 0));
     }
 
-    /** Fixes in the order they were recorded, oldest first. */
     public void setFixes(List<TrackerFix> fixes) {
         points.clear();
         times.clear();
@@ -129,9 +91,7 @@ public class TrackView extends View {
         float usableHeight = getHeight() - 2 * pad;
         if (usableWidth <= 0 || usableHeight <= 0) return;
 
-        // Longitude is scaled by cos(latitude) so the projection is not
-        // stretched east-west. One scale for the whole route, taken at its
-        // middle: over a walk the difference across the route is nil.
+        // Scale longitude by cos(latitude) so the route is not stretched east to west.
         double midLatitude = midLatitude();
         double lonScale = Geo.longitudeScale(midLatitude);
 
@@ -147,14 +107,9 @@ public class TrackView extends View {
         double spanX = maxX - minX;
         double spanY = maxY - minY;
 
-        // One scale factor for both axes, so the route keeps its shape rather
-        // than being stretched to fill the view. A route that is mostly a
-        // straight line has almost no span on one axis, and dividing by it
-        // would magnify GPS jitter across the whole screen.
         double span = Math.max(spanX, spanY);
         float scale = span <= 0 ? 0 : (float) (Math.min(usableWidth, usableHeight) / span);
 
-        // Centre whatever the route's real proportions turn out to be.
         float offsetX = pad + (usableWidth - (float) (spanX * scale)) / 2f;
         float offsetY = pad + (usableHeight - (float) (spanY * scale)) / 2f;
 
@@ -166,9 +121,7 @@ public class TrackView extends View {
         for (int i = 0; i < points.size(); i++) {
             double[] p = points.get(i);
             float x = offsetX + (float) ((p[1] * lonScale - minX) * scale);
-            // Screen y grows downwards and latitude grows northwards, so this
-            // is measured from the top. Without the flip, north is at the
-            // bottom and every route is drawn upside down.
+            // Screen y grows downwards while latitude grows northwards.
             float y = offsetY + (float) ((maxY - p[0]) * scale);
 
             if (i == 0) {
@@ -176,11 +129,7 @@ public class TrackView extends View {
                 firstX = x; firstY = y;
             } else if (!Geo.isTrusted(sats.get(i)) || !Geo.isTrusted(sats.get(i - 1))
                     || times.get(i) - times.get(i - 1) > gapThreshold) {
-                // Either the receiver stopped reporting between these two
-                // fixes, or it reported from too few satellites to be placed.
-                // The tracker travelled from one to the other either way; the
-                // path it took is unknown, and drawing it as a confident line
-                // is the one way this picture can lie.
+                // A break in coverage: drawn as a broken line and not measured.
                 gapPath.moveTo(lastX, lastY);
                 gapPath.lineTo(x, y);
                 path.moveTo(x, y);
@@ -191,8 +140,6 @@ public class TrackView extends View {
         }
 
         if (points.size() == 1) {
-            // Not a route. One fix, drawn where it is, which is the honest
-            // picture of a tracker that has not moved.
             canvas.drawCircle(firstX, firstY, markerRadius, startPaint);
             return;
         }

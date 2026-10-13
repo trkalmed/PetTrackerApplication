@@ -9,14 +9,6 @@ import static org.junit.Assert.assertTrue;
 import org.json.JSONObject;
 import org.junit.Test;
 
-/**
- * The wire format between the two halves of this project, parsed.
- *
- * Every field name here is copied from a real reply in pi/README.md. If someone
- * renames one on the Pi, this is where it should break — the alternative is a
- * phone that syncs successfully and stores nothing, which reads as "the sensors
- * are quiet" and is the hardest kind of failure to notice.
- */
 public class PiEventTest {
 
     private static final long JULY_2025 = 1_752_000_000_000L;
@@ -45,11 +37,6 @@ public class PiEventTest {
         assertNull(event.room);
     }
 
-    /**
-     * The real reply from the Pi in the hall, on the evening the antenna
-     * arrived. Copied from the fix that pettracker.bringup printed, so if the
-     * NMEA parser's output ever changes shape this test carries the old one.
-     */
     @Test
     public void parsesALocationEvent() {
         PiEvent event = PiEvent.fromJson(json("{"
@@ -66,12 +53,6 @@ public class PiEventTest {
         assertNull(event.grams);
     }
 
-    /**
-     * Satellite count is optional on the wire; coordinates are not.
-     *
-     * A fix with no count is still a position worth storing — the count only
-     * says how much to trust it — so its absence must not cost the event.
-     */
     @Test
     public void parsesALocationEventWithNoSatelliteCount() {
         PiEvent event = PiEvent.fromJson(json("{"
@@ -83,7 +64,6 @@ public class PiEventTest {
         assertEquals(32.00964, event.latitude, 0.000005);
     }
 
-    /** Every other kind leaves the location fields alone. */
     @Test
     public void nonLocationEventsHaveNoCoordinates() {
         PiEvent event = PiEvent.fromJson(json("{"
@@ -110,8 +90,6 @@ public class PiEventTest {
 
     @Test
     public void parsesAWeightEvent() {
-        // Parsed, then ignored by the sync — but it must not break the page it
-        // arrives in, and it arrives once a minute.
         PiEvent event = PiEvent.fromJson(json("{"
                 + "'id': 45, 'kind': 'weight', 'timestamp_ms': " + JULY_2025 + ","
                 + "'source': 'load-cell', 'grams': 118.4}"));
@@ -122,9 +100,6 @@ public class PiEventTest {
 
     @Test
     public void anUnknownKindStillParses() {
-        // The Pi's contract says adding a kind is safe. A newer Pi talking to an
-        // older app must not be a parse failure — the sync skips what it does
-        // not recognise.
         PiEvent event = PiEvent.fromJson(json("{"
                 + "'id': 46, 'kind': 'humidity', 'timestamp_ms': " + JULY_2025 + "}"));
 
@@ -134,7 +109,6 @@ public class PiEventTest {
 
     @Test
     public void rejectsAnEventWithNoId() {
-        // The id is the cursor. Without it the sync cannot say where it got to.
         assertNull(PiEvent.fromJson(json(
                 "{'kind': 'motion', 'timestamp_ms': " + JULY_2025 + "}")));
     }
@@ -147,9 +121,6 @@ public class PiEventTest {
 
     @Test
     public void rejectsATimestampFromBeforeThePiKnewTheTime() {
-        // A Pi has no real-time clock: between boot and its first NTP sync it
-        // stamps events in 1970. Storing those would file a meal under a day
-        // that is not on any dashboard; moving them to "now" would invent one.
         assertNull(PiEvent.fromJson(json(
                 "{'id': 5, 'kind': 'motion', 'timestamp_ms': 12000, 'room': 'Hall'}")));
     }
@@ -165,13 +136,9 @@ public class PiEventTest {
                 "{'id': 7, 'kind': 'motion', 'timestamp_ms': " + JULY_2025 + "}"));
 
         assertNotNull(event);
-        // The repository rejects a blank room; it must not receive "null" or ""
-        // dressed up as a real one.
         assertNull(event.room);
         assertNull(event.source);
     }
-
-    // ── The page around the events ──────────────────────────────────────────
 
     @Test
     public void parsesAPageAndItsCursor() {
@@ -201,8 +168,6 @@ public class PiEventTest {
 
     @Test
     public void aReplyWithNoCursorLeavesTheAppWhereItWas() {
-        // Rewinding to 0 on a malformed reply would replay the Pi's whole log.
-        // Harmless, thanks to the remote ids — but pointless work on a phone.
         PiEventPage page = PiEventPage.fromJson(json("{'events': []}"), 137);
 
         assertEquals(137, page.nextCursor);
@@ -218,8 +183,6 @@ public class PiEventTest {
         assertEquals(42, page.nextCursor);
     }
 
-    // ── Health ──────────────────────────────────────────────────────────────
-
     @Test
     public void parsesHealthIncludingPerSensorAvailability() {
         PiHealth health = PiHealth.fromJson(json("{"
@@ -233,8 +196,6 @@ public class PiEventTest {
         assertEquals(42, health.latestCursor);
         assertTrue(health.scaleAvailable);
         assertFalse(health.feederAvailable);
-        // The distinction the whole /health endpoint exists for: which sensors
-        // are actually live, one at a time, while the rig is being wired.
         assertEquals(3, health.motionSensors.size());
         assertTrue(health.motionSensors.get("Kitchen"));
         assertFalse(health.motionSensors.get("Hall"));

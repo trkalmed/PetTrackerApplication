@@ -33,7 +33,6 @@ import java.util.List;
 
 public class Petmenu extends ThemedActivity {
 
-    // Views
     private MaterialToolbar toolbar;
     private ImageView        imgPetPhoto;
     private TextView         tvPetNameDetail;
@@ -47,7 +46,6 @@ public class Petmenu extends ThemedActivity {
     private TextView         tvFoodToday;
     private TextView         tvRoomsToday;
 
-    /** The loaded pet, so Edit and Delete know what they are acting on. */
     private Pet currentPet;
     private long petId = -1L;
 
@@ -63,13 +61,10 @@ public class Petmenu extends ThemedActivity {
             return insets;
         });
 
-        // ── Toolbar ──────────────────────────────────────────────────────────
         toolbar = findViewById(R.id.topAppBar);
         toolbar.setNavigationOnClickListener(
                 v -> getOnBackPressedDispatcher().onBackPressed());
 
-        // Edit and Delete stay hidden until a pet has actually loaded — acting on
-        // a pet that is not there yet is the sort of thing that deletes the wrong row.
         toolbar.inflateMenu(R.menu.menu_pet_detail);
         setDetailMenuVisible(false);
         toolbar.setOnMenuItemClickListener(item -> {
@@ -87,7 +82,6 @@ public class Petmenu extends ThemedActivity {
             return false;
         });
 
-        // ── Bind views ───────────────────────────────────────────────────────
         imgPetPhoto       = findViewById(R.id.petImage);
         tvPetNameDetail   = findViewById(R.id.petName);
         tvSpeciesDetail   = findViewById(R.id.detailSpeciesValue);
@@ -102,7 +96,6 @@ public class Petmenu extends ThemedActivity {
 
         imgPetPhoto.setImageResource(R.drawable.ic_pets_24);
 
-        // ── Button listeners ────────────────────────────────────────────────
         MaterialButton btnTracking = findViewById(R.id.btnTracking);
         btnTracking.setOnClickListener(v -> handleTrackingClick());
 
@@ -114,13 +107,11 @@ public class Petmenu extends ThemedActivity {
         btnHistory.setOnClickListener(v ->
                 startActivity(new Intent(this, SightingHistoryActivity.class)));
 
-        // ── Load pet from database ──────────────────────────────────────────
         petId = getIntent().getLongExtra("pet_id", -1);
         if (petId == -1) {
             Toast.makeText(this, getString(R.string.no_pet_selected), Toast.LENGTH_SHORT).show();
             finish();
         }
-        // The load happens in onResume so returning from an edit shows the new values.
     }
 
     @Override
@@ -142,8 +133,6 @@ public class Petmenu extends ThemedActivity {
             AppDatabase db  = AppDatabase.getInstance(getApplicationContext());
             Pet         pet = db.petDao().getPetById(petId, ownerId);
 
-            // Read the stats here too — bindPetToViews runs on the UI thread,
-            // and forPetToday queries the database.
             final DashboardStats stats = pet == null
                     ? null : DashboardStats.forPetToday(getApplicationContext(), pet);
 
@@ -189,7 +178,6 @@ public class Petmenu extends ThemedActivity {
                 if (isFinishing() || isDestroyed()) return;
                 if (removed > 0) {
                     if (Prefs.getActivePetId(this) == pet.getId()) {
-                        // The dashboard re-picks on its next load.
                         Prefs.clearActivePetId(this);
                     }
                     Toast.makeText(this, getString(R.string.pet_deleted, pet.getName()),
@@ -217,10 +205,6 @@ public class Petmenu extends ThemedActivity {
         tvBirthdateDetail.setText(emptyOrValue(pet.getBirthdate(), R.string.em_dash));
         tvNotesDetail.setText(emptyOrValue(pet.getNotes(), R.string.no_notes_value));
 
-        // These two rows were repurposed by the dashboard redesign: steps and
-        // distance are gone (no hardware produces them), replaced by grams from
-        // the feeder and minutes from the room sensors. Grams are real now;
-        // rooms stay empty until motion sensors exist.
         tvFoodToday.setText(stats.gramsEaten == null
                 ? "Food today: no feeder paired"
                 : "Food today: " + stats.gramsEaten + " g");
@@ -244,9 +228,6 @@ public class Petmenu extends ThemedActivity {
                     .placeholder(R.drawable.ic_pets_24)
                     .into(imgPetPhoto);
         } else {
-            // centerCrop is right for a photograph and wrong for the fallback
-            // icon: a 24dp vector cropped to fill a 250dp header becomes a
-            // giant paw. Inset and centre it instead.
             Glide.with(this).clear(imgPetPhoto);
             imgPetPhoto.setScaleType(ImageView.ScaleType.FIT_CENTER);
             imgPetPhoto.setPadding(dp(72), dp(72), dp(72), dp(72));
@@ -255,11 +236,7 @@ public class Petmenu extends ThemedActivity {
         }
     }
 
-    // ── Pi connection / tracking ────────────────────────────────────────────
-
     private void handleTrackingClick() {
-        // Unlike the bottom-nav Live tab, this button is explicitly about the Pi,
-        // so ask for the IP rather than silently falling back to the phone camera.
         if (PiConnectionManager.hasSavedIp(this)) {
             launchTracking();
         } else {
@@ -304,7 +281,6 @@ public class Petmenu extends ThemedActivity {
         startActivity(PiConnectionManager.streamIntent(this));
     }
 
-    /** The value, or the given fallback resource when it is blank. */
     private int dp(int value) {
         return (int) android.util.TypedValue.applyDimension(
                 android.util.TypedValue.COMPLEX_UNIT_DIP, value,
@@ -318,7 +294,6 @@ public class Petmenu extends ThemedActivity {
 
     public static class PetsAdapter extends RecyclerView.Adapter<PetsAdapter.PetViewHolder> {
 
-        /** Row tap selects the pet; the overflow opens the per-pet menu. */
         public interface OnPetClickListener {
             void onPetClick(Pet pet);
             void onPetMenuClick(Pet pet, View anchor);
@@ -327,7 +302,6 @@ public class Petmenu extends ThemedActivity {
         private List<Pet> pets = new ArrayList<>();
         private final OnPetClickListener listener;
 
-        /** Which pet the dashboard is tracking, so the row can say so. */
         private long activePetId = -1L;
 
         public PetsAdapter(List<Pet> pets, OnPetClickListener listener) {
@@ -342,9 +316,6 @@ public class Petmenu extends ThemedActivity {
             long previousActive = this.activePetId;
             this.activePetId = activePetId;
 
-            // DiffUtil rather than notifyDataSetChanged: the list is edited in place
-            // (delete, rename, change which pet is active) and a blanket invalidate
-            // kills the animations and rebinds every visible row.
             List<Pet> old = this.pets;
             DiffUtil.DiffResult result = DiffUtil.calculateDiff(new DiffUtil.Callback() {
                 @Override public int getOldListSize() { return old.size(); }
@@ -427,9 +398,6 @@ public class Petmenu extends ThemedActivity {
 
                 String photoUri = pet.getPhotoUri();
                 if (photoUri != null && !photoUri.isEmpty()) {
-                    // Rows are recycled, so both branches have to set the tint —
-                    // leaving it to the layout means whichever pet was in this
-                    // row before decides how the next one is painted.
                     PhotoTint.clearFor(imgPet);
                     Glide.with(itemView.getContext())
                             .load(Uri.parse(photoUri))

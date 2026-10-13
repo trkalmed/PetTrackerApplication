@@ -29,19 +29,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-/**
- * The whole path, on a device: {@link PiSync} to {@link PiClient}, over a real
- * socket, into a real database, ending in {@link DashboardStats}.
- *
- * Every piece of this has its own test. What none of them cover is the seams —
- * the saved address becoming a URL, the cursor surviving in SharedPreferences
- * between two syncs, the work happening off the main thread and the answer
- * arriving back on it. Those are exactly where an integration like this fails,
- * and they cannot be checked without a device.
- *
- * The Pi here is a socket serving the JSON from pi/README.md, listening on the
- * port {@link PiConnectionManager} builds.
- */
 @RunWith(AndroidJUnit4.class)
 public class PiSyncIntegrationTest {
 
@@ -57,9 +44,6 @@ public class PiSyncIntegrationTest {
     public void setUp() throws IOException {
         context = ApplicationProvider.getApplicationContext();
         db = AppDatabase.getInstance(context);
-        // Emptied rather than deleted: the instrumentation runs every test class
-        // in one process, so deleting the file pulls it out from under a
-        // connection another class already opened.
         db.clearAllTables();
 
         petId = db.petDao().insert(new Pet(
@@ -78,7 +62,6 @@ public class PiSyncIntegrationTest {
         Prefs.get(context).edit().clear().apply();
     }
 
-    /** Runs one sync and waits for the answer the app would act on. */
     private PiEventSync.Result syncAndWait() throws InterruptedException {
         CountDownLatch done = new CountDownLatch(1);
         PiEventSync.Result[] captured = new PiEventSync.Result[1];
@@ -119,7 +102,6 @@ public class PiSyncIntegrationTest {
         assertEquals(Integer.valueOf(40), stats.gramsEaten);
         assertEquals("Kitchen", stats.currentRoom);
 
-        // Health came back too, which is what tells Settings the address is real.
         assertNotNull(result.health);
     }
 
@@ -133,8 +115,6 @@ public class PiSyncIntegrationTest {
         pi.events = "{'events': [], 'next_cursor': 43, 'has_more': false}";
         syncAndWait();
 
-        // Where it got to has to survive in SharedPreferences between syncs —
-        // and, in real use, between one run of the app and the next.
         assertEquals("/events?since=0", pi.requests.get(1));
         assertEquals("/events?since=43", pi.requests.get(3));
     }
@@ -146,17 +126,12 @@ public class PiSyncIntegrationTest {
                 + " 'next_cursor': 43, 'has_more': false}";
         syncAndWait();
 
-        // The stored cursor now belongs to a Pi at another address — which is
-        // what re-pairing looks like from here. Cursor 43 means nothing in a log
-        // this app has never read.
         Prefs.get(context).edit()
                 .putString(Prefs.KEY_PI_CURSOR_HOST, "192.168.1.99").apply();
 
         syncAndWait();
 
         assertEquals("/events?since=0", pi.requests.get(3));
-        // Replayed, and still one sighting — the remote id did its job across
-        // the whole stack rather than only in a unit test.
         DashboardStats stats = new PetDataRepository(context)
                 .statsForToday(db.petDao().getPetById(petId, "owner-1"));
         assertEquals(1, stats.rooms.size());
@@ -168,13 +143,10 @@ public class PiSyncIntegrationTest {
 
         PiEventSync.Result result = syncAndWait();
 
-        // The everyday case — the phone is not at home. It has to arrive as an
-        // answer on the main thread, not as a crash on a background one.
         assertFalse(result.reachable);
         assertNotNull(result.error);
     }
 
-    /** A Pi, near enough: one connection at a time, on the port the app builds. */
     private static final class FakePi implements java.io.Closeable {
 
         private final ServerSocket socket;
@@ -187,8 +159,6 @@ public class PiSyncIntegrationTest {
         volatile String events = "{'events': [], 'next_cursor': 0, 'has_more': false}";
 
         FakePi() throws IOException {
-            // The port PiConnectionManager assumes. Binding it here is what makes
-            // the saved-address-to-URL step part of the test.
             socket = new ServerSocket(8080, 0, InetAddress.getByName("127.0.0.1"));
             Thread thread = new Thread(this::serve, "fake-pi");
             thread.setDaemon(true);
@@ -207,7 +177,7 @@ public class PiSyncIntegrationTest {
                     requests.add(path);
 
                     String line;
-                    while ((line = in.readLine()) != null && !line.isEmpty()) { /* drain */ }
+                    while ((line = in.readLine()) != null && !line.isEmpty()) { }
 
                     byte[] body = (path.startsWith("/health") ? health : events)
                             .replace('\'', '"').getBytes(StandardCharsets.UTF_8);

@@ -16,20 +16,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * Motion sightings turned into minutes per room.
- *
- * This is the one place in the app where stored data is not simply read back:
- * the sensors report moments and the dashboard draws durations, and something
- * has to decide what a moment is worth. That decision is arbitrary in the sense
- * that another reasonable person would pick different numbers, and load-bearing
- * in the sense that the room chart is meaningless if it is wrong — so it is
- * pinned here rather than left to be rediscovered from the code.
- *
- * The rule under test: a sighting speaks for the time until the next one
- * anywhere, capped at fifteen minutes, and going quiet means the pet's location
- * becomes unknown rather than unchanged.
- */
 @RunWith(AndroidJUnit4.class)
 public class RoomOccupancyTest {
 
@@ -44,9 +30,6 @@ public class RoomOccupancyTest {
     @Before
     public void setUp() {
         context = ApplicationProvider.getApplicationContext();
-        // Close the cached instance before unlinking the file, or the
-        // singleton hands the next test a connection to a database that
-        // no longer exists — see AppDatabase.closeForTests().
         AppDatabase.closeForTests();
         context.deleteDatabase("pets_db");
         db = AppDatabase.getInstance(context);
@@ -65,7 +48,6 @@ public class RoomOccupancyTest {
         return db.petDao().getPetById(petId, "owner-1");
     }
 
-    /** A timestamp inside today, offset back from now but never past midnight. */
     private long todayAt(long millisAgo) {
         long candidate = System.currentTimeMillis() - millisAgo;
         DayRange today = DayRange.today();
@@ -87,14 +69,10 @@ public class RoomOccupancyTest {
         return 0;
     }
 
-    // ── Reporting, or not ───────────────────────────────────────────────────
-
     @Test
     public void noSightingEverMeansNoSensorsPaired() {
         DashboardStats stats = stats();
 
-        // The dashboard shows "pair them in Settings" for this, which would be
-        // wrong advice for a house whose sensors are simply quiet.
         assertFalse(stats.roomsReporting);
         assertTrue(stats.rooms.isEmpty());
         assertNull(stats.currentRoom);
@@ -111,23 +89,17 @@ public class RoomOccupancyTest {
         assertTrue("and today is genuinely empty", stats.rooms.isEmpty());
     }
 
-    // ── Minutes ─────────────────────────────────────────────────────────────
-
     @Test
     public void timeBetweenSightingsBelongsToTheEarlierRoom() {
         seen("Kitchen", 3 * HOUR);
         seen("Hall", 3 * HOUR - 20 * MINUTE);
         seen("Hall", 3 * HOUR - 25 * MINUTE);
 
-        // Twenty minutes between the kitchen sighting and the next one anywhere,
-        // but a single sighting is only believed for fifteen.
         assertEquals(15, minutesIn("Kitchen"));
     }
 
     @Test
     public void aRunOfSightingsInOneRoomAddsUp() {
-        // A pet actually in a room retriggers: the Pi debounces to one event per
-        // room per 30 s, so a real stay is many sightings, not one long gap.
         for (int i = 0; i < 10; i++) {
             seen("Kitchen", 2 * HOUR - i * 2 * MINUTE);
         }
@@ -141,8 +113,6 @@ public class RoomOccupancyTest {
         seen("Kitchen", 8 * HOUR);
         seen("Hall", 1 * HOUR);
 
-        // Eight hours of silence is a sleeping cat somewhere, not eight hours in
-        // the kitchen. Fifteen minutes is all one sighting can claim.
         assertEquals(15, minutesIn("Kitchen"));
     }
 
@@ -150,16 +120,13 @@ public class RoomOccupancyTest {
     public void theMostRecentSightingIsCreditedUpToNow() {
         seen("Hall", 5 * MINUTE);
 
-        // Still counting: the day is not over.
         assertEquals(5, minutesIn("Hall"));
     }
 
     @Test
     public void aRoomIsNeverRoundedAwayToNothing() {
-        seen("Study", 10 * 1000L);      // ten seconds ago
+        seen("Study", 10 * 1000L);
 
-        // Rounding to zero would drop the room out of the chart entirely, which
-        // reads as "never went in there" rather than "went in there just now".
         assertEquals(1, minutesIn("Study"));
     }
 
@@ -185,8 +152,6 @@ public class RoomOccupancyTest {
         assertEquals(1, stats().rooms.size());
     }
 
-    // ── Where the pet is now ────────────────────────────────────────────────
-
     @Test
     public void recentMotionMeansTheRoomIsKnown() {
         seen("Kitchen", 2 * MINUTE);
@@ -199,14 +164,10 @@ public class RoomOccupancyTest {
 
     @Test
     public void sinceIsWhenThisVisitStartedNotTheLastPulse() {
-        // A pet in a room keeps setting the sensor off, so a real stay is a
-        // steady trickle of sightings — every few minutes, not every twenty.
         for (int i = 0; i < 5; i++) {
             seen("Kitchen", 40 * MINUTE - i * 9 * MINUTE);
         }
 
-        // "In the kitchen since 14:20" has to mean arrival. The last sighting is
-        // just the most recent time something moved.
         DashboardStats stats = stats();
         assertEquals("Kitchen", stats.currentRoom);
         assertEquals(clockOf(40 * MINUTE), stats.currentRoomSince);
@@ -217,9 +178,6 @@ public class RoomOccupancyTest {
         seen("Kitchen", 90 * MINUTE);
         seen("Kitchen", 5 * MINUTE);
 
-        // Same room, but nothing for an hour and a half in between. Claiming the
-        // pet has been in the kitchen since 12:00 would assert a stay nothing
-        // observed — it left and came back, as far as anything here can tell.
         assertEquals(clockOf(5 * MINUTE), stats().currentRoomSince);
     }
 
@@ -238,14 +196,10 @@ public class RoomOccupancyTest {
 
         DashboardStats stats = stats();
 
-        // A PIR reports movement, never presence. Two hours of silence is not
-        // evidence the pet is still in the kitchen, and the screen says so.
         assertNull(stats.currentRoom);
         assertNotNull("but when it was last seen is worth showing", stats.lastMotionTime);
         assertEquals(clockOf(2 * HOUR), stats.lastMotionTime);
     }
-
-    // ── Storage rules ───────────────────────────────────────────────────────
 
     @Test
     public void aSightingWithNoRoomIsRejected() {
@@ -265,8 +219,6 @@ public class RoomOccupancyTest {
         assertEquals("the Pi's own id is what makes re-polling safe", -1, second);
     }
 
-    // ── The picture that came with the sighting ─────────────────────────────
-
     @Test
     public void theNewestPictureOfTheDayIsOffered() {
         repository.recordMotion(petId, todayAt(3 * HOUR), "Hall", "pir", 1L, "old.jpg");
@@ -283,8 +235,6 @@ public class RoomOccupancyTest {
         repository.recordMotion(petId, todayAt(30 * MINUTE), "Hall", "pir", 1L, "hall.jpg");
         repository.recordMotion(petId, todayAt(2 * MINUTE), "Kitchen", "pir", 2L, null);
 
-        // Most sightings have no picture — the camera was busy, or absent — so
-        // taking simply the newest would usually show nothing.
         assertEquals("hall.jpg", stats().lastSnapshotName);
     }
 
@@ -303,8 +253,6 @@ public class RoomOccupancyTest {
         assertNull(stats().lastSnapshotName);
     }
 
-    // ── The history list ────────────────────────────────────────────────────
-
     @Test
     public void theHistoryReadsNewestFirst() {
         seen("Hall", 3 * HOUR);
@@ -314,8 +262,6 @@ public class RoomOccupancyTest {
         java.util.List<PetDataRepository.Sighting> history =
                 repository.sightingsForToday(pet());
 
-        // The opposite order to the dwell maths, which needs oldest first —
-        // getting the two confused silently inverts every duration.
         assertEquals(3, history.size());
         assertEquals("Study", history.get(0).room);
         assertEquals("Hall", history.get(2).room);

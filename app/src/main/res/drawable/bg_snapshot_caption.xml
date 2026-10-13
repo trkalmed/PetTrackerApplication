@@ -1,12 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    A scrim under the caption on a motion snapshot.
-
-    The picture is whatever the camera happened to see, so the text has to stay
-    readable over a dark hallway and over a sunlit kitchen floor alike. A
-    gradient rather than a flat bar: it fades into the photo instead of cutting
-    a rectangle out of it.
--->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient

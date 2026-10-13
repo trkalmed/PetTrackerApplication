@@ -12,9 +12,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <!-- Full-width gradient panel, matching the dashboard and Account. The
-             root's uniform padding moved onto the blocks so this can reach the
-             screen edges; the cards below carry their own horizontal margin. -->
         <LinearLayout
             android:id="@+id/headerBlock"
             android:layout_width="0dp"
@@ -86,7 +83,6 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- ── Account card — single clickable row that opens AccountActivity ── -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardAccountManagement"
             android:layout_marginHorizontal="20dp"
@@ -159,7 +155,6 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ── Pi Connection card — shows saved IP, tap to edit ── -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardPiConnection"
             android:layout_marginHorizontal="20dp"
@@ -233,7 +228,6 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ── General card — Sound toggle + Sound volume slider ── -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardGeneral"
             android:layout_marginHorizontal="20dp"
@@ -261,7 +255,6 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <!-- Sound toggle row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -314,7 +307,6 @@
                     android:layout_marginTop="18dp"
                     android:background="@color/background" />
 
-                <!-- Sound volume row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -367,7 +359,6 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ── Contact Support card — single clickable row, opens email composer ── -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardContactSupport"
             android:layout_marginHorizontal="20dp"
@@ -440,10 +431,6 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Appearance. Three tiles rather than a dropdown: a theme is a visual
-             choice, and a swatch answers it faster than a word does. The tile
-             colours are literals on purpose — each previews a palette that is
-             not the one currently loaded, so tokens would all show the same. -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardAppearance"
             android:layout_marginHorizontal="20dp"

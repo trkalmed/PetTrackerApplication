@@ -9,11 +9,6 @@ import org.junit.Test;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
-/**
- * Frame splitting for the Pi's MJPEG stream. Pure byte-marker logic, no Android
- * dependencies, and the one piece of this app where an off-by-one silently
- * yields corrupt frames rather than an exception — so it is worth pinning down.
- */
 public class MjpegInputStreamTest {
 
     private static final byte[] SOI = {(byte) 0xFF, (byte) 0xD8};
@@ -45,14 +40,11 @@ public class MjpegInputStreamTest {
 
         byte[] actual = streamOf(expected).readJpegFrame();
 
-        // The returned frame must keep both markers — decoders need them.
         assertArrayEquals(expected, actual);
     }
 
     @Test
     public void skipsBoundaryPreambleBeforeTheFirstFrame() throws IOException {
-        // A real MJPEG stream puts multipart headers between frames; everything
-        // before the SOI marker has to be discarded.
         byte[] preamble = "--boundary\r\nContent-Type: image/jpeg\r\n\r\n".getBytes();
         byte[] expected = frame((byte) 0x0A, (byte) 0x0B);
 
@@ -79,14 +71,11 @@ public class MjpegInputStreamTest {
 
         stream.readJpegFrame();
 
-        // Null is how the read loop in LiveObjectDetectionActivity knows to stop.
         assertNull(stream.readJpegFrame());
     }
 
     @Test
     public void returnsNullWhenTheStreamIsCutMidFrame() throws IOException {
-        // Connection dropped after SOI but before EOI: a partial frame must not
-        // be handed back as if it were complete.
         byte[] truncated = {(byte) 0xFF, (byte) 0xD8, (byte) 0x01, (byte) 0x02};
 
         assertNull(streamOf(truncated).readJpegFrame());
@@ -99,11 +88,9 @@ public class MjpegInputStreamTest {
 
     @Test
     public void growsPastTheInitialBufferForLargeFrames() throws IOException {
-        // The internal builder starts at 64 KB and doubles; a larger frame
-        // exercises the grow path, which is where a copy bug would show up.
         byte[] payload = new byte[200_000];
         for (int i = 0; i < payload.length; i++) {
-            payload[i] = (byte) (i % 251);   // avoid an accidental FFD9 pair
+            payload[i] = (byte) (i % 251);
         }
         byte[] expected = frame(payload);
 

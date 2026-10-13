@@ -6,14 +6,7 @@ import androidx.room.ForeignKey;
 import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
-/**
- * A sighting from the object detector.
- *
- * The detector already produced these on every frame and threw them away; this
- * is where they land now. One row is a sighting, not a frame — the recorder
- * throttles, because at ~15 fps a frame-per-row would be tens of thousands of
- * inserts an hour for no extra information.
- */
+/** A sighting from the on device object detector. */
 @Entity(
         tableName = "detection_events",
         foreignKeys = @ForeignKey(
@@ -24,9 +17,7 @@ import androidx.room.PrimaryKey;
         indices = {@Index(value = {"petId", "timestampMillis"})})
 public class DetectionEvent {
 
-    /** Frames off the Raspberry Pi's MJPEG stream. */
     public static final String SOURCE_PI = "PI";
-    /** Frames off the phone's own camera. */
     public static final String SOURCE_PHONE = "PHONE";
 
     @PrimaryKey(autoGenerate = true)
@@ -36,11 +27,9 @@ public class DetectionEvent {
 
     private long timestampMillis;
 
-    /** COCO label, e.g. "cat" or "dog". */
     @NonNull
     private String label;
 
-    /** Detector confidence, 0..1. */
     private float confidence;
 
     @NonNull

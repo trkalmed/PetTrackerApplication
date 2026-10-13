@@ -22,15 +22,6 @@ import org.junit.runner.RunWith;
 
 import java.io.IOException;
 
-/**
- * Drives the hand-written {@link AppDatabase#MIGRATION_2_3} through real SQLite.
- *
- * This is what the exported schema JSON is for. {@code runMigrationsAndValidate}
- * compares the migrated database against the generated schema for version 3, so
- * a typo in the CREATE statements — a missing index, a nullable column that
- * should not be, a column in the wrong order — fails here instead of on a user's
- * phone after they have already lost their pets.
- */
 @RunWith(AndroidJUnit4.class)
 public class MigrationTest {
 
@@ -47,8 +38,6 @@ public class MigrationTest {
     public void migrate2To3_schemaMatchesTheExportedVersion3() throws IOException {
         helper.createDatabase(TEST_DB, 2).close();
 
-        // Validation is the assertion: it throws if the resulting schema differs
-        // from app/schemas/…/3.json in any respect.
         helper.runMigrationsAndValidate(TEST_DB, 3, true, AppDatabase.MIGRATION_2_3);
     }
 
@@ -67,7 +56,6 @@ public class MigrationTest {
         SupportSQLiteDatabase migrated =
                 helper.runMigrationsAndValidate(TEST_DB, 3, true, AppDatabase.MIGRATION_2_3);
 
-        // The whole point of a real Migration over a destructive fallback.
         try (Cursor c = migrated.query("SELECT name, ownerId FROM pets WHERE id = 1")) {
             assertTrue("the pet should have survived the migration", c.moveToFirst());
             assertEquals("Biscuit", c.getString(0));
@@ -105,8 +93,6 @@ public class MigrationTest {
         SupportSQLiteDatabase migrated =
                 helper.runMigrationsAndValidate(TEST_DB, 4, true, AppDatabase.MIGRATION_3_4);
 
-        // This one adds a column to a table that already holds a user's history,
-        // rather than only creating new ones.
         try (Cursor c = migrated.query(
                 "SELECT grams, remoteId FROM feeding_events WHERE petId = 1")) {
             assertTrue("the meal should have survived", c.moveToFirst());
@@ -122,8 +108,6 @@ public class MigrationTest {
 
         assertTrue(insertRoomEvent(db, 7L, "pir", 99L) > 0);
 
-        // The unique index is what makes re-polling the Pi free, and it has to
-        // exist in a *migrated* database, not only in a freshly created one.
         assertEquals(-1, insertRoomEvent(db, 7L, "pir", 99L));
     }
 
@@ -131,11 +115,6 @@ public class MigrationTest {
     public void migrate3To4_localReadingsDoNotCollideWithEachOther() throws IOException {
         SupportSQLiteDatabase db = migratedToFour();
 
-        // Every locally recorded reading has a null remote id. SQLite treats
-        // nulls in a unique index as distinct, which is the only reason a unique
-        // index over a mostly-null column is usable at all — worth pinning,
-        // because the opposite behaviour would silently drop every reading after
-        // the first.
         assertTrue(insertRoomEvent(db, 7L, "local", null) > 0);
         assertTrue(insertRoomEvent(db, 7L, "local", null) > 0);
     }
@@ -237,38 +216,18 @@ public class MigrationTest {
             assertTrue("the sighting should have survived", c.moveToFirst());
             assertEquals("Hall", c.getString(0));
         }
-        // The new table exists and starts empty, rather than the migration
-        // having quietly invented a fix for a rig that had no GPS.
         try (Cursor c = migrated.query("SELECT COUNT(*) FROM tracker_fixes")) {
             assertTrue(c.moveToFirst());
             assertEquals(0, c.getInt(0));
         }
     }
 
-    /**
-     * The real database, opened the real way, over the real upgrade path.
-     *
-     * Every other test here hands the migration to runMigrationsAndValidate,
-     * which proves the SQL is right and proves nothing about whether anything
-     * ever runs it. The repository tests delete the database first, so they get
-     * a fresh one at the current version and never migrate either.
-     *
-     * That gap shipped: MIGRATION_6_7 was written, tested, and never added to
-     * addMigrations(). Every existing install crashed on launch with "A
-     * migration from 6 to 7 was required but not found", while the whole suite
-     * stayed green — because nothing opened a database that predated the
-     * current version through {@link AppDatabase#getInstance}.
-     *
-     * This does exactly that, from the oldest version that must survive.
-     */
     @Test
     public void everyMigrationIsActuallyRegisteredWithTheBuilder() throws IOException {
         Context context = ApplicationProvider.getApplicationContext();
         AppDatabase.closeForTests();
         context.deleteDatabase("pets_db");
 
-        // Version 2 is the schema-export baseline: the oldest install that is
-        // expected to upgrade rather than be wiped.
         SupportSQLiteDatabase old = helper.createDatabase("pets_db", 2);
         ContentValues pet = new ContentValues();
         pet.put("id", 9L);
@@ -277,7 +236,6 @@ public class MigrationTest {
         old.insert("pets", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, pet);
         old.close();
 
-        // Opened the way the app opens it. A missing migration throws here.
         AppDatabase.closeForTests();
         AppDatabase db = AppDatabase.getInstance(context);
         Pet survivor = db.petDao().getPetById(9L, "owner-1");
@@ -297,13 +255,6 @@ public class MigrationTest {
         helper.runMigrationsAndValidate(TEST_DB, 7, true, AppDatabase.MIGRATION_6_7);
     }
 
-    /**
-     * Pets that predate the column keep the default rather than a target of zero.
-     *
-     * The column is nullable for exactly this reason: a NOT NULL DEFAULT 0 would
-     * migrate every existing pet to a target of nothing, and a progress ring
-     * measured against zero is a division nobody wants to render.
-     */
     @Test
     public void migrate6To7_existingPetsHaveNoTargetRatherThanZero() throws IOException {
         SupportSQLiteDatabase db = helper.createDatabase(TEST_DB, 6);

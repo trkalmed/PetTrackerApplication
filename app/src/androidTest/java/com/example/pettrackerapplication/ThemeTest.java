@@ -20,15 +20,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/**
- * The Appearance picker: persistence, night-mode mapping, and that the card
- * actually inflates.
- *
- * Driven through {@link ActivityScenario} rather than by tapping, because the
- * Settings screen sits behind a login and the activity is not exported — but
- * the theme logic is worth covering either way, and a test states the intended
- * mapping more precisely than a click does.
- */
 @RunWith(AndroidJUnit4.class)
 public class ThemeTest {
 
@@ -46,8 +37,6 @@ public class ThemeTest {
         ThemeManager.apply(context, original);
     }
 
-    // ── ThemeManager ────────────────────────────────────────────────────────
-
     @Test
     public void theDefaultIsLight() {
         Prefs.get(context).edit().remove(Prefs.KEY_THEME_MODE).apply();
@@ -64,9 +53,6 @@ public class ThemeTest {
 
     @Test
     public void darkAndAmoledBothMapToNightMode() {
-        // AMOLED is not a third resource set: it rides on values-night and adds
-        // a theme overlay. If it stopped requesting night mode it would render
-        // black text on a black ground.
         ThemeManager.apply(context, ThemeManager.DARK);
         assertEquals(AppCompatDelegate.MODE_NIGHT_YES, AppCompatDelegate.getDefaultNightMode());
 
@@ -93,14 +79,10 @@ public class ThemeTest {
 
     @Test
     public void anUnknownStoredValueFallsBackToLight() {
-        // A value written by a future version, or a corrupted one, must not
-        // leave the app themeless.
         Prefs.get(context).edit().putString(Prefs.KEY_THEME_MODE, "solarized").apply();
 
         assertEquals(ThemeManager.LIGHT, ThemeManager.current(context));
     }
-
-    // ── the card itself ─────────────────────────────────────────────────────
 
     @Test
     public void theAppearanceCardInflatesWithAllThreeTiles() {
@@ -130,8 +112,6 @@ public class ThemeTest {
                 MaterialCardView light = activity.findViewById(R.id.tileLight);
                 MaterialCardView dark = activity.findViewById(R.id.tileDark);
 
-                // The selected tile carries a thicker ring; that is the only
-                // signal telling the user which theme is live.
                 assertTrue("the active tile should be ringed more heavily",
                         light.getStrokeWidth() > dark.getStrokeWidth());
             });

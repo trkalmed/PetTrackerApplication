@@ -25,15 +25,7 @@ import com.google.firebase.auth.FirebaseUser;
 
 import java.util.List;
 
-/**
- * Dashboard. Three changes from the previous version:
- *  1. Every metric is one the hardware actually produces. Steps, distance and the
- *     100-minute activity goal are gone; grams, room minutes, detections and the
- *     GPS fix took their place.
- *  2. Missing data shows a setup prompt, never a permanent "—".
- *  3. Bottom nav is four destinations (Home / Live / Food / Settings). "Add pet"
- *     is a create action and moved to the FAB.
- */
+/** The dashboard. */
 public class MainMenuActivity extends ThemedActivity {
 
     private ImageView imgPetAvatar;
@@ -59,20 +51,10 @@ public class MainMenuActivity extends ThemedActivity {
     private View emptyStateView, scrollContent;
     private BottomNavigationView bottomNav;
 
-    /** The pet currently on screen. Null until one loads, or when the owner has none. */
     private Pet currentPet;
 
-    /** Collects readings from the Pi while this screen is in front of the user. */
     private PiSync.Poller piPoller;
 
-    /**
-     * One hue per room, cycling if there are more rooms than colours.
-     *
-     * Colour resources rather than literals so the dark palette can differ:
-     * the light hues are too saturated to sit on a dark ground, and
-     * values-night/colors.xml overrides all four. The bar and its legend read
-     * the same array, so they cannot drift apart.
-     */
     private static final int[] ROOM_COLORS = {
             R.color.room_1, R.color.room_2, R.color.room_3, R.color.room_4
     };
@@ -102,12 +84,10 @@ public class MainMenuActivity extends ThemedActivity {
         ((FloatingActionButton) findViewById(R.id.fabAddPet)).setOnClickListener(v ->
                 startActivity(new Intent(this, AddPetActivity.class)));
 
-        // The header is the only way into the pet detail screen.
         findViewById(R.id.rowPetHeader).setOnClickListener(v -> openPetDetail());
 
         piPoller = new PiSync.Poller(this, this::onSynced);
 
-        // The room card shows today's shape; tapping it shows today's sequence.
         cardRooms.setOnClickListener(v ->
                 startActivity(new Intent(this, SightingHistoryActivity.class)));
     }
@@ -115,8 +95,6 @@ public class MainMenuActivity extends ThemedActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Coming back from another tab leaves that tab highlighted, so re-assert
-        // Home. Safe to fire the listener: its nav_home branch is a no-op.
         bottomNav.setSelectedItemId(R.id.nav_home);
         NavTint.apply(this, bottomNav, R.id.nav_home);
         loadActivePet();
@@ -126,12 +104,10 @@ public class MainMenuActivity extends ThemedActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Nothing polls the Pi while the dashboard is not on screen. The Pi
-        // buffers, so the next resume collects whatever happened meanwhile.
+        // Nothing polls the Pi while the dashboard is hidden. The Pi buffers until the next resume.
         piPoller.stop();
     }
 
-    /** A sync finished. Only a sync that stored something changes what is drawn. */
     private void onSynced(PiEventSync.Result result) {
         if (isFinishing() || isDestroyed()) return;
         if (result.storedAnything()) loadActivePet();
@@ -165,11 +141,9 @@ public class MainMenuActivity extends ThemedActivity {
         scrollContent      = findViewById(R.id.scrollContent);
     }
 
-    // ── Data ────────────────────────────────────────────────────────────────
-
     private void loadActivePet() {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        if (user == null) return;              // onStart owns the redirect
+        if (user == null) return;
         String ownerId = user.getUid();
 
         new Thread(() -> {
@@ -178,16 +152,12 @@ public class MainMenuActivity extends ThemedActivity {
                     .petDao()
                     .getPetsForOwner(ownerId);
 
-            // Pick the pet and read its stats here, not in runOnUiThread:
-            // forPetToday hits the database and Room refuses to run on the
-            // main thread.
+            // Room refuses database queries on the main thread.
             final Pet pet = Prefs.chooseActive(getApplicationContext(), pets);
             final DashboardStats stats = pet == null
                     ? null : DashboardStats.forPetToday(getApplicationContext(), pet);
 
             runOnUiThread(() -> {
-                // The query outlives a rotation or a back press; touching views
-                // after that throws. Nothing to update once we are going away.
                 if (isFinishing() || isDestroyed()) return;
 
                 if (pet == null) {
@@ -208,10 +178,6 @@ public class MainMenuActivity extends ThemedActivity {
         tvPetName.setText(R.string.no_pets_yet);
         tvPetSubtitle.setText(R.string.tap_to_add_one);
 
-        // The device-status row and the glance cards are outside the hidden
-        // cards, so they still need filling. Rendering empty stats keeps them on
-        // the same code path as everywhere else — otherwise they sit blank,
-        // which is what happened once their layout defaults moved to tools:text.
         render(new DashboardStats());
     }
 
@@ -228,12 +194,7 @@ public class MainMenuActivity extends ThemedActivity {
 
         String photoUri = pet.getPhotoUri();
         if (photoUri != null && !photoUri.isEmpty()) {
-            // Glide, not setImageURI — the latter decodes the full bitmap on the
-            // main thread and drops frames on a phone-camera photo.
             imgPetAvatar.setColorFilter(null);
-            // Separate from the colour filter above and not cleared by it: the
-            // layout's app:tint is an image tint list, and it was painting the
-            // photograph the placeholder's colour.
             PhotoTint.clearFor(imgPetAvatar);
             imgPetAvatar.setPadding(0, 0, 0, 0);
             Glide.with(this)
@@ -242,17 +203,13 @@ public class MainMenuActivity extends ThemedActivity {
                     .placeholder(R.drawable.ic_pets_24)
                     .into(imgPetAvatar);
         } else {
-            // Reset, or a previous pet's photo lingers after the photo is cleared.
             Glide.with(this).clear(imgPetAvatar);
             imgPetAvatar.setImageResource(R.drawable.ic_pets_24);
-            // The paw's fill is transparent, so without the tint it is invisible.
             PhotoTint.restore(imgPetAvatar, R.color.accent_2_dark);
             imgPetAvatar.setColorFilter(ContextCompat.getColor(this, R.color.accent_2_dark));
             imgPetAvatar.setPadding(dp(13), dp(13), dp(13), dp(13));
         }
     }
-
-    // ── Rendering ───────────────────────────────────────────────────────────
 
     private void render(DashboardStats s) {
         renderDeviceStatus(s);
@@ -269,23 +226,11 @@ public class MainMenuActivity extends ThemedActivity {
         renderTrackerFix(s);
     }
 
-    /**
-     * The Pi's own GPS fix, sitting in the device-status row where it belongs.
-     *
-     * "Pi located", not "GPS" on its own: this row is next to the camera status
-     * and describes the hardware, and a bare "GPS 19:42" under a dashboard about
-     * an animal reads as the animal's position. It is the tracker's. Tapping
-     * shows the coordinates and says so in as many words.
-     */
     private void renderTrackerFix(DashboardStats s) {
         tvGpsStatus.setText(s.trackerFixTime == null
                 ? getString(R.string.no_gps_fix_yet)
                 : getString(R.string.tracker_located, s.trackerFixTime));
 
-        // Opens the route rather than a dialog about one point. A single fix
-        // shows the module works; the run of them shows the whole chain does —
-        // the Pi buffering while off the network and the phone reconciling
-        // afterwards, which no "latest reading" view can display.
         tvGpsStatus.setOnClickListener(v ->
                 startActivity(new Intent(this, TrackActivity.class)));
     }
@@ -324,8 +269,6 @@ public class MainMenuActivity extends ThemedActivity {
         if (s.rooms.isEmpty() || total == 0) {
             roomBar.setVisibility(View.GONE);
             tvRoomsEmpty.setVisibility(View.VISIBLE);
-            // Sensors that have never reported need pairing; sensors that have
-            // reported before and are quiet today are simply a quiet day.
             tvRoomsEmpty.setText(s.roomsReporting
                     ? R.string.no_motion_yet_today
                     : R.string.no_motion_sensors_reporting_pair_them);
@@ -351,17 +294,6 @@ public class MainMenuActivity extends ThemedActivity {
         }
     }
 
-    /**
-     * The frame the Pi grabbed when a sensor last fired.
-     *
-     * The URL is built here rather than stored, because the only durable part of
-     * it is the file name: the Pi's address is a DHCP lease, and one saved with
-     * the event would be pointing at somebody else's toaster by next month.
-     *
-     * Hidden whenever there is nothing to show — no camera on the rig, no
-     * sighting today, or no Pi paired on this phone. An empty grey rectangle
-     * would be worse than the card simply not being there.
-     */
     private void renderLastSeen(DashboardStats s) {
         String base = PiConnectionManager.getBaseUrl(this);
         if (s.lastSnapshotName == null || base == null) {
@@ -374,9 +306,6 @@ public class MainMenuActivity extends ThemedActivity {
         tvLastSeenCaption.setText(getString(R.string.snapshot_caption,
                 s.lastSnapshotRoom, s.lastSnapshotTime));
 
-        // Snapshots never change once written and the Pi says so in its headers,
-        // so Glide's disk cache means walking past a sensor costs one fetch
-        // rather than one per dashboard refresh.
         Glide.with(this)
                 .load(base + "/snapshot?name=" + s.lastSnapshotName)
                 .centerCrop()
@@ -386,9 +315,6 @@ public class MainMenuActivity extends ThemedActivity {
     private void renderGlanceCards(DashboardStats s) {
         if (s.currentRoom == null) {
             tvCurrentRoom.setText(R.string.unknown);
-            // A PIR reports movement, not presence, so going quiet means the
-            // trail went cold — not that the pet is still where it was last
-            // seen. Say when that was instead of claiming a room.
             tvCurrentRoomSince.setText(s.lastMotionTime == null
                     ? getString(R.string.waiting_for_a_sensor)
                     : getString(R.string.no_motion_since, s.lastMotionTime));
@@ -399,11 +325,6 @@ public class MainMenuActivity extends ThemedActivity {
 
         tvDetectionCount.setText(getString(
                 R.string.detections_today_count, s.detectionsToday));
-        // "N today" on its own overstates what this is. Sightings come from the
-        // phone's own detector, which runs only while the Live screen is open —
-        // so the number is what was seen while somebody was watching, and the
-        // card has to say so rather than implying a day's coverage it does not
-        // have. The Pi has the camera all day; it does not run a detector.
         if (s.lastDetectionTime != null) {
             tvDetectionLast.setText(
                     getString(R.string.detections_last_seen, s.lastDetectionTime));
@@ -413,8 +334,6 @@ public class MainMenuActivity extends ThemedActivity {
             tvDetectionLast.setText(R.string.detections_camera_not_connected);
         }
     }
-
-    // ── Small view builders ─────────────────────────────────────────────────
 
     private View buildLegendRow(DashboardStats.RoomStay stay, int color, boolean spaced) {
         LinearLayout row = new LinearLayout(this);
@@ -482,8 +401,6 @@ public class MainMenuActivity extends ThemedActivity {
         return h == 0 ? m + " m" : h + " h " + String.format("%02d", m) + " m";
     }
 
-    // ── Navigation ──────────────────────────────────────────────────────────
-
     private void setupBottomNavigation() {
         bottomNav = findViewById(R.id.bottomNav);
         bottomNav.setSelectedItemId(R.id.nav_home);
@@ -494,7 +411,7 @@ public class MainMenuActivity extends ThemedActivity {
             NavTint.apply(this, bottomNav, id);
 
             if (id == R.id.nav_home) {
-                return true;                                  // already here
+                return true;
             } else if (id == R.id.nav_live) {
                 startActivity(PiConnectionManager.streamIntent(this));
                 return true;
@@ -509,10 +426,6 @@ public class MainMenuActivity extends ThemedActivity {
         });
     }
 
-    /**
-     * The header opens the pet list, where you pick which pet the dashboard
-     * tracks. With no pets there is nothing to pick, so go straight to Add.
-     */
     private void openPetDetail() {
         if (currentPet == null) {
             startActivity(new Intent(this, AddPetActivity.class));

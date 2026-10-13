@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Display face: names, numbers, card titles. Body stays Manrope. -->
 <resources>
     <style name="TextAppearance.PetTracker.Display" parent="TextAppearance.Material3.HeadlineSmall">
         <item name="fontFamily">@font/bricolage</item>

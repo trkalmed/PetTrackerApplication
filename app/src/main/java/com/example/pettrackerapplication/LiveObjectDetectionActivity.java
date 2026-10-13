@@ -53,7 +53,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
     private CocoObjectDetector cocoDetector;
     private volatile boolean detectionBusy = false;
 
-    /** Stores sightings. Null when no pet is active — nothing to attribute them to. */
     private DetectionRecorder detectionRecorder;
 
     private ExecutorService cameraExecutor;
@@ -96,17 +95,13 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
 
         streamUrl = getIntent().getStringExtra("stream_url");
         if (streamUrl != null && !streamUrl.isEmpty()) {
-            // The layout shipped with a hardcoded "Kitchen"; say which feed this
-            // actually is, since the two look nothing alike in practice.
             tvCameraName.setText(R.string.pi_camera);
-            // piStreamView is fitCenter: the whole frame is visible, letterboxed.
             graphicOverlay.setScaleMode(BoxMapper.ScaleMode.FIT_CENTER);
             detectionRecorder = createRecorder(DetectionEvent.SOURCE_PI);
             startPiStream();
             loadPiCameras();
         } else {
             tvCameraName.setText(R.string.phone_camera);
-            // PreviewView defaults to FILL_CENTER: fills the view and crops.
             graphicOverlay.setScaleMode(BoxMapper.ScaleMode.FILL_CENTER);
             detectionRecorder = createRecorder(DetectionEvent.SOURCE_PHONE);
 
@@ -120,11 +115,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         }
     }
 
-    /**
-     * Sightings are attributed to the pet the dashboard is tracking. With no
-     * pet chosen there is nothing to attribute them to, so nothing is stored —
-     * the live view still works, it just does not log.
-     */
     private DetectionRecorder createRecorder(String source) {
         long petId = Prefs.getActivePetId(this);
         if (petId <= 0) {
@@ -134,30 +124,9 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         return new DetectionRecorder(this, petId, source);
     }
 
-    /**
-     * Guards the detector against being closed while a frame is inside it.
-     *
-     * {@link CocoObjectDetector} wraps native TensorFlow Lite memory. Closing it
-     * frees that memory immediately, and a worker thread part-way through
-     * {@code detect()} then reads it — a use-after-free, which arrives as a
-     * SIGSEGV in libtask_vision_jni rather than as a Java exception, so no
-     * amount of catching would have helped.
-     *
-     * This crashed on leaving the Live screen: onDestroy interrupted the stream
-     * thread and closed the detector on the next line, without waiting, while
-     * that thread was usually inside detect(). Interrupting does not stop native
-     * code — it only sets a flag the thread checks between frames.
-     */
     private final Object detectorLock = new Object();
     private volatile boolean detectorClosed = false;
 
-    /**
-     * Runs inference for the Pi stream, one frame at a time.
-     *
-     * Single-threaded on purpose: a pool would run several inferences at once
-     * on a phone with one useful accelerator, and produce results out of order
-     * for a view that only ever shows the newest.
-     */
     private final ExecutorService detectionExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -166,8 +135,7 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
 
         if (detectionRecorder != null) detectionRecorder.close();
 
-        // Stop the producers *first*, and wait for them, so nothing is inside
-        // the detector by the time it is freed.
+        // Stop the frame producers and wait for them before freeing the detector.
         stopPiStream();
         detectionExecutor.shutdownNow();
         try {
@@ -184,8 +152,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
             }
         }
 
-        // Belt and braces: the waits above are bounded, and a frame that takes
-        // longer than the timeout must still not touch freed memory.
         synchronized (detectorLock) {
             detectorClosed = true;
             if (cocoDetector != null) cocoDetector.close();
@@ -193,23 +159,9 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
     }
 
 
-    /**
-     * Names of the cameras this Pi has, from /health, in the Pi's own order.
-     *
-     * Empty until the first health reply lands, and empty forever on a Pi that
-     * predates named cameras — in which case the screen behaves exactly as it
-     * did before, streaming the one camera with no way to switch.
-     */
     private final java.util.List<String> piCameras = new java.util.ArrayList<>();
     private int piCameraIndex = 0;
 
-    /**
-     * Asks which cameras exist, and offers a switch only if there are two.
-     *
-     * A control that switches between one thing is worse than no control: it
-     * invites a tap that appears to do nothing. So the label only becomes
-     * tappable once the Pi has actually reported more than one camera.
-     */
     private void loadPiCameras() {
         PiClient client = PiClient.forSavedPi(this);
         if (client == null) return;
@@ -219,9 +171,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
             try {
                 for (java.util.Map.Entry<String, Boolean> entry
                         : client.health().camerasOrLegacy().entrySet()) {
-                    // Only cameras the Pi says are up. Offering to switch to one
-                    // that is unplugged would trade a working picture for an
-                    // error, which is not a choice worth presenting.
                     if (Boolean.TRUE.equals(entry.getValue())) found.add(entry.getKey());
                 }
             } catch (IOException e) {
@@ -244,7 +193,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         }).start();
     }
 
-    /** Moves to the next camera and reconnects the stream to it. */
     private void switchPiCamera() {
         if (piCameras.size() < 2) return;
 
@@ -260,13 +208,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         startPiStream();
     }
 
-    /**
-     * Ends the current stream and waits briefly for its thread to notice.
-     *
-     * The wait matters: without it the old thread can deliver one more frame
-     * after the new one has started, and a frame from the previous camera
-     * appears under the new camera's label.
-     */
     private void stopPiStream() {
         piStreamRunning = false;
         if (piStreamThread != null) {
@@ -306,22 +247,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
                     if (frame == null) continue;
                     runOnUiThread(() -> piStreamView.setImageBitmap(frame));
 
-                    // Detection runs off this thread, and frames are dropped
-                    // while it is busy.
-                    //
-                    // It used to be called here, inline. Inference takes a few
-                    // hundred milliseconds and reading the stream takes almost
-                    // none, so the loop ran at the detector's pace: the Pi sent
-                    // ten frames a second, the phone displayed three, and the
-                    // socket buffered the rest — a "live" view falling further
-                    // behind the room the longer it was watched. detectionBusy
-                    // existed to prevent this and could never fire, because the
-                    // same thread cleared it before looping.
-                    //
-                    // Now the picture keeps up with the Pi and the detector
-                    // samples whatever it can. Boxes lag the image slightly,
-                    // which is the honest trade: a box is a statement about a
-                    // frame, and drawing every one late would make both wrong.
                     if (!detectionBusy) {
                         detectionBusy = true;
                         detectionExecutor.execute(() -> analyzeFrameBitmap(frame));
@@ -347,16 +272,9 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         piStreamThread.start();
     }
 
-    /**
-     * Runs the COCO TFLite detector on a single frame from the Pi stream.
-     * Called from the background piStreamThread -- detect() is a blocking
-     * CPU call, and graphicOverlay.setResults() is safe to call from any
-     * thread (it uses postInvalidate() internally).
-     */
     private void analyzeFrameBitmap(Bitmap bitmap) {
         try {
-            // Held for the whole call, so onDestroy cannot free the detector's
-            // native memory part-way through it. See detectorLock.
+            // Held for the whole call so onDestroy cannot free the detector during inference.
             synchronized (detectorLock) {
                 if (detectorClosed || cocoDetector == null) return;
                 List<Detection> detections = cocoDetector.detect(bitmap);
@@ -411,12 +329,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
-    /**
-     * NOTE: imageProxy.toBitmap() requires androidx.camera:camera-core 1.3.0+.
-     * If your project is on an older CameraX version, this call won't exist --
-     * bump the camera-core/camera-camera2/camera-lifecycle/camera-view
-     * dependencies to 1.3.0 or newer in build.gradle.
-     */
     @OptIn(markerClass = ExperimentalGetImage.class)
     private void analyzeFrame(ImageProxy imageProxy) {
         try {
@@ -425,16 +337,10 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
             Bitmap bitmap = imageProxy.toBitmap();
             if (bitmap == null) return;
 
-            // toBitmap() hands back the sensor buffer as-is; the rotation needed
-            // to make it upright lives in the image info. Skipping this feeds the
-            // detector a sideways scene, and COCO models are trained on upright
-            // images, so accuracy falls off a cliff in portrait.
+            // Rotate the frame upright before detection.
             bitmap = rotateUpright(bitmap, imageProxy.getImageInfo().getRotationDegrees());
 
             detectionBusy = true;
-            // Same guard as the Pi path: CameraX's executor is shut down in
-            // onDestroy without waiting either, so this thread can also be
-            // inside native code when the detector is freed.
             synchronized (detectorLock) {
                 if (detectorClosed || cocoDetector == null) return;
                 List<Detection> detections = cocoDetector.detect(bitmap);
@@ -450,7 +356,6 @@ public class LiveObjectDetectionActivity extends ThemedActivity {
         }
     }
 
-    /** Returns an upright copy, or the original when there is nothing to do. */
     private static Bitmap rotateUpright(Bitmap source, int rotationDegrees) {
         if (rotationDegrees == 0) return source;
         Matrix matrix = new Matrix();

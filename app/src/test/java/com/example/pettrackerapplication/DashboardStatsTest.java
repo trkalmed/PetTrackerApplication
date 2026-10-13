@@ -6,18 +6,12 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/**
- * The contract every dashboard screen renders against. The important property is
- * that "not reporting" stays distinguishable from "reported zero" — the whole
- * reason the fields are boxed types and the screens show setup prompts.
- */
 public class DashboardStatsTest {
 
     @Test
     public void aFreshInstanceReportsNothingRatherThanZero() {
         DashboardStats stats = new DashboardStats();
 
-        // null means "no feeder paired", which is not the same as "ate 0 g".
         assertNull(stats.gramsEaten);
         assertNull(stats.currentRoom);
         assertNull(stats.trackerFixTime);
@@ -30,7 +24,6 @@ public class DashboardStatsTest {
     public void collectionsAreEmptyNotNull() {
         DashboardStats stats = new DashboardStats();
 
-        // The render loops iterate these without a null check.
         assertTrue(stats.meals.isEmpty());
         assertTrue(stats.rooms.isEmpty());
     }
@@ -52,7 +45,6 @@ public class DashboardStatsTest {
 
     @Test
     public void defaultGramsTargetIsNonZeroSoPercentagesDoNotDivideByZero() {
-        // Both FeedingActivity and MainMenuActivity compute grams/target * 100.
         assertTrue(new DashboardStats().gramsTarget > 0);
     }
 }

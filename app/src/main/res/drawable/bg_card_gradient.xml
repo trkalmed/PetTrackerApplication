@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Card fill: white to the palest green, hairline outline. Use as
-     android:background on the card's inner LinearLayout, and set
-     app:cardBackgroundColor="@android:color/transparent" on the CardView. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <gradient
         android:angle="300"

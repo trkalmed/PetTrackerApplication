@@ -65,23 +65,19 @@ public class SettingsActivity extends ThemedActivity {
 
         setupAppearance();
 
-        // ── Account management — opens the Account screen ──────────────────
         cardAccountManagement.setOnClickListener(v ->
                 startActivity(new Intent(this, AccountActivity.class)));
 
-        // ── Pi Connection — shows saved IP, tap to edit via PiConnectionManager ──
         cardPiConnection.setOnClickListener(v -> showPiIpDialog());
 
-        // ── Contact Support — opens an email composer pre-addressed to support ──
         cardContactSupport.setOnClickListener(v -> openContactSupport());
 
-        // ── Sound toggle + volume — restore saved state ─────────────────────
         boolean soundEnabled = prefs.getBoolean(Prefs.KEY_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
         int     soundVolume  = prefs.getInt(Prefs.KEY_SOUND_VOLUME, DEFAULT_SOUND_VOLUME);
 
         swSound.setChecked(soundEnabled);
         sbSoundVolume.setProgress(soundVolume);
-        sbSoundVolume.setEnabled(soundEnabled); // volume is meaningless while sound is off
+        sbSoundVolume.setEnabled(soundEnabled);
 
         swSound.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean(Prefs.KEY_SOUND_ENABLED, isChecked).apply();
@@ -91,7 +87,6 @@ public class SettingsActivity extends ThemedActivity {
         sbSoundVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // No-op — saved only once the user lifts their finger, see below
             }
 
             @Override
@@ -107,15 +102,10 @@ public class SettingsActivity extends ThemedActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Refresh in case the IP was changed from Petmenu since this screen was last shown
         updatePiConnectionSummary();
         checkPiConnection();
     }
 
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Appearance
-    // ══════════════════════════════════════════════════════════════════════
 
     private void setupAppearance() {
         findViewById(R.id.themeLight).setOnClickListener(
@@ -133,14 +123,9 @@ public class SettingsActivity extends ThemedActivity {
 
         ThemeManager.apply(this, mode);
 
-        // Light <-> Dark recreates every started activity on its own, because
-        // the night resource set changes. Switching between Dark and AMOLED does
-        // not: both are night modes, and the difference is a theme overlay that
-        // is only read as an activity is built. So force it.
         recreate();
     }
 
-    /** Rings the chosen tile and bolds its label. */
     private void markSelectedTheme() {
         String mode = ThemeManager.current(this);
 
@@ -163,10 +148,6 @@ public class SettingsActivity extends ThemedActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics());
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // Pi Connection
-    // ══════════════════════════════════════════════════════════════════════
-
     private void updatePiConnectionSummary() {
         String ip = PiConnectionManager.getSavedIp(this);
         if (ip.isEmpty()) {
@@ -182,14 +163,6 @@ public class SettingsActivity extends ThemedActivity {
                                 .format(new Date(lastSync))));
     }
 
-    /**
-     * Asks the Pi whether it is actually there, and says so on the card.
-     *
-     * A saved address is not a connection. Typing one in and seeing it echoed
-     * back tells you nothing — the mistakes here are a typo, a Pi that is off,
-     * and a phone on the guest network, and all three look identical until
-     * something tries to reach it.
-     */
     private void checkPiConnection() {
         String ip = PiConnectionManager.getSavedIp(this);
         if (ip.isEmpty()) {
@@ -230,8 +203,6 @@ public class SettingsActivity extends ThemedActivity {
                     String ip = input.getText().toString().trim();
                     if (!ip.isEmpty()) {
                         PiConnectionManager.saveIp(this, ip);
-                        // Reach for it straight away: finding out now that the
-                        // address is wrong is the entire value of this screen.
                         checkPiConnection();
                     }
                 })

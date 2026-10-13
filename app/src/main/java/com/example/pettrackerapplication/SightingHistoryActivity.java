@@ -22,19 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Every motion sighting the app has collected today, newest first.
- *
- * The dashboard shows one photograph — the most recent — which answers "what is
- * going on" and not "what happened". This is the second question: the sequence,
- * with the picture beside each entry.
- *
- * <b>It shows what this phone collected, not what the Pi holds.</b> The Pi keeps
- * thirty days; the app only receives events while it is open, so a day spent
- * with the app closed leaves a gap here that does not exist on the Pi. That is
- * stated on screen rather than hidden, because an incomplete list that looks
- * complete is worse than a short one.
- */
+/** Today's motion sightings, newest first. */
 public class SightingHistoryActivity extends ThemedActivity {
 
     private RecyclerView listSightings;
@@ -68,7 +56,7 @@ public class SightingHistoryActivity extends ThemedActivity {
     private void load() {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) {
-            finish();               // the dashboard owns the redirect
+            finish();
             return;
         }
         String ownerId = user.getUid();
@@ -109,12 +97,6 @@ public class SightingHistoryActivity extends ThemedActivity {
                 roomColours(sightings));
     }
 
-    /**
-     * The same colour per room as the dashboard's bar, so the two read as one
-     * thing. Assigned by first appearance, which is newest first here — the
-     * dashboard orders by time spent, so the mapping can differ between the two
-     * screens. Worth knowing; not worth a shared table for four colours.
-     */
     private Map<String, Integer> roomColours(List<PetDataRepository.Sighting> sightings) {
         int[] palette = {R.color.room_1, R.color.room_2, R.color.room_3, R.color.room_4};
         Map<String, Integer> colours = new LinkedHashMap<>();
@@ -127,7 +109,6 @@ public class SightingHistoryActivity extends ThemedActivity {
         return colours;
     }
 
-    /** One row per sighting. Small enough not to need DiffUtil: it reloads whole. */
     private static final class SightingAdapter
             extends RecyclerView.Adapter<SightingAdapter.Row> {
 
@@ -183,8 +164,6 @@ public class SightingHistoryActivity extends ThemedActivity {
                 Integer colour = roomColours.get(sighting.room);
                 dot.setBackgroundColor(colour == null ? 0x00000000 : colour);
 
-                // No Pi paired means no address to fetch from — the row still
-                // says when and where, which is the part the app owns.
                 boolean showable = sighting.hasPicture() && baseUrl != null;
                 noPicture.setVisibility(showable ? View.GONE : View.VISIBLE);
                 noPicture.setText(sighting.hasPicture()

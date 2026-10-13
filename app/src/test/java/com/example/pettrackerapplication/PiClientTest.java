@@ -22,19 +22,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * {@link PiClient} against a real server on a real socket.
- *
- * Not a mock, because the interesting parts are exactly what a mock would stand
- * in for: that the query string is built the way the Pi parses it, that a
- * non-200 is a failure rather than an empty page, and that something else on the
- * LAN answering the same port produces a clear error instead of silence. The
- * fake below answers what pi/README.md documents, byte for byte.
- *
- * It speaks HTTP over a plain socket rather than using a server library: the
- * JDK's own is not on the Android unit-test classpath, and thirty lines here is
- * cheaper than an emulator for a test this fast.
- */
 public class PiClientTest {
 
     private FakePi pi;
@@ -60,16 +47,12 @@ public class PiClientTest {
         assertTrue(health.motionSensors.get("Kitchen"));
     }
 
-    // ── Feeding ─────────────────────────────────────────────────────────────
-
     @Test
     public void feedPostsTheGramsThePiExpects() throws IOException {
         client.feed(40);
 
         assertEquals("POST", pi.methods.get(0));
         assertEquals("/feed", pi.requests.get(0));
-        // The Pi rejects anything that is not a positive integer under the key
-        // "grams", so the shape of this body is the contract.
         assertEquals("{\"grams\":40}", pi.bodies.get(0));
     }
 
@@ -81,12 +64,6 @@ public class PiClientTest {
         assertEquals("/tare", pi.requests.get(0));
     }
 
-    /**
-     * A refusal arrives as the Pi's own sentence, not as a status code.
-     *
-     * "Pi answered 503" sends someone to the logs. "feeder unavailable" sends
-     * them to the servo's plug, which is where the problem is.
-     */
     @Test
     public void aRefusedFeedCarriesThePisExplanation() {
         pi.status = 503;
@@ -117,9 +94,6 @@ public class PiClientTest {
     public void sendsTheCursorTheWayThePiParsesIt() throws IOException {
         client.events(42);
 
-        // The Pi reads ?since=<int>. Getting the name or the shape of this wrong
-        // means every poll returns the whole log from the beginning — which the
-        // remote ids would quietly absorb, so nothing would ever look broken.
         assertEquals("/events?since=42", pi.requests.get(0));
     }
 
@@ -155,16 +129,12 @@ public class PiClientTest {
             client.events(0);
             fail("a 500 must not read as 'nothing happened'");
         } catch (IOException expected) {
-            // An empty page would advance nothing and look like a healthy quiet
-            // Pi, so the failure would never surface anywhere.
             assertTrue(expected.getMessage().contains("500"));
         }
     }
 
     @Test
     public void aReplyThatIsNotJsonSaysSo() {
-        // Typing the router's address into the Pi Connection dialog is a thing
-        // people do, and it answers a GET perfectly happily.
         pi.healthBody = "<html><body>Admin login</body></html>";
 
         try {
@@ -186,8 +156,6 @@ public class PiClientTest {
             client.events(0);
             fail("half a page of JSON is not a page");
         } catch (IOException expected) {
-            // Wi-Fi dropping mid-poll. The cursor must not advance over events
-            // that were never fully received.
         }
     }
 
@@ -199,8 +167,6 @@ public class PiClientTest {
             nothingThere.health();
             fail("nothing is listening on port 1");
         } catch (IOException expected) {
-            // The ordinary case — the phone is not on the house network — and it
-            // has to arrive as an IOException the sync can report calmly.
         }
     }
 
@@ -213,7 +179,6 @@ public class PiClientTest {
         assertEquals("/health", pi.requests.get(0));
     }
 
-    /** A Pi, near enough: one connection at a time, canned replies per path. */
     private static final class FakePi implements Closeable {
 
         private final ServerSocket socket;
@@ -257,9 +222,6 @@ public class PiClientTest {
                     requests.add(path);
                     methods.add(method);
 
-                    // Headers, up to the blank line. They have to be read or the
-                    // client's write can block against a full buffer — and the
-                    // length is needed to know where a POST body ends.
                     int length = 0;
                     String line;
                     while ((line = in.readLine()) != null && !line.isEmpty()) {
@@ -293,8 +255,6 @@ public class PiClientTest {
                             + "Connection: close\r\n\r\n")
                             .getBytes(StandardCharsets.US_ASCII));
 
-                    // Promise the full length, send half, hang up: what a phone
-                    // walking out of range actually looks like.
                     out.write(body, 0, truncateReply ? body.length / 2 : body.length);
                     out.flush();
                 } catch (IOException stopping) {

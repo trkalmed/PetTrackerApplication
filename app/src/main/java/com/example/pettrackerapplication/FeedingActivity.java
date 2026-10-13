@@ -23,52 +23,27 @@ import java.io.IOException;
 
 import java.util.List;
 
-/** The Food tab. Everything on it is grams the feeder actually weighed. */
+/** The Food tab. Every figure on it is grams the load cell weighed. */
 public class FeedingActivity extends ThemedActivity {
 
-    /**
-     * Sent when the Pi does not say what a portion is.
-     *
-     * A gate feeder has no natural serving, and an older Pi does not report
-     * one. Some number still has to go on the wire, and this is a plausible
-     * single meal for a cat.
-     */
     private static final int DEFAULT_FEED_GRAMS = 40;
 
-    /** The Pi's own cap, mirrored so the phone can refuse before the network. */
     private static final int MAX_FEED_GRAMS = 500;
 
-    /**
-     * Below this the bowl is called empty.
-     *
-     * A tared load cell wanders either side of zero by a fraction of a gram
-     * as it settles, and this rig's meal detector already ignores changes
-     * under 5 g. Reporting "-0.4 g" would be precise about noise.
-     */
     private static final double EMPTY_BAND_G = 2.0;
 
-    /**
-     * Largest daily target the dialog will accept.
-     *
-     * Not a nutritional limit — the app has no business having an opinion on
-     * that. It is a typo guard: 3000 g of dry food is several times any cat's
-     * body weight, so a number above it is a slipped finger rather than an
-     * intention, and accepting it would leave a progress ring that never moves.
-     */
     private static final int MAX_DAILY_GRAMS = 3000;
 
     private TextView     tvTodayGrams, tvTodayMealCount, tagTodayState, tvFeedingSubtitle;
     private MaterialButton btnFeedNow, btnDailyTarget;
     private TextView       tvBowlGrams, tvBowlState;
 
-    /** The most recent /health, for the portion size the confirm dialog names. */
     private volatile PiHealth lastHealth;
     private TextView       tvFeedNowState;
     private ProgressBar  barToday;
     private LinearLayout mealList, emptyFeeder;
     private BottomNavigationView nav;
 
-    /** Collects readings from the Pi while this screen is in front of the user. */
     private PiSync.Poller piPoller;
 
     @Override
@@ -101,7 +76,6 @@ public class FeedingActivity extends ThemedActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Re-assert Food after returning from another tab. Its listener branch is a no-op.
         nav.setSelectedItemId(R.id.nav_food);
         NavTint.apply(this, nav, R.id.nav_food);
         load();
@@ -128,38 +102,14 @@ public class FeedingActivity extends ThemedActivity {
         if (result.storedAnything()) load();
     }
 
-    // ── Feeding on demand ───────────────────────────────────────────────────
-
-    /**
-     * How often the bowl reading is re-read while this screen is open.
-     *
-     * Two seconds, not the event poller's fifteen. That poller collects history
-     * and fifteen is generous for it, but this number is meant to be watched:
-     * food lands, the weight climbs, the figure follows. At fifteen seconds it
-     * would look broken. /health is a few hundred bytes and the Pi answers it
-     * from memory, so the cost is nothing.
-     *
-     * Stops on pause, like the event poller and for the same reason — nothing
-     * in this app polls a device when nobody is looking at the result.
-     */
     private static final long BOWL_POLL_MS = 2000;
 
     private final android.os.Handler bowlPoll =
             new android.os.Handler(android.os.Looper.getMainLooper());
 
-    /** One health request at a time, so a slow network cannot stack them up. */
     private final java.util.concurrent.atomic.AtomicBoolean bowlInFlight =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
-    /**
-     * Runs the health requests, reused rather than a thread per poll.
-     *
-     * At two seconds this fires thirty times a minute for as long as the Food
-     * tab is open. A fresh Thread each time means thirty stack allocations and
-     * thirty teardowns a minute for work that is almost entirely waiting on a
-     * socket — a real cost on a mid-range phone, and pointless when one thread
-     * can do all of it.
-     */
     private final java.util.concurrent.ExecutorService bowlWorker =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
@@ -171,18 +121,6 @@ public class FeedingActivity extends ThemedActivity {
         }
     };
 
-    /**
-     * Reads /health: whether the feeder can be offered, and what the bowl weighs.
-     *
-     * The button starts disabled and only opens once /health says a feeder was
-     * claimed. A button that is always tappable and fails at the far end blames
-     * the user for the state of the hardware; this way the screen says what is
-     * wrong before anything is pressed.
-     *
-     * "Claimed" is as much as the Pi can honestly answer — a hobby servo has no
-     * feedback wire, so nothing on either side knows whether the wheel turned.
-     * That is what the load cell is for, and the caption says so.
-     */
     private void refreshFeederAvailability() {
         PiClient client = PiClient.forSavedPi(this);
         if (client == null) {
@@ -200,8 +138,6 @@ public class FeedingActivity extends ThemedActivity {
             try {
                 health = client.health();
             } catch (IOException ignored) {
-                // Unreachable Pi. Rendered below as "not reporting", which is
-                // true and is what the person can act on.
             }
             final PiHealth answer = health;
             bowlInFlight.set(false);
@@ -212,17 +148,6 @@ public class FeedingActivity extends ThemedActivity {
                 boolean ready = answer != null && answer.feederAvailable;
                 btnFeedNow.setEnabled(ready);
 
-                // A hopper that stays open until told to close turns this into
-                // a two-state control. Which state it is in is the Pi's answer,
-                // not something the phone remembers — the hopper can also be
-                // closed by the Pi's own backstop, and a phone that assumed it
-                // was still open would offer to close an already-closed hopper.
-                // Two designs, two different promises. A metering feeder drops
-                // a portion and shuts itself; a hold feeder leaves food falling
-                // until it is told to stop. Which one is running is the Pi's
-                // answer, not something the phone assumes — and the open state
-                // is read the same way, because the hopper can also be closed
-                // by the Pi's own backstop.
                 boolean holds = answer != null && answer.feederHoldsOpen();
                 boolean open = answer != null && answer.feederOpen;
 
@@ -237,20 +162,6 @@ public class FeedingActivity extends ThemedActivity {
         });
     }
 
-    /**
-     * What the load cell reads at this moment.
-     *
-     * Different in kind from everything else on this screen. The meal figures
-     * are history: the Pi's detector decided a weight change was a meal, the
-     * phone stored it, and it stays true. This is the bowl right now, read
-     * straight from /health and never written down — so it updates while you
-     * watch, and it is the only thing here that shows the hardware working
-     * live rather than showing what it once recorded.
-     *
-     * Small negatives are shown as empty. A tared load cell drifts either side
-     * of zero by a fraction of a gram, and "-0.4 g of food" is not a sentence
-     * about anything.
-     */
     private void renderBowl(PiHealth health) {
         if (health == null || !health.scaleAvailable
                 || health.latestWeightGrams == null) {
@@ -268,31 +179,12 @@ public class FeedingActivity extends ThemedActivity {
                 ? R.string.bowl_empty_note : R.string.bowl_live);
     }
 
-    /**
-     * Confirms, rather than asking how much.
-     *
-     * The feeder meters in whole pockets, so grams typed on a phone were always
-     * rounded to the nearest one by the wheel — the box invited a precision the
-     * hardware does not have. One pocket is one portion, the Pi says how big
-     * that is, and the only question left is whether to run it.
-     *
-     * A confirmation and not a bare button, because this moves food in a room
-     * nobody is standing in, and a pocket dispensed by a mis-tap has to be
-     * taken out of the bowl by hand.
-     */
     private void confirmDispense() {
-        // Closing needs no confirmation: it is the safe direction, and a
-        // hopper pouring onto the floor is not a moment to add a dialog to.
         if (lastHealth != null && lastHealth.feederOpen) {
             closeFeeder();
             return;
         }
 
-        // The grams are deliberately not quoted. The Pi's configured figure is
-        // a guess until somebody measures a pocket with a full hopper, and a
-        // number on a confirmation reads as a promise — one the load cell is
-        // then very likely to contradict. What is certain is that the wheel
-        // turns once, so that is what the dialog says.
         boolean holds = lastHealth != null && lastHealth.feederHoldsOpen();
         new MaterialAlertDialogBuilder(this)
                 .setTitle(holds ? R.string.feed_confirm_title_hold
@@ -304,15 +196,6 @@ public class FeedingActivity extends ThemedActivity {
                 .show();
     }
 
-    /**
-     * Asks for this pet's daily food target.
-     *
-     * The dashboard measured every animal against a constant 300 g. That is a
-     * plausible day for an average adult cat and meaningless for any particular
-     * one, so it is now the default rather than the rule, and the real number
-     * lives on the pet — following it to whichever phone shows it, and deleted
-     * along with it.
-     */
     private void askDailyTarget(int current) {
         android.widget.EditText input = new android.widget.EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -348,7 +231,6 @@ public class FeedingActivity extends ThemedActivity {
                 .show();
     }
 
-    /** @param grams null to go back to the default */
     private void saveDailyTarget(Integer grams) {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) return;
@@ -366,7 +248,6 @@ public class FeedingActivity extends ThemedActivity {
         }).start();
     }
 
-    /** Shuts a hopper that is holding itself open. */
     private void closeFeeder() {
         PiClient client = PiClient.forSavedPi(this);
         if (client == null) return;
@@ -391,21 +272,11 @@ public class FeedingActivity extends ThemedActivity {
                     Toast.makeText(this, getString(R.string.feed_failed, outcome),
                             Toast.LENGTH_LONG).show();
                 }
-                // The next poll settles the label from the Pi's own answer
-                // rather than from an assumption made here.
                 refreshFeederAvailability();
             });
         });
     }
 
-    /**
-     * One portion, in grams, as the Pi defines it.
-     *
-     * The Pi rounds this to whole pockets, so the exact number matters less
-     * than it looks: asking for a portion gets exactly one turn of the wheel.
-     * The fallback covers a feeder with no natural serving — a gate design, or
-     * a Pi too old to report one — where some number still has to be sent.
-     */
     private int portionGrams() {
         Double portion = lastHealth == null ? null : lastHealth.portionGrams;
         if (portion == null || portion < 1 || portion > MAX_FEED_GRAMS) {
@@ -414,16 +285,6 @@ public class FeedingActivity extends ThemedActivity {
         return (int) Math.round((double) portion);
     }
 
-    /**
-     * Runs the feeder and says only what is true afterwards.
-     *
-     * Nothing is written to the database here. The Pi does not record a feeding
-     * event for a dispense either, and for the same reason: the request says how
-     * much was asked for, and only the load cell knows what fell. The meal turns
-     * up on this screen a few seconds later, through the ordinary poll, having
-     * been weighed. Recording the request would double-count it and would put a
-     * number on the dashboard that nothing verified.
-     */
     private void dispense(int grams) {
         PiClient client = PiClient.forSavedPi(this);
         if (client == null) {
@@ -450,9 +311,6 @@ public class FeedingActivity extends ThemedActivity {
                 if (outcome == null) {
                     tvFeedNowState.setText(R.string.feeder_ready);
                     Toast.makeText(this, R.string.feed_sent, Toast.LENGTH_LONG).show();
-                    // The load cell needs a moment to settle before the Pi's
-                    // detector will call it a meal, so this poll usually finds
-                    // nothing; the screen's own poller picks it up shortly after.
                     PiSync.requestSync(this, this::onSynced);
                 } else {
                     tvFeedNowState.setText(R.string.feeder_unavailable);
@@ -466,7 +324,6 @@ public class FeedingActivity extends ThemedActivity {
     private void load() {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user == null) {
-            // Signed out while this screen was open — the dashboard owns the redirect.
             finish();
             return;
         }
@@ -478,9 +335,6 @@ public class FeedingActivity extends ThemedActivity {
                     .petDao()
                     .getPetsForOwner(ownerId);
 
-            // The same pet the dashboard shows and the same pet the Pi's readings
-            // are filed against — this screen used to take pets.get(0), which is
-            // a different pet as soon as the owner has two.
             Pet pet = Prefs.chooseActive(getApplicationContext(), pets);
             DashboardStats stats = pet == null
                     ? new DashboardStats()
@@ -496,9 +350,6 @@ public class FeedingActivity extends ThemedActivity {
     private void render(DashboardStats s) {
         mealList.removeAllViews();
 
-        // Set before the "no feeder paired" branch returns: a pet with no
-        // readings yet still has a target, and that is exactly when somebody
-        // wants to set it.
         btnDailyTarget.setText(getString(R.string.daily_target_button, s.gramsTarget));
         btnDailyTarget.setOnClickListener(v -> askDailyTarget(s.gramsTarget));
 
@@ -566,9 +417,6 @@ public class FeedingActivity extends ThemedActivity {
             NavTint.apply(this, nav, id);
             if (id == R.id.nav_food) return true;
             if (id == R.id.nav_home) {
-                // An explicit intent, not finish() — this screen is not always
-                // launched from the dashboard, so finish() cannot be relied on
-                // to land there. CLEAR_TOP reuses the existing dashboard.
                 Intent intent = new Intent(this, MainMenuActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                         | Intent.FLAG_ACTIVITY_SINGLE_TOP);

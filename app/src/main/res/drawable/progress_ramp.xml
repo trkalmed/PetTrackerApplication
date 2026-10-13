@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  progressDrawable for barToday / foodProgress / sbSoundVolume.
-  Android gradients take three stops, so the four-colour ramp is sampled at
-  ramp_1 / ramp_3 / ramp_4 — visually the same sweep.
--->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
         <shape android:shape="rectangle">

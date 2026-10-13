@@ -112,7 +112,6 @@
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <!-- FIX: dim overlay shown while ML segmentation is running -->
                 <View
                     android:id="@+id/vSegmentingOverlay"
                     android:layout_width="match_parent"
@@ -120,7 +119,6 @@
                     android:background="#99000000"
                     android:visibility="gone" />
 
-                <!-- FIX: spinner shown while ML segmentation is running -->
                 <ProgressBar
                     android:id="@+id/progressSegmentation"
                     android:layout_width="48dp"

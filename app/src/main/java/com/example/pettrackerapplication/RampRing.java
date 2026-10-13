@@ -12,20 +12,10 @@ import android.view.View;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-/**
- * The food ring: a progress arc swept through the four ramp colours.
- *
- * {@code CircularProgressIndicator} cannot do this — it paints one colour, and
- * the design calls for the ramp running around the arc. A {@link SweepGradient}
- * gives that directly, so this is a small custom view rather than a fight with
- * the Material widget.
- *
- * Reads its colours from {@code ramp_1..ramp_4}, so the dark palette's own ramp
- * applies without any code change.
- */
+/** The food progress ring, drawn in the ramp colours. */
 public class RampRing extends View {
 
-    private static final float START_ANGLE = -90f;      // twelve o'clock
+    private static final float START_ANGLE = -90f;
     private static final long ANIMATION_MS = 600L;
 
     private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -34,8 +24,8 @@ public class RampRing extends View {
 
     private int[] rampColors;
     private float strokeWidth;
-    private int progress;                                // 0..100
-    private float sweptProgress;                         // what is actually drawn
+    private int progress;
+    private float sweptProgress;
     @Nullable private ValueAnimator animator;
 
     public RampRing(Context context) {
@@ -65,12 +55,9 @@ public class RampRing extends View {
                 ContextCompat.getColor(getContext(), R.color.ramp_3),
                 ContextCompat.getColor(getContext(), R.color.ramp_4),
         };
-        // Deliberately not a token: on the header gradient a divider-coloured
-        // track disappears, so the unfilled part is a wash of white instead.
         trackPaint.setColor(0x33FFFFFF);
     }
 
-    /** Track colour, for placing the ring on a light ground instead of the header. */
     public void setTrackColor(int color) {
         trackPaint.setColor(color);
         invalidate();
@@ -88,11 +75,6 @@ public class RampRing extends View {
         return progress;
     }
 
-    /**
-     * @param progress 0..100, clamped
-     * @param animate  false when restoring state, true when the value changed
-     *                 under the user
-     */
     public void setProgress(int progress, boolean animate) {
         int clamped = Math.max(0, Math.min(100, progress));
         this.progress = clamped;
@@ -121,7 +103,7 @@ public class RampRing extends View {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         if (animator != null) {
-            animator.cancel();      // an animator outliving the view leaks it
+            animator.cancel();
             animator = null;
         }
     }
@@ -137,8 +119,6 @@ public class RampRing extends View {
         bounds.set(left + inset - inset, top, left + size, top + size);
         bounds.set(left, top, left + size, top + size);
 
-        // The sweep starts at three o'clock, so rotate it to match the arc's
-        // twelve o'clock start; otherwise the colours sit a quarter-turn off.
         SweepGradient gradient = new SweepGradient(
                 bounds.centerX(), bounds.centerY(),
                 new int[]{rampColors[0], rampColors[1], rampColors[2], rampColors[3], rampColors[0]},

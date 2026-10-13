@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- RECONSTRUCTED. Both arrays are read by AddPetActivity and add_pet_menu.xml. -->
 <resources>
     <string-array name="species_options">
         <item>Dog</item>

@@ -23,18 +23,6 @@ public class Pet {
     private String lastSeen;
 
 
-    /**
-     * Grams of food this pet should get in a day, or null for the default.
-     *
-     * A property of the animal, not of the phone: a Bengal and an elderly
-     * indoor cat want different numbers, and the figure should follow the pet
-     * rather than the device it was typed on.
-     *
-     * Nullable, and deliberately not annotated: a NOT NULL column would migrate
-     * every pet that predates it to a target of zero, and a progress ring
-     * measured against zero is a division nobody wants to render. Null means
-     * "nobody has said", which renders as DashboardStats.DEFAULT_DAILY_GRAMS.
-     */
     private Integer dailyFoodGrams;
 
     @NonNull

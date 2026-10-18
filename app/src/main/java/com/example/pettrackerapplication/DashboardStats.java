@@ -28,7 +28,7 @@ public class DashboardStats {
 
     public List<RoomStay> rooms = new ArrayList<>();
 
-    public boolean roomsReporting;
+    public boolean roomsReporting;    // whether sensors are paired at all, not whether one fired today
 
     public String currentRoom;              // null means the location is unknown right now
     public String currentRoomSince;
@@ -39,13 +39,13 @@ public class DashboardStats {
     public String lastSnapshotRoom;
     public String lastSnapshotTime;
 
-    public boolean cameraOnline;
+    public boolean cameraOnline;      // live, or seen something recently - the stream may still be down
     public int detectionsToday;
     public String lastDetectionTime;
 
     // GPS: the tracker's position, never the pet's.
     public String trackerFixTime;
-    public Double trackerLatitude;
+    public Double trackerLatitude;    // null together with the longitude, until the first fix
     public Double trackerLongitude;
     public int trackerSatellites;
 
